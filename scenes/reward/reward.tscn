@@ -1,0 +1,125 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/reward_screen.gd" id="1_reward"]
+[ext_resource type="Theme" path="res://assets/ui/theme_main.tres" id="2_theme"]
+[ext_resource type="PackedScene" path="res://scenes/components/panel_title_bar.tscn" id="3_title"]
+[ext_resource type="PackedScene" path="res://scenes/components/message_panel.tscn" id="4_notice"]
+[ext_resource type="PackedScene" path="res://scenes/reward/reward_card.tscn" id="5_card"]
+
+[node name="Reward" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_reward")
+
+[node name="Backdrop" type="ColorRect" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Shell" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Frame" type="Panel" parent="Shell"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_type_variation = &"PanelFrame"
+
+[node name="Core" type="Panel" parent="Shell"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 3.0
+offset_top = 3.0
+offset_right = -3.0
+offset_bottom = -3.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_type_variation = &"PanelCore"
+
+[node name="Highlight" type="Panel" parent="Shell"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 3.0
+offset_top = 3.0
+offset_right = -3.0
+offset_bottom = -3.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_type_variation = &"PanelHighlight"
+
+[node name="TitleBar" parent="." instance=ExtResource("3_title")]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 312.0
+offset_bottom = 24.0
+
+[node name="CardsArea" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 8.0
+offset_top = 32.0
+offset_right = 312.0
+offset_bottom = 172.0
+mouse_filter = 2
+
+[node name="Card0" parent="CardsArea" instance=ExtResource("5_card")]
+unique_name_in_owner = true
+layout_mode = 0
+offset_right = 96.0
+offset_bottom = 140.0
+
+[node name="Card1" parent="CardsArea" instance=ExtResource("5_card")]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 104.0
+offset_right = 200.0
+offset_bottom = 140.0
+
+[node name="Card2" parent="CardsArea" instance=ExtResource("5_card")]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 208.0
+offset_right = 304.0
+offset_bottom = 140.0
+
+[node name="NoticePanel" parent="." instance=ExtResource("4_notice")]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = 30.0
+offset_right = -24.0
+offset_bottom = -30.0
+grow_horizontal = 2
+grow_vertical = 2
