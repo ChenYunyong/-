@@ -1,6 +1,6 @@
 # 03 — 架构规范（ARCHITECTURE）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 v0.1.0｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.1**｜维护者 DSH
 > 本文件定义「系统长什么样」，不定义「具体怎么实现」。实现细节属 Claude Lead Developer，但不得违反本文件的边界。
 
 ## 1. 顶层状态机
@@ -23,8 +23,8 @@ COMBAT                     │
 REWARD                     │
  ↓（玩家选定奖励）               │
 PREPARATION ───────────────┘
- ↓（局内进程终止：CORE 被摧毁 / 达到终局条件）
-RESULT
+ ↓（局内进程终止：放弃本局 / 达到终局条件）
+RESULT  ←── COMBAT（CORE 被摧毁 / 达到终局条件；见 §1.1 R2）
  ↓（返回主菜单 / 再来一局）
 MAIN_MENU / PREPARATION
 ```
@@ -34,8 +34,8 @@ MAIN_MENU / PREPARATION
 | 规则 | 说明 |
 |---|---|
 | R1 | `PREPARATION → COMBAT` **只能**由玩家显式输入触发，禁止任何计时器/信号自动触发。 |
-| R2 | `COMBAT → REWARD` 只能由「本波清空」或「CORE 摧毁」触发。 |
-| R3 | 状态切换必须通过 `GameFlow.change_state()` 单一入口，禁止任何模块自己 `change_scene_to_file()`。 |
+| R2 | `COMBAT → REWARD` **只能**由「本波清空」触发。CORE 被摧毁 / 达到终局条件 → `COMBAT → RESULT`（与 §1 状态图及 `09_TEST_STANDARD.md` §3.4 一致）。 |
+| R3 | 状态切换必须经 `GameFlow` 的**单一提交点**落地并发信号，禁止任何模块自己 `change_scene_to_file()`。通用入口是 `GameFlow.change_state()`；玩家显式动作另有 `request_start_combat()` / `request_end_run()` 两个语义入口，是 `PREPARATION → COMBAT` 与 `→ RESULT` 的**唯一**合法通道。三者全部汇入同一提交点。 |
 | R4 | 每次状态切换必须发出 `state_changed(from, to)` 信号。 |
 | R5 | 切换过程中禁止重入（必须处理「切到一半又来一次」）。 |
 

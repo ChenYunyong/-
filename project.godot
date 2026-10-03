@@ -1,0 +1,39 @@
+; Engine configuration file.
+; PixelFusion — 依 docs/03_ARCHITECTURE.md §3（Autoload 清单）与 docs/06_UI_UX_STANDARD.md §1
+; 建立。Autoload 清单的新增/改名必须经 DSH 批准（03 §3）。
+
+config_version=5
+
+[application]
+
+config/name="PixelFusion"
+config/description="编程类肉鸽 —— 蓝图构筑 + 自动战斗（Stage 1 骨架）"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[autoload]
+
+EventBus="*res://scripts/core/event_bus.gd"
+GameFlow="*res://scripts/core/game_flow.gd"
+DataRegistry="*res://scripts/core/data_registry.gd"
+RunState="*res://scripts/core/run_state.gd"
+Settings="*res://scripts/core/settings_service.gd"
+
+[display]
+
+; 06 §1：基准分辨率 320×180（16:9），整数倍缩放。窗口默认 4×（1280×720），
+; 高于 06 §1 规定的最小 2× 下限。
+window/size/viewport_width=320
+window/size/viewport_height=180
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/stretch/mode="viewport"
+window/stretch/aspect="keep"
+window/stretch/scale_mode="integer"
+
+[rendering]
+
+; 像素风：最近邻采样，禁止线性过滤（05_ART_STYLE）。
+textures/canvas_textures/default_texture_filter=0
+; S1-13 需要 Web 导出，而 Web 只支持 GL Compatibility 渲染器。
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"

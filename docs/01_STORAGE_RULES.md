@@ -1,6 +1,6 @@
 # 01 — 存储规则（STORAGE RULES）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.1**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.2**｜维护者 DSH
 > 本文件优先级高于任何工具默认行为、任何 Agent 的方便做法。
 
 ## 1. 最高规则：C 盘绝对禁令
@@ -70,10 +70,15 @@ $env:TMP         = 'D:\Temp\PixelFusion'
 $env:TMPDIR      = 'D:\Temp\PixelFusion'
 $env:PYTHONPYCACHEPREFIX = 'D:\Temp\PixelFusion\pycache'
 $env:PIP_CACHE_DIR       = 'D:\Temp\PixelFusion\pip'
+$env:APPDATA             = 'D:\Temp\PixelFusion\appdata'
+$env:LOCALAPPDATA        = 'D:\Temp\PixelFusion\localappdata'
 ```
 
 - 上述变量**必须**在调用 Godot / Python / 图片工具之前设置。
 - 只允许在**当前进程**内设置；**禁止**用 `setx` 修改用户级/系统级变量（那会影响用户其它软件）。如需永久化，必须单独提请用户批准。
+- **`APPDATA` / `LOCALAPPDATA` 是 Godot 的必需项，不是可选项**（2026-10-03 S1-A 实测）：
+  portable 引擎的 `._sc_` / `_sc_` 自包含标记**只重定向编辑器数据**，**不重定向工程的 `user://`** ——
+  工程运行日志仍会落到 `%APPDATA%\Godot\app_userdata\<项目名>\logs\`（C 盘）。成因与复现见 §5.2。
 - 任何新引入的工具，必须先在 `D:\Temp\PixelFusion` 下验证其缓存可以重定向。
 
 ## 5. Godot 运行规则
@@ -97,7 +102,15 @@ Godot 在 Windows 上的默认布局是：
 
 **如果不用自包含模式，PixelFusion 的存档与日志会写进 C 盘**，直接违反 §1。
 
-自包含模式（可执行文件同级存在 `._sc_` 或 `_sc_`）会把上述两者都重定向到 `<exe目录>\editor_data\`，即 D 盘。
+**实测修正（2026-10-03，S1-A）**：自包含模式（可执行文件同级存在 `._sc_` 或 `_sc_`）
+只把**编辑器设置**重定向到 `<exe目录>\editor_data\`；**工程的 `user://` 不在其中**。
+Windows 上 `user://` 由 `OS::get_data_path()` 解析 `%APPDATA%` 决定，因此即使 `_sc_` 标记齐全，
+工程日志仍会写进 `C:\Users\<用户>\AppData\Roaming\Godot\app_userdata\<项目名>\logs\`。
+
+> v0.1.1 曾声称自包含模式「会把上述两者都重定向」—— **该说法有误**，本轮实测推翻。
+> 唯一可靠的手段是把 `%APPDATA%` / `%LOCALAPPDATA%` 一并重定向到 D 盘（见 §4）。
+> S1-A 复现：注入这两个变量后，C 盘 `app_userdata` 零新增，日志改落
+> `D:\Temp\PixelFusion\appdata\Godot\app_userdata\PixelFusion\logs\`，测试结果不变（369/369 + 19/19）。
 
 因此：
 1. `tools\godot\` 下的 `._sc_` / `_sc_` 标记文件**不得删除**。

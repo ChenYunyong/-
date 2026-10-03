@@ -1,6 +1,6 @@
 # 06 — UI / UX 规范（UI & UX STANDARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 v0.1.0｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.5**｜维护者 DSH（协同 Codex Visual Reviewer）
 > 本文件是 UI 实现的验收依据。所有数值为逻辑像素（基于 320×180 基准，双端整数倍缩放）。
 
 ## 1. 全局
@@ -27,9 +27,9 @@
 
 | 层 | 内容 | Token |
 |---|---|---|
-| **外框**（decorative frame） | 木质/黄铜厚边、转角、铆钉 | 主体 `BROWN_600` / `BROWN_500`；转角与铆钉 `GOLD_600` / `GOLD_500`；最亮边 `GOLD_200` |
+| **外框**（decorative frame） | 木质/黄铜厚边、转角、铆钉 | **填充 `BROWN_600` / 描边 `BROWN_500`**（v0.1.4 由 Codex 裁定）；转角与铆钉 `GOLD_600` / `GOLD_500`；最亮边 `GOLD_200` |
 | **内芯**（content core） | 真正承载内容的面 | `NAVY_800`（主）/ `NAVY_700`（抬升） |
-| **高光** | 1px 内高光、选中辉光 | `GOLD_200`（暖高光）/ `BLUE_300`（激活） |
+| **高光** | 1px 内高光、选中辉光 | `GOLD_200`（暖高光）/ `BLUE_300`（激活）。**本层必须有可被场景引用的落点**（v0.1.4）：S1-05 前由 Theme 提供；Codex 出正式外框素材后，静态 1px 内高光可移交素材，但「选中辉光」`BLUE_300` 必须始终留在 Theme。 |
 
 ### 2.2 尺寸
 
@@ -43,6 +43,20 @@
 | 阴影 | 右下 1px `NAVY_900` 硬阴影（**不模糊**） | 同 |
 
 **禁止**：模糊阴影、抗锯齿圆角、**没有外框的裸深蓝面板** —— 那正是「纯深蓝扁平 UI」，会丢掉参考图的核心层次。
+
+**阴影的实现方式（v0.1.5 实测裁定）**：`StyleBoxFlat.border_color` 是**单值**、四边共用，
+而本节已把三个面板 stylebox 的描边色占满（外框 `BROWN_500` / 内芯 `NAVY_600` / 次级 `BROWN_600`），
+故 `NAVY_900` 的右下硬边**无法与面板自身的描边共存于同一条 stylebox**。
+裁定采用 **(甲) 场景组合**：用一条独立的 `PanelShadow` 叠层（`draw_center = false`、
+`border_width_right/bottom = 1`、`expand_margin_right/bottom = 1`）由场景叠在最外，**面板自身不带阴影**。
+**否决 (乙)**「让外框自己承担、右下各多 1px `BROWN`」：那会改掉本节指定的 `NAVY_900`，
+且 `BROWN` 深边压在 `BROWN` 外框上根本读不出阴影。
+接线属 S1-05（`scenes/**`）；实测依据 `tests/unit/render_shadow_probe.gd`。
+
+> ⚠ `StyleBoxFlat.shadow_*` **不可用**（v0.1.5 像素级实测）：`shadow_size = 0` 时**一个阴影像素都不画**，
+> 且 `shadow_offset` 同时失效；`shadow_size > 0` 则必然带出与 `shadow_size` 等宽的半透明羽化带。
+> 引擎只暴露 `shadow_color` / `shadow_size` / `shadow_offset`，**没有关闭羽化的开关** ——
+> 「有没有阴影」与「羽化多宽」不可解耦。三个渲染后端（`gl_compatibility` / `forward_plus` / `mobile`）结果一致。
 
 > 上表数值为**规范定义值**（不是从参考图量出来的）—— 外框厚度与铆钉节奏属于手工重绘时的设计决定，
 > 须在 Stage 1 由 Codex 出正式 UI 素材时校准；但「**必须有外框**」这一条是硬约束。
