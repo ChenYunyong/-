@@ -14,8 +14,9 @@
 extends SceneTree
 
 const HARNESS_PATH: String = "res://tests/unit/render_probe_harness.gd"
-## S1-07 的用例模块。聚合入口只留一次调用，见 09 §4 v0.1.3 的拆分先例。
+## S1-07 / S1-08 的用例模块。聚合入口只留一次调用，见 09 §4 v0.1.3 的拆分先例。
 const PREP_PROBE_PATH: String = "res://tests/unit/preparation_probe.gd"
+const COMBAT_PROBE_PATH: String = "res://tests/unit/combat_probe.gd"
 const THEME_PATH: String = "res://assets/ui/theme_main.tres"
 const PANEL_SCENE_PATH: String = "res://scenes/components/message_panel.tscn"
 const TITLE_BAR_SCENE_PATH: String = "res://scenes/components/panel_title_bar.tscn"
@@ -76,6 +77,8 @@ func _initialize() -> void:
 	# S1-07 的 PREPARATION 布局取证拆在 preparation_probe.gd 里（本文件已近 02 §4 的 300 行上限）。
 	# 它借用同一个 harness，故计数直接汇入下面的结论行。
 	await load(PREP_PROBE_PATH).new().run(self, _h, _theme)
+	# S1-08 的 COMBAT 战场 / 状态带取证同样拆成模块（本文件仍在 02 §4 的上限内）。
+	await load(COMBAT_PROBE_PATH).new().run(self, _h, _theme)
 
 	print("")
 	print("PROBE 结论：通过 %d / 失败 %d" % [_h.passed, _h.failed])
