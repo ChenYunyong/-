@@ -5,7 +5,33 @@
 
 ## [Unreleased]
 
-### Stage 0 — PROJECT FOUNDATION（2026-10-03，待用户批准）
+### Stage 0 — 参考图校准与环境落地（2026-10-03 第二轮，待用户批准）
+
+#### Added
+- 参考图 A / B / C 落盘至 `D:\Temp\PixelFusion\scratch\refs\`（从 issue 附件下载，未经过 C 盘）。
+- 对三张参考图执行逐像素取色实测（纯标准库 PNG 解码 → 3px 采样 → 16 级量化），证据写入 `04_COLOR_SYSTEM.md` §2。
+- `05_ART_STYLE.md` 新增 §2「参考图的真实性质」。
+
+#### Changed
+- `docs/04_COLOR_SYSTEM.md` → **v0.1.1**：蓝色组重写为粉彩天空蓝（`#77B7F7`~`#D7E7F7`），棕色组修正为低饱和偏红（`#372727`~`#977777`），新增 `WARM_*` 组，解除「少用纯白」限制。红/橙组保留 v0.1.0 值并标记 `UNVERIFIED-AGAINST-REFS`。
+- `docs/01_STORAGE_RULES.md` → **v0.1.1**：回写真实 STORAGE GATE 结果；新增 §5 Godot 运行规则（含 `user://` 默认落 C 盘的泄漏说明）。
+- `docs/11_TASK_BOARD.md`：S0-18 完成；新增 S0-19 / S0-20 / S0-21。
+- `.gitignore`：排除 `tools/godot/`（引擎二进制不进版本库）。
+
+#### STORAGE GATE — 第二轮实测（2026-10-03）
+- 发现用户既有 Godot：**`E:\godot\Godot_v4.7.1-stable_win64.exe`（4.7.1.stable.official）**，`--headless --version` 正常。
+- 发现用户既有 `%APPDATA%\Godot`：**约 1.0 GB**，创建于 2026-07-06，含 `editor_settings-4.7.tres`、`export_templates\templates.tpz`（995.4 MB）、`app_userdata\`。**为本项目之前就存在的用户数据，非本项目产物**，已登记为只读例外。
+- 建立本项目 portable 引擎 `D:\GameDev\PixelFusion\tools\godot\`（复制自 E 盘既有安装 + `._sc_`/`_sc_` 标记）。
+- **验证通过**：以该 portable 引擎运行 `--headless --version` 后，`%APPDATA%\Godot` 的 `LastWriteTime` 保持 `2026-09-20 22:10:46` 不变 → **未向 C 盘写入**。
+- 未下载任何新引擎：复用用户既有的 4.7.1，避免版本与既有导出模板（4.7.1.stable）错配。
+- 引擎版本锁定为 **Godot 4.7.1-stable**。
+
+#### Known Issues / Pending
+- 导出模板 `4.7.1.stable` 目录为空，仅有 `templates.tpz`；导出前必须安装到 D 盘 portable 引擎（S0-21）。
+- Multica Agent 运行时任务工作区仍位于 C 盘，**待用户裁定**。
+- 红/橙两组颜色为 `UNVERIFIED-AGAINST-REFS`，需在 Stage 4 实际战斗画面中由用户确认。
+
+### Stage 0 — PROJECT FOUNDATION（2026-10-03 第一轮，待用户批准）
 
 #### Added
 - 建立正式项目目录树 `D:\GameDev\PixelFusion`（依 03_ARCHITECTURE §9）。

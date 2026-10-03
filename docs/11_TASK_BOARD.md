@@ -25,8 +25,8 @@
 | S0-04 | `01_STORAGE_RULES.md` | DSH | `REVIEW` | docs/01 |
 | S0-05 | `02_CODE_STANDARD.md` | DSH | `REVIEW` | docs/02 |
 | S0-06 | `03_ARCHITECTURE.md` | DSH | `REVIEW` | docs/03 |
-| S0-07 | `04_COLOR_SYSTEM.md` | DSH + Codex | `REVIEW` | docs/04（v0.1.0 草稿） |
-| S0-08 | `05_ART_STYLE.md` | DSH + Codex | `REVIEW` | docs/05 |
+| S0-07 | `04_COLOR_SYSTEM.md` | DSH + Codex | `REVIEW` | docs/04 **v0.1.1**（已按参考图实测校准） |
+| S0-08 | `05_ART_STYLE.md` | DSH + Codex | `REVIEW` | docs/05（含参考图性质实测） |
 | S0-09 | `06_UI_UX_STANDARD.md` | DSH | `REVIEW` | docs/06 |
 | S0-10 | `07_ASSET_PIPELINE.md` | DSH | `REVIEW` | docs/07 |
 | S0-11 | `08_AGENT_RULES.md` | DSH | `REVIEW` | docs/08 |
@@ -36,11 +36,15 @@
 | S0-15 | `12_CHANGELOG.md` | DSH | `REVIEW` | docs/12 |
 | S0-16 | `.gitignore` + Git 初始化 | DSH | `ACCEPTED` | 仓库根 |
 | S0-17 | **用户批准全部 Stage 0 文档** | 用户 | `TODO` | L4 验收 |
-| S0-18 | Godot 4.x Stable portable 安装（D 盘自包含） | 用户/DSH | `BLOCKED` | `tools/godot/` |
+| S0-18 | Godot 4.7.1 portable 安装（D 盘自包含） | DSH | `ACCEPTED` | `tools/godot/`（已验证不写 C 盘） |
+| S0-19 | 参考图 A/B/C 落盘 + 逐像素取色实测 | DSH | `ACCEPTED` | `04` §2（证据） |
+| S0-20 | `04`/`05` 按参考图实测校准（v0.1.1） | DSH | `REVIEW` | docs/04, docs/05 |
+| S0-21 | 导出模板安装到 D 盘 portable 引擎 | DSH | `TODO`（S1-13 前完成） | `tools/godot/editor_data/export_templates/` |
 
 ### S0 退出条件
 - [ ] 全部文档获用户明确批准
-- [ ] Godot portable 安装完成并验证 `%APPDATA%\Godot` 未被写入
+- [x] Godot portable 安装完成并验证 `%APPDATA%\Godot` 未被写入（2026-10-03 实测通过）
+- [x] 三张参考图已取色实测并回写 `04` / `05`
 
 ## 3. STAGE 1 — PROJECT SKELETON（未开始）
 

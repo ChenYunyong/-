@@ -17,6 +17,9 @@ build/
 *.bak
 *~
 
+# ---- Local engine (portable Godot, see docs/01 SS5) ----
+tools/godot/
+
 # ---- Editor / OS ----
 .vscode/
 .idea/
