@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.2.0**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.2.1**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -95,7 +95,7 @@
 | S1-13 | Web Export 冒烟验证 | Claude | S1-12 | `ACCEPTED`（PET-57 · debug+Threads 导出跑通、「人看清单」齐备） |
 | S1-13R | 测试卫生 + Web 打包排除：夹到 0 覆盖 · 失准文案 · 10 轮泄漏断言 · `exclude_filter` | Claude | S1-13 | `ACCEPTED`（PET-58 · unit 1338 · integration 356 · 产物冒烟 36/36 · 四件各带反向对照） |
 | S1-14 | Stage 1 用户验收（**GATE 9**） | 用户 | S1-13 | `REVIEW`（PET-59 · 验收清单已交用户，等用户 L4 结论；DSH 不得代判） |
-| S1-14C | **Crash Investigation：Godot 原生崩溃（`0xc0000005`，用户报告）** | Claude | S1-14 | `IN_PROGRESS`（PET-60 · 调查中；**未定位前 Stage 1 不得标稳定**） |
+| S1-14C | **Crash Investigation：Godot 原生崩溃（`0xc0000005`，用户报告）** | Claude | S1-14 | `ACCEPTED`（PET-60 · 结论 **未能复现**：16 配置 + 6000 次压力迭代零再现；已**证否** DSH 的最强线索；据 WER 存活 <0.55s 且无日志 → 崩溃早于任何项目代码） |
 
 > **已登记待办（S1-05 复核产生）**：`06 §2.2` 的**面板标题栏**（高度 16px / 底色 `NAVY_700` + 1px 底部 `GOLD_600` 分隔线）
 > 在 Theme 与 `scenes/**` 均无落点。Codex 2026-10-03 独立复核裁定：S1-05 的 BOOT 占位面板不必补，**列为 S1-06 验收项**
@@ -139,6 +139,23 @@
 > fault offset `0x3e15854`）并要求：**暂停继续开发并建立 Crash Investigation**。
 > **在根因定位之前：不派发任何 Stage 1 收尾/新功能开发；`S1-14` 不得置 `DONE`；Stage 1 与后续 Stage 一律不得标为稳定。**
 > 调查卡：`S1-14C`（PET-60）。用户原始指令全文见 `12_CHANGELOG.md` 同日条目。
+> **Crash Investigation 结论（PET-60，2026-10-03）**：**未能复现**。用户那次 `0xc0000005` 在 16 种配置、
+> 6000 次压力迭代下零再现。**最有价值的负面证据**：从 WER 的 `Faulting application start time` 解出进程
+> 存活 **< 0.55 秒**，且那一刻**没有产生任何 Godot 日志** → 崩溃发生在**引擎早期初始化**，
+> **项目的任何 GDScript 都还没执行** → **项目代码不可能参与这次崩溃**。
+> 因此即使暂停解除，**"Stage 1 稳定"这个标记仍然不能给**（根因未知）。
+>
+> **待办 A（代码卫生，等恢复开发再做）**：`game_flow.gd:_route_to_scene()` 在 BOOT 的 `_ready()` 链里
+> **同步**调用 `change_scene_to_file()`，每次启动必刷 `remove_child() can't be called at this time`。
+> 已证否它与崩溃的因果（6000 次误用零崩溃，引擎自愈），但仍是真实 API 误用 →
+> 建议改 `change_scene_to_file.call_deferred(path)`。
+>
+> **待办 B（独立缺陷，等恢复开发再做）**：`palette_theme.gd` 是 `@tool`，`_init()` 里即 `apply_palette()`，
+> 而 `Palette` 此时是**占位实例** → 每次编辑器扫描稳定刷 **32 条** `SCRIPT ERROR`（冷热缓存都一样，
+> DSH 此前说"热缓存为 0"是**错的**）。属独立缺陷，与本次崩溃无关。
+>
+> **待办 C（需用户批准）**：装 **WER LocalDumps**（写 `HKCU`、dump 落 D 盘、完全可逆）——
+> 这是唯一能真正符号化 `fault offset 0x3e15854`、拿到根因的手段。
 > **GATE 9 强制项（用户 2026-10-03 裁定）**：**重新安装完整的 Godot 4.7.1 Stable Export Templates**。
 > 用户选定 **B：当前继续开发，不因导出模板中断项目推进** —— 同时明确要求把该条**登记为 GATE 9 前的必须完成项**，
 > 并在**进入正式 Web Release、Windows 打包或 Release Candidate 阶段之前**执行**完整模板重装 + 导出验证**。

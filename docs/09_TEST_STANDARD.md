@@ -1,6 +1,6 @@
 # 09 — 测试规范（TEST STANDARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.5**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.6**｜维护者 DSH
 > **「看起来能跑」不算完成。**
 
 ## 1. 测试层级
@@ -105,6 +105,14 @@ D:\GameDev\PixelFusion\tests\output
     没有这个对照，就无法区分「被测改动导致」与「环境导致」。
   - **`.gd.uid` 必须随提交入库**：新脚本导入时 Godot 会生成 `<脚本>.gd.uid`；本仓库既有 52 个 `.uid` 已入库，
     新脚本的 `.uid` 一并提交，保证新旧脚本约定一致、UID 不因再次导入而漂移。
+
+- **在仓库上跑过 `--editor` 之后，必须 `git diff project.godot` 确认**（v0.1.6，2026-10-03 实例）：
+  Godot 编辑器**打开项目**时会**重写 `project.godot`** —— 官方样板注释会覆盖项目自己的注释，
+  并且会**静默丢掉它不认识的键**。实测本仓库被丢掉过 `window/stretch/aspect="keep"`（属 `06 §1` 的整数缩放配置）。
+  - **首选做法**：把编辑器测试跑在**项目副本**上（如 `D:\Temp\PixelFusion\<task>\projcopy\`），不要跑在仓库上。
+  - 若必须跑在仓库上：跑完立刻 `git diff project.godot`；有改动就 `git checkout -- project.godot` 还原，
+    并核对 `window/stretch/aspect="keep"` 是否还在。
+  - 这条同样适用于**无参数的裸启动**（项目管理器）—— 它一样会改写被打开工程的文件。
 
 ## 5. 完成定义（Definition of Done）
 

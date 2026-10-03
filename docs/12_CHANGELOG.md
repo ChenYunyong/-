@@ -5,6 +5,36 @@
 
 ## [Unreleased]
 
+### Crash Investigation 结论：**未能复现** + DSH 三条结论被证伪（PET-60，2026-10-03）
+
+#### Fixed
+- `09_TEST_STANDARD.md` → **v0.1.6**：新增「在仓库上跑过 `--editor` 之后必须 `git diff project.godot` 确认」——
+  编辑器**打开项目**会重写 `project.godot`，官方样板注释覆盖项目注释，并**静默丢掉 `window/stretch/aspect="keep"`**
+  （实测发生在本仓库，由 DSH 的编辑器测试造成）。首选做法是编辑器测试跑在**项目副本**上。
+- `11_TASK_BOARD.md` → **v0.2.1**：S1-14C 转 `ACCEPTED`（结论：未能复现），并登记待办 A/B/C。
+
+#### Notes
+- **PET-60 结论：未能复现。** 16 种配置（项目 / `--editor` / GUI / 项目管理器 × Compatibility 与 Vulkan）
+  + 6000 次压力迭代（`change_scene_to_file()` 在 `_ready()` 里同步调用的误用，3 种渲染器各 3000 次）→ **零再现**。
+- **最有价值的负面证据（DSH 没做、PET-60 做了）**：把 WER 的 `Faulting application start time`
+  解成绝对时间 → 进程**存活 < 0.55 秒**；且那一刻**没有产生任何 Godot 日志**
+  （PET-60 先用 60 次启动验证了"每次运行必然轮转 godot.log"）。→ **崩溃发生在引擎早期初始化，
+  项目任何 GDScript 都还没执行 → 项目代码不可能参与。** 这一条把整类「项目代码导致」的假设一次性排除。
+- **DSH 的三条结论被 PET-60 用实测证伪，全部采纳**：
+  1. DSH 说 `remove_child` 那条 ERROR 是「Vulkan 路径稳定出现」——实测**与渲染器无关**，
+     DSH 自己 `crash_inv/` 下 GL 与 Vulkan 四份 stderr **逐字相同**；是纯场景树时序问题。
+  2. DSH 说「编辑器/项目管理器默认走 Vulkan」——实测**裸启动项目管理器走 OpenGL 3.3**，假设不成立。
+  3. DSH 说 `@tool` 占位报错「热缓存为 0」——实测**冷热缓存都是 32 条**，每次都刷。
+  另 PET-60 纠正一条环境事实：`tools/godot/_sc_` **并未**让引擎进入 self-contained 模式，
+  `user://` 仍解析到 `%APPDATA%\Godot`（这解释了为什么必须重定向 `APPDATA`）。
+- **DSH 的最强线索被证否（方法论上很干净）**：PET-60 用**12 行、零 PixelFusion 代码**的独立工程做出了
+  `change_scene_to_file()` in `_ready()` 的最小复现（错误逐字一致），再用 6000 次压力迭代证明
+  它在 4.7.1 上是**引擎自愈**的、不是内存破坏路径 → **不能解释 `0xc0000005`**。
+  该误用仍作为代码卫生待办 A 保留。
+- **`0xc0000005` 的根因仍未定位**。在拿到 dump 之前任何"根因"都只是猜测 —— PET-60 明确拒绝编造。
+  唯一可执行的手段是待办 C（WER LocalDumps，`HKCU`、落 D 盘、可逆），**待用户批准**。
+
+
 ### ⛔ 用户报告 Godot 原生崩溃 → 开发暂停 + 建立 Crash Investigation（2026-10-03）
 
 用户原文要点：
