@@ -5,6 +5,35 @@
 
 ## [Unreleased]
 
+### 追加：PET-38 首次派发失败 = Claude Code 凭据问题（2026-10-03 第十轮）
+
+运行时恢复后（用户重启桌面端），PET-38 于 17:05:53 成功派发，但 3m07s 后失败、工具调用数为 0：
+
+```
+INF task did not complete, reporting failure
+    failure_reason=agent_error.provider_auth_or_access
+agent_error="Failed to authenticate. API Error: 401 Missing API key."
+```
+
+**根因（DSH 实测，与本项目无关）**：Claude Code 自身的凭据/端点失效。
+
+- 直接执行 `claude -p "..."` **60 秒无响应**（停在认证阶段）—— 说明 CLI 在 Multica **之外**同样无法认证，
+  不是 daemon 的调用上下文问题。
+- `~/.claude/settings.json` 的 `env` **当前**配置：
+  `ANTHROPIC_BASE_URL = https://opencode.ai/zen/go`，`ANTHROPIC_AUTH_TOKEN = oc_sk_…`（51 字符）。
+- 而 6–8 月的三个 `settings.json.clawd-cleanup-*.bak` 备份里是：
+  `ANTHROPIC_BASE_URL = https://api.deepseek.com/anthropic`，token 为 `sk-611…`（35 字符）。
+  → 用户近期把 Claude Code 的端点从 DeepSeek 换成了 opencode.ai；**新端点返回 401**。
+  （这也解释了为什么 9 月的 Claude 任务能成功、现在不行。）
+- 所有模型都被映射到 `deepseek-v4-flash`，因此报错里那句
+  `[claude-code:unrecognized_model] {"model":"deepseek-v4-flash"}` 是**既有噪声**（9 月成功运行时也有），不是失败原因。
+
+**结论**：这是**外部商业服务 / 凭据**问题，对应 **GATE 6**，只有用户能修。
+**DSH 不自行更换用户的 API 端点或密钥。**
+
+**行动**：不重试（同端点必然同样失败，而每次失败都是真实成本）；PET-38 置为 `blocked`；
+两个可选修复方案交用户决定（修 opencode 端点 / 回退 DeepSeek 端点）。
+
 ### 运行环境事故：Claude runtime 离线导致 PET-38 积压（2026-10-03 第九轮）
 
 **现象**：子任务 PET-38 的 Claude 运行长时间停留在 `queued`，用户询问原因。
