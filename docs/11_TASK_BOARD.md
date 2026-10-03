@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.8**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.9**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -92,8 +92,9 @@
 | S1-09R | 规范一致性修复：REWARD 选项卡补 `PanelShadow` 叠层（Codex 裁定选 A） | Claude | S1-09 | `ACCEPTED`（PET-52） |
 | S1-08R2 | 窄屏取样轴序统一 + 期望值按 `06 §7.1` 重导 + 补「25% 上限真的咬住」的专用取样 | Claude | S1-08R | `ACCEPTED`（PET-54 发现 → PET-55 完成） |
 | S1-12 | 状态循环集成测试（10 次循环、防重入、不自动推进） | Claude | S1-10 | `ACCEPTED`（PET-56 · integration 19→333，三条性质各带反向对照；`09 §3.1` 的「无节点泄漏」一条并入测试卫生卡） |
-| S1-13 | Web Export 冒烟验证 | Claude | S1-12 | `ACCEPTED`（PET-57 · debug+Threads 导出跑通、产物冒烟 23/23 带反向对照、「人看清单」齐备；**打包排除缺陷**并入测试卫生卡） |
-| S1-14 | Stage 1 用户验收 | 用户 | S1-13 | `TODO` |
+| S1-13 | Web Export 冒烟验证 | Claude | S1-12 | `ACCEPTED`（PET-57 · debug+Threads 导出跑通、「人看清单」齐备） |
+| S1-13R | 测试卫生 + Web 打包排除：夹到 0 覆盖 · 失准文案 · 10 轮泄漏断言 · `exclude_filter` | Claude | S1-13 | `ACCEPTED`（PET-58 · unit 1338 · integration 356 · 产物冒烟 36/36 · 四件各带反向对照） |
+| S1-14 | Stage 1 用户验收（**GATE 9**） | 用户 | S1-13 | `REVIEW`（PET-59 · 验收清单已交用户，等用户 L4 结论；DSH 不得代判） |
 
 > **已登记待办（S1-05 复核产生）**：`06 §2.2` 的**面板标题栏**（高度 16px / 底色 `NAVY_700` + 1px 底部 `GOLD_600` 分隔线）
 > 在 Theme 与 `scenes/**` 均无落点。Codex 2026-10-03 独立复核裁定：S1-05 的 BOOT 占位面板不必补，**列为 S1-06 验收项**
@@ -124,6 +125,12 @@
 > （`palette.gd:87 resolve`：`Attempt to call a method on a placeholder instance`）。PET-57 的受控对照显示
 > 与 preset 无关（单跑 `--editor --quit` 同样刷 32 条），热缓存为 0，**运行时不受影响**（全套套件全绿）。
 > 属 `@tool` 扫描期的占位实例问题，登记待办，本轮不派卡。
+>
+> **已登记待办据实结清（DSH 2026-10-03 PET-58 复核后）**：上面几条 —— ① `result_layout.gd:126`「夹到 0」
+> 分支无取样、② 两处失准文案、③ `09 §3.1` 的「10 轮无节点泄漏」无断言、④ Web 打包排除缺陷（含用户既有编辑器设置
+> 被打进 `index.pck`）—— 已由 **PET-58 一次提交全部落地**（`015efec`），**每条都带反向对照**
+> （分别红 2 / 文案类无断言可红 / 恰 10 / 恰 3 条），且 DSH 在正式树里独立复跑确认：
+> 修复后连导两次 pck **Δ0**，清空 `exclude_filter` 后 pck 由 95,712 涨到 **3,659,192**。
 >
 > **GATE 9 强制项（用户 2026-10-03 裁定）**：**重新安装完整的 Godot 4.7.1 Stable Export Templates**。
 > 用户选定 **B：当前继续开发，不因导出模板中断项目推进** —— 同时明确要求把该条**登记为 GATE 9 前的必须完成项**，
