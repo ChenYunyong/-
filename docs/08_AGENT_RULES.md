@@ -83,6 +83,24 @@ CONSTRAINT CHECK
 - 若发现文件冲突风险 → DSH 必须串行化任务。
 - Agent 不得修改 `ALLOWED FILES` 之外的文件；确有必要时先向 DSH 申请。
 
+### 4.1 宽通配的 `ALLOWED FILES` 视为相交（v0.1.2，2026-10-03 事故后新增）
+
+**实例**：S1-09（REWARD）在跑时，DSH 又派了 S1-08 的状态带修订。两者的 `ALLOWED FILES` 都写了
+`tests/**` —— 按本节「两个并行任务的文件集不得相交」的字面规则，**这已经是一次违规派发**。
+实际重叠概率低（一个改 `scenes/reward`，一个改 `scenes/combat`），但**它们写的是同一个工作树、同一个 git index**。
+
+**因此**：
+
+1. **宽通配（`tests/**`、`scripts/ui/**`、`scenes/**`）在并发布局中一律视为相交**。
+   派发修复类任务时，`ALLOWED FILES` 必须**逐一列到具体文件**，例如
+   `tests/unit/combat_probe.gd` · `tests/integration/combat_smoke.gd` · `scenes/combat/combat.tscn`，
+   而不是 `tests/**`。
+2. 两个 Agent 同时写**同一工作树**时，即使文件不重叠，`git add` / `git commit` 也会争用 **index 锁**
+   —— 失败是「`Unable to create index.lock`」这类可恢复错误，不会损坏仓库，但会让某一批的提交失败。
+   **DSH 必须在复审时核对两个并行批次的提交文件清单是否真的零重叠。**
+3. 若列不出具体文件、或确实需要同一批文件 → **串行化**：把后一批建为 `backlog`，等前一批交付后再 `todo` 提起。
+
+
 ## 5. 禁止擅自扩大范围
 
 任何 Agent 禁止「顺便做了……」：
