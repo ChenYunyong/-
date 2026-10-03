@@ -5,6 +5,27 @@
 
 ## [Unreleased]
 
+### PET-55 窄屏取样收尾落地 + 新登记待办（DSH）— 2026-10-03
+
+#### Fixed
+- `tests/unit/test_combat.gd`：`SHORT_NARROW_VIEWPORT` 由 `Vector2(180.0, 120.0)` 统一为 `Vector2(120.0, 180.0)`；
+  `EXPECTED_SHORT_NARROW` 按 `06 §7.1` 在 `120×180` 上**重导**为 `[(0,0,120,135), (0,135,120,45)]`；
+  新增只给 COMBAT 的 `TIGHT_NARROW_VIEWPORT = Vector2(120.0, 160.0)`（窄屏 0.75、且比基准矮 → 状态带
+  `min(45, 40) = 40 < 45`），并新增两条钉住「25% 上限真的生效」的断言。
+- `tests/unit/test_reward.gd` / `tests/unit/test_result.gd`：同一常量统一为 `120×180`，并修掉随之失准的注释。
+
+#### Notes
+- **补齐了本文件此前登记的「窄屏取样轴序写反」待办**（PET-54 发现 / PET-55 完成）。该缺陷被**两层**掩盖：
+  ① 三个单元测试直接调 `layout.*_rects()`，**绕开了 `is_narrow` 这道闸**；
+  ② 纠正轴序之后 `120×180` 与基准**同高**，`min(45, 45) = 45`，25% 上限**仍然咬不住** ——
+  亦即这一案**从来没有测过它注释里自称要测的那个东西**。现由 `TIGHT_NARROW_VIEWPORT` 补上。
+- **新登记待办**：`scripts/ui/result_layout.gd:126` 的 `maxf(bottom - readout_top(), 0.0)`「夹到 0」分支
+  **至今没有任何取样触发**（`120×180` 下读数区仍剩 36px；实测需 `120×140` 才会夹到 0），
+  故 `readout_rect(...).size.y >= 0.0` 这条断言对现有三个取样**恒真**。与本轮修掉的是**同一类问题**。
+- 另有若干**已失准但不在该卡允许清单内**的字符串，另行清理：`tests/integration/combat_smoke.gd:33-37`、
+  `scripts/ui/result_layout.gd:122`。
+
+
 ### S1-11 交付复核 + 全局类缓存假红规则（DSH）— 2026-10-03
 
 #### Fixed
