@@ -1,5 +1,5 @@
 ## test_project_config.gd
-## 职责：核对 project.godot 的 Autoload 清单（S1-01）与 06 §1 的基准分辨率。
+## 职责：核对 project.godot 的 Autoload 清单（S1-01）、06 §1 的基准分辨率，以及启动场景（S1-05）。
 ## 所属系统：tests
 ## 依赖：test_context
 ## 禁止：本文件不得修改 project.godot —— 只读核对。
@@ -19,6 +19,10 @@ const EXPECTED_AUTOLOADS: Dictionary = {
 
 const BASE_VIEWPORT: Vector2i = Vector2i(320, 180)
 
+## 启动场景固定为 BOOT（03 §1、S1-05）：数据校验通过后由 GameFlow 路由到 MAIN_MENU，
+## 引擎自己只负责把 BOOT 落地，不做任何状态判断。
+const MAIN_SCENE_PATH: String = "res://scenes/boot/boot.tscn"
+
 
 func run(ctx: RefCounted, tree: SceneTree) -> void:
 	ctx.begin_case("project.godot · Autoload 清单")
@@ -32,6 +36,11 @@ func run(ctx: RefCounted, tree: SceneTree) -> void:
 	ctx.begin_case("project.godot · 基准分辨率（06 §1）")
 	ctx.equal(int(ProjectSettings.get_setting("display/window/size/viewport_width", 0)), BASE_VIEWPORT.x, "视口宽")
 	ctx.equal(int(ProjectSettings.get_setting("display/window/size/viewport_height", 0)), BASE_VIEWPORT.y, "视口高")
+
+	ctx.begin_case("project.godot · 启动场景（S1-05）")
+	var main_scene: String = str(ProjectSettings.get_setting("application/run/main_scene", ""))
+	ctx.equal(main_scene, MAIN_SCENE_PATH, "启动场景应为 BOOT")
+	ctx.check(ResourceLoader.exists(MAIN_SCENE_PATH), "BOOT 场景文件应确实存在（配置指向不存在的场景会静默黑屏）")
 
 	ctx.begin_case("project.godot · Autoload 实例确已就位")
 	for singleton_name: String in EXPECTED_AUTOLOADS:

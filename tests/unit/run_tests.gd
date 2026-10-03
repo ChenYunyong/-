@@ -16,8 +16,14 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 	{"path": "res://tests/unit/test_data_registry.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_settings.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_theme.gd", "layer": "unit"},
+	{"path": "res://tests/unit/test_boot_check.gd", "layer": "unit"},
 	{"path": "res://tests/integration/test_state_loop.gd", "layer": "integration"},
 ]
+
+## 场景冒烟不进本入口：BOOT 成功路径会把真实 GameFlow 从 BOOT 推到 MAIN_MENU，
+## 而 BOOT 是不可回退的启动态（ALLOWED_TRANSITIONS 里没有回到 BOOT 的边），
+## 留在同一进程会污染上面 test_state_loop.gd 的「BOOT → MAIN_MENU」断言。
+## 它必须单独进程跑：tests/integration/boot_scene_smoke.gd（09 §1 场景冒烟层）。
 
 const LOG_PATH: String = "res://tests/output/unit_tests.log"
 ## R1 用例靠 --fixed-fps 把 600 秒模拟时间压进毫秒级；漏加该参数时的兜底上限。

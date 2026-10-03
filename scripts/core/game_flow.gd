@@ -1,9 +1,11 @@
 ## game_flow.gd
-## 职责：顶层六状态机，以及状态切换的唯一入口（03_ARCHITECTURE.md §1）。
+## 职责：顶层六状态机、状态切换的唯一入口，以及场景路由的唯一落地点（03_ARCHITECTURE.md §1）。
 ## 所属系统：core
 ## 依赖：EventBus
 ## 禁止：本文件不得持有任何玩法数值（波次 / Heat / HP / 奖励），
-##       不得出现任何计时器 —— R1 要求「停留在 PREPARATION」不会自行推进。
+##       不得出现任何计时器 —— R1 要求「停留在 PREPARATION」不会自行推进；
+##       本文件是**唯一**允许调用 change_scene_to_file() 的地方（03 §1.1 R3），
+##       任何其它模块都不得自行切场景。
 
 extends Node
 
@@ -24,6 +26,20 @@ const ALLOWED_TRANSITIONS: Dictionary = {
 	GameState.REWARD: [GameState.PREPARATION],
 	GameState.RESULT: [GameState.MAIN_MENU, GameState.PREPARATION],
 }
+
+## 状态 → 该状态正式场景的路径与责任任务号（11_TASK_BOARD.md §3）。
+## BOOT 刻意不在表内：它是 project.godot 的主场景，由引擎在启动时落地，不经路由。
+## PG-CODE §2：内层字典是常量字面量，无法标注元素类型，故此处为无类型 Dictionary。
+const SCENE_ROUTES: Dictionary = {
+	GameState.MAIN_MENU: {"path": "res://scenes/menu/main_menu.tscn", "task": "S1-06"},
+	GameState.PREPARATION: {"path": "res://scenes/preparation/preparation.tscn", "task": "S1-07"},
+	GameState.COMBAT: {"path": "res://scenes/combat/combat.tscn", "task": "S1-08"},
+	GameState.REWARD: {"path": "res://scenes/reward/reward.tscn", "task": "S1-09"},
+	GameState.RESULT: {"path": "res://scenes/result/result.tscn", "task": "S1-10"},
+}
+
+## 承担场景路由的 Autoload 节点名（03 §3：GameFlow 是唯一的顶层状态机与场景路由器）。
+const AUTOLOAD_NAME: String = "GameFlow"
 
 ## 当前顶层状态。初值即 BOOT —— 它是启动态而非一次「切换」，故不发信号。
 var _state: GameState = GameState.BOOT
@@ -83,6 +99,24 @@ func request_end_run() -> bool:
 	return _commit_transition(GameState.RESULT)
 
 
+## 本实例是否就是承担场景路由的那个 Autoload 单例（03 §3）。
+## 路由是全局单例的职责：测试与工具会临时 new 出额外实例来跑状态机，
+## 那些副本绝不能把整个游戏的当前场景换掉。
+func owns_scene_routing() -> bool:
+	var tree: SceneTree = get_tree()
+	if tree == null:
+		return false
+	return tree.root.get_node_or_null(AUTOLOAD_NAME) == self
+
+
+## 某状态对应的正式场景路径。不经路由（BOOT）或未登记时返回空串。
+func get_scene_path_for(state: GameState) -> String:
+	if not SCENE_ROUTES.has(state):
+		return ""
+	var route: Dictionary = SCENE_ROUTES[state]
+	return String(route["path"])
+
+
 ## GameState 的可读名，用于日志与断言。
 static func state_name(state: GameState) -> StringName:
 	var found: Variant = GameState.find_key(state)
@@ -100,4 +134,28 @@ func _commit_transition(to: GameState) -> bool:
 	state_changed.emit(from, to)
 	EventBus.state_changed.emit(int(from), int(to))
 	_is_transitioning = false
+	# 路由放在闸门落下之后：新场景在自己的 _ready 里切换状态不算重入。
+	_route_to_scene(to)
 	return true
+
+
+## 场景路由的**唯一**落地点（03 §1.1 R3）—— 全项目只有这里会调用 change_scene_to_file()。
+##
+## 目标场景尚未实现时（S1-06~S1-10 才有正式场景），明确记一条日志并停在当前场景：
+## 既不静默失败，也不去调用 change_scene_to_file —— 那只会让引擎再抛一次加载错误，
+## 而「场景还没做」在本阶段是已知状态，不是缺陷。
+func _route_to_scene(state: GameState) -> void:
+	if not owns_scene_routing():
+		return
+	if not SCENE_ROUTES.has(state):
+		return
+	var route: Dictionary = SCENE_ROUTES[state]
+	var path: String = String(route["path"])
+	if not ResourceLoader.exists(path):
+		print("GameFlow: 状态 %s 的场景 '%s' 尚未实现（属 %s），本次停在当前场景。" % [
+			state_name(state), path, String(route["task"]),
+		])
+		return
+	var error: Error = get_tree().change_scene_to_file(path)
+	if error != OK:
+		push_error("GameFlow: 切换到 '%s' 失败（错误码 %d）。" % [path, error])

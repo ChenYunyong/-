@@ -108,7 +108,7 @@ func _run_highlight_checks(ctx: RefCounted, theme: Theme, theme_script: GDScript
 	ctx.check(_theme_uses_token(theme, Palette.Key.BLUE_300), "Theme 必须实际引用 BLUE_300（DSH 裁定：始终留在 Theme）")
 
 
-## 06 §2.2 的硬阴影落点。不用 shadow_* 的原因见 render_shadow_probe.gd 的实测：
+## 06 §2.2 的硬阴影落点。不用 shadow_* 的原因见 run_render_probes.gd 组 1 的实测：
 ## shadow_size 同时决定「有没有阴影」与「羽化带多宽」，无法解耦，故改用 border + expand_margin。
 func _run_shadow_checks(ctx: RefCounted, theme: Theme, theme_script: GDScript) -> void:
 	ctx.begin_case("Theme · 硬阴影落点（06 §2.2）")

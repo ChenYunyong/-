@@ -8,6 +8,8 @@ config_version=5
 
 config/name="PixelFusion"
 config/description="编程类肉鸽 —— 蓝图构筑 + 自动战斗（Stage 1 骨架）"
+; 启动场景固定为 BOOT：数据校验通过后由 GameFlow 路由到 MAIN_MENU（03 §1、S1-05）。
+run/main_scene="res://scenes/boot/boot.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [autoload]

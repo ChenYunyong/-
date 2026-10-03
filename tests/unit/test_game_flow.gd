@@ -21,6 +21,19 @@ const BANNED_TIMING_TOKENS: PackedStringArray = [
 ## R1 实测：在 PREPARATION 停留 600 秒（10 分钟）模拟时间不得自动推进。
 const R1_SIMULATED_SECONDS: float = 600.0
 
+## 场景路由（03 §1.1 R3）：其余五个状态各自的责任任务号，取自 11_TASK_BOARD.md §3。
+const EXPECTED_ROUTE_TASKS: Dictionary = {
+	"MAIN_MENU": "S1-06",
+	"PREPARATION": "S1-07",
+	"COMBAT": "S1-08",
+	"REWARD": "S1-09",
+	"RESULT": "S1-10",
+}
+
+## R3 结构侧扫描的文件后缀。.tscn / .tres 也要扫 —— 场景里可以内嵌脚本。
+const SCANNED_SUFFIXES: PackedStringArray = [".gd", ".tscn", ".tres"]
+const ROUTING_TOKEN: String = "change_scene_to_file"
+
 var _script: GDScript = null
 var _tree: SceneTree = null
 
@@ -36,7 +49,13 @@ func run(ctx: RefCounted, tree: SceneTree) -> void:
 	_run_r1_static_checks(ctx)
 	_run_event_bus_checks(ctx)
 	_run_source_integrity_checks(ctx)
+	_run_routing_table_checks(ctx)
+	_run_r3_source_checks(ctx)
 	await _run_r1_simulated_time_check(ctx)
+	# 路由权判定依赖 get_tree()。--script 模式下 Autoload 节点虽然已在 /root 下，
+	# 但要等第一帧才真正入树（实测：在此之前 node.get_tree() 返回 null），
+	# 故必须排在上面那个已经让出过帧的用例之后 —— 否则测到的是「顺序还没到」而非被测逻辑。
+	_run_routing_ownership_checks(ctx)
 	_run_cycle_check(ctx)
 
 
@@ -156,6 +175,99 @@ func _run_source_integrity_checks(ctx: RefCounted) -> void:
 		ctx.check(expected.has(name), "game_flow.gd 出现了预期外的成员变量 `%s`" % name)
 
 	ctx.equal(_script.ALLOWED_TRANSITIONS.size(), EXPECTED_STATES.size(), "迁移表应覆盖全部六个状态")
+
+
+## 路由表本身：覆盖除 BOOT 外的五个状态，路径落在约定的场景目录，责任任务号与任务板一致。
+## BOOT 刻意不在表内 —— 它是 project.godot 的主场景，由引擎启动时落地，不经路由。
+func _run_routing_table_checks(ctx: RefCounted) -> void:
+	ctx.begin_case("GameFlow · 场景路由表（03 §1.1 R3）")
+	ctx.equal(_script.SCENE_ROUTES.size(), EXPECTED_STATES.size() - 1, "路由表应覆盖除 BOOT 外的五个状态")
+
+	var flow: Node = _spawn()
+	for index: int in EXPECTED_STATES.size():
+		var name: String = EXPECTED_STATES[index]
+		var path: String = flow.get_scene_path_for(index)
+		if name == "BOOT":
+			ctx.equal(path, "", "BOOT 是主场景、不经路由，路径应为空串")
+			continue
+		ctx.check(path.begins_with("res://scenes/"), "%s 的场景应登记在 res://scenes/ 下（实际 `%s`）" % [name, path])
+		var route: Dictionary = _script.SCENE_ROUTES[index]
+		ctx.equal(String(route["task"]), EXPECTED_ROUTE_TASKS[name], "%s 的责任任务号" % name)
+	_release(flow)
+
+
+## 路由是全局单例的职责。单测与工具会临时 new 出额外实例跑状态机，
+## 那些副本一旦也去切场景，整个游戏当前场景就会被测试换掉。
+func _run_routing_ownership_checks(ctx: RefCounted) -> void:
+	ctx.begin_case("GameFlow · 路由权归属（只有 Autoload 单例能切场景）")
+	var autoload_flow: Node = _autoload("GameFlow")
+	if ctx.check(autoload_flow != null, "GameFlow 应为已注册的 Autoload"):
+		ctx.check(autoload_flow.owns_scene_routing(),
+			"Autoload 实例应拥有路由权（其 get_tree() = %s）" % str(autoload_flow.get_tree()))
+
+	var spawned: Node = _spawn()
+	ctx.check(not spawned.owns_scene_routing(), "临时实例不得拥有路由权")
+	# 无场景树的实例（刚 new 出来还没挂进去）同样不得声称拥有路由权。
+	var orphan: Node = _script.new()
+	ctx.check(not orphan.owns_scene_routing(), "未入树的实例不得拥有路由权")
+	orphan.free()
+	_release(spawned)
+
+
+## R3 结构侧：把整个 scripts/ 与 scenes/ 扫一遍，切场景的调用只允许出现在 game_flow.gd。
+## 光靠约定挡不住 —— 这条断言才是 R3 的真正落点。
+func _run_r3_source_checks(ctx: RefCounted) -> void:
+	ctx.begin_case("GameFlow · R3 结构侧：全局只有一处 change_scene_to_file")
+	var offenders: PackedStringArray = []
+	var sources: Dictionary = _collect_sources(["res://scripts", "res://scenes"])
+	for path: String in sources:
+		if path != GAME_FLOW_PATH and _strip_comments(String(sources[path])).contains(ROUTING_TOKEN):
+			offenders.append(path)
+	ctx.equal(offenders.size(), 0, "越界调用 change_scene_to_file 的文件：%s" % ", ".join(offenders))
+	ctx.check(sources.size() > 0, "扫描应覆盖到实际文件（命中 %d 个）" % sources.size())
+
+	var flow_source: String = FileAccess.get_file_as_string(GAME_FLOW_PATH)
+	ctx.check(flow_source.contains(ROUTING_TOKEN), "game_flow.gd 应确实是路由的唯一落地点")
+
+
+## 去掉注释再扫描：本仓库的文档注释里大量提到 change_scene_to_file（正是为了声明「不许调它」），
+## 直接全文匹配会把「写明禁令」误判成「违反禁令」。字符串里不会跨行，逐行处理即可。
+func _strip_comments(source: String) -> String:
+	var kept: PackedStringArray = []
+	for line: String in source.split("\n"):
+		var quote: String = ""
+		var cut: int = line.length()
+		for index: int in line.length():
+			var character: String = line[index]
+			if not quote.is_empty():
+				if character == quote:
+					quote = ""
+			elif character == "\"" or character == "'":
+				quote = character
+			elif character == "#":
+				cut = index
+				break
+		kept.append(line.substr(0, cut))
+	return "\n".join(kept)
+
+
+## 递归收集若干根目录下指定后缀的文件内容，返回 {路径: 源码}。
+func _collect_sources(roots: PackedStringArray) -> Dictionary:
+	var sources: Dictionary = {}
+	var pending: PackedStringArray = roots.duplicate()
+	while not pending.is_empty():
+		var directory_path: String = pending[pending.size() - 1]
+		pending.remove_at(pending.size() - 1)
+		var directory: DirAccess = DirAccess.open(directory_path)
+		if directory == null:
+			continue
+		for file_name: String in directory.get_files():
+			if SCANNED_SUFFIXES.has("." + file_name.get_extension()):
+				var path: String = "%s/%s" % [directory_path, file_name]
+				sources[path] = FileAccess.get_file_as_string(path)
+		for sub: String in directory.get_directories():
+			pending.append("%s/%s" % [directory_path, sub])
+	return sources
 
 
 ## R1 实测：把实例挂进场景树跑满 600 秒模拟时间，状态不得自行变化。
