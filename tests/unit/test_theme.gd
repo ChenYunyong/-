@@ -90,18 +90,19 @@ func _run_panel_checks(ctx: RefCounted, theme: Theme, theme_script: GDScript) ->
 	_check_box(ctx, theme.get_stylebox(&"panel", theme_script.TYPE_PANEL_SECONDARY), Palette.Key.NAVY_800, Palette.Key.BROWN_600, "次级面板", EXPECTED_BORDER_WIDTH)
 
 
-## 06 §2.1 v0.1.4：第三层「高光」必须有可被场景引用的落点；
+## 06 §2.1 v0.1.6：第三层「高光」必须有可被场景引用的落点；
 ## 且 DSH 裁定「选中辉光」BLUE_300 必须始终留在 Theme，不得随外框素材化移交。
+##
+## v0.1.6 起两个变体的**边数不同**，故断言按变体分开写。此前那条「两个变体都断言四边 1px」
+## 的通用 helper 在几何拆开后即成为假绿 —— 正是 09 §4 v0.1.1 要防的「断言与实现脱节」。
 func _run_highlight_checks(ctx: RefCounted, theme: Theme, theme_script: GDScript) -> void:
-	ctx.begin_case("Theme · Panel 高光层（06 §2.1 v0.1.4 第三层）")
+	ctx.begin_case("Theme · Panel 高光层（06 §2.1 v0.1.6）")
 	var variations: PackedStringArray = theme.get_type_variation_list(&"Panel")
 	ctx.check(variations.has(theme_script.TYPE_PANEL_HIGHLIGHT), "应注册 1px 暖高光变体")
 	ctx.check(variations.has(theme_script.TYPE_PANEL_SELECTED), "应注册选中辉光变体")
 
-	_check_highlight(ctx, theme.get_stylebox(&"panel", theme_script.TYPE_PANEL_HIGHLIGHT),
-		Palette.Key.GOLD_200, "暖高光")
-	_check_highlight(ctx, theme.get_stylebox(&"panel", theme_script.TYPE_PANEL_SELECTED),
-		Palette.Key.BLUE_300, "选中辉光")
+	_check_highlight_warm(ctx, theme.get_stylebox(&"panel", theme_script.TYPE_PANEL_HIGHLIGHT))
+	_check_highlight_ring(ctx, theme.get_stylebox(&"panel", theme_script.TYPE_PANEL_SELECTED))
 
 	ctx.check(_theme_uses_token(theme, Palette.Key.GOLD_200), "Theme 必须实际引用 GOLD_200")
 	ctx.check(_theme_uses_token(theme, Palette.Key.BLUE_300), "Theme 必须实际引用 BLUE_300（DSH 裁定：始终留在 Theme）")
@@ -131,19 +132,43 @@ func _run_shadow_checks(ctx: RefCounted, theme: Theme, theme_script: GDScript) -
 	ctx.equal(flat.shadow_size, 0, "不得再叠 shadow_*（实测会引入 1px 羽化）")
 
 
-func _check_highlight(ctx: RefCounted, box: StyleBox, token: Palette.Key, label: String) -> void:
-	if not ctx.check(box is StyleBoxFlat, "%s 应为 StyleBoxFlat" % label):
+## `PanelHighlight`（GOLD_200，材质暖高光）：**仅上边 + 左边** 1px，右/下必须为 0。
+## 依据 06 §2.1 v0.1.6 —— 材质受光有方向性，与 05 §3「光源方向统一为左上」一致。
+func _check_highlight_warm(ctx: RefCounted, box: StyleBox) -> void:
+	var label: String = "暖高光"
+	if not _check_highlight_common(ctx, box, Palette.Key.GOLD_200, label):
 		return
 	var flat: StyleBoxFlat = box
+	ctx.equal(flat.border_width_top, EXPECTED_BORDER_WIDTH, "%s 上描边宽 = 1" % label)
+	ctx.equal(flat.border_width_left, EXPECTED_BORDER_WIDTH, "%s 左描边宽 = 1" % label)
+	ctx.equal(flat.border_width_right, 0, "%s 右描边宽 = 0（受光有方向，不得四边整圈）" % label)
+	ctx.equal(flat.border_width_bottom, 0, "%s 下描边宽 = 0（受光有方向，不得四边整圈）" % label)
+
+
+## `PanelSelected`（BLUE_300，交互选中）：**四边整圈** 1px。
+## 依据 06 §2.1 v0.1.6 —— 状态提示而非材质受光，密集网格上需包围式轮廓才读得稳。
+func _check_highlight_ring(ctx: RefCounted, box: StyleBox) -> void:
+	var label: String = "选中辉光"
+	if not _check_highlight_common(ctx, box, Palette.Key.BLUE_300, label):
+		return
+	var flat: StyleBoxFlat = box
+	ctx.equal(flat.border_width_left, EXPECTED_BORDER_WIDTH, "%s 左描边宽 = 1" % label)
+	ctx.equal(flat.border_width_top, EXPECTED_BORDER_WIDTH, "%s 上描边宽 = 1" % label)
+	ctx.equal(flat.border_width_right, EXPECTED_BORDER_WIDTH, "%s 右描边宽 = 1" % label)
+	ctx.equal(flat.border_width_bottom, EXPECTED_BORDER_WIDTH, "%s 下描边宽 = 1" % label)
+
+
+## 两个变体共有的性质。**不含边数** —— 边数是两者唯一的差异点，各自由上面两个函数断言。
+func _check_highlight_common(ctx: RefCounted, box: StyleBox, token: Palette.Key, label: String) -> bool:
+	if not ctx.check(box is StyleBoxFlat, "%s 应为 StyleBoxFlat" % label):
+		return false
+	var flat: StyleBoxFlat = box
 	ctx.equal(flat.border_color, Palette.get_color(token), "%s 描边色" % label)
-	ctx.equal(flat.border_width_left, EXPECTED_BORDER_WIDTH, "%s 左描边宽" % label)
-	ctx.equal(flat.border_width_top, EXPECTED_BORDER_WIDTH, "%s 上描边宽" % label)
-	ctx.equal(flat.border_width_right, EXPECTED_BORDER_WIDTH, "%s 右描边宽" % label)
-	ctx.equal(flat.border_width_bottom, EXPECTED_BORDER_WIDTH, "%s 下描边宽" % label)
 	ctx.check(not flat.draw_center, "%s 应为叠层（不填中心）" % label)
 	ctx.equal(flat.corner_radius_top_left, 0, "%s 应为像素直角" % label)
 	ctx.check(not flat.anti_aliasing, "%s 不得开抗锯齿" % label)
 	ctx.equal(flat.shadow_size, 0, "%s 不得带 shadow_*" % label)
+	return true
 
 
 ## 扫遍 Theme 里全部 stylebox 与 color 条目，确认某个 Token 真的被引用（不只是写在常量里）。
@@ -170,7 +195,8 @@ func _run_label_checks(ctx: RefCounted, theme: Theme, theme_script: GDScript) ->
 	ctx.equal(theme.get_color(&"font_color", theme_script.TYPE_LABEL_DANGER), Palette.get_color(Palette.Key.RED_400), "危险小号文字色")
 
 
-## 06 §1：像素直角、无抗锯齿；06 §2.2：右下 1px NAVY_900 硬阴影（不模糊）。
+## 06 §1：像素直角、无抗锯齿；06 §2.2 v0.1.5：面板自身不带阴影
+## （硬阴影由 PanelShadow 叠层承载，见 _run_shadow_checks）。
 func _check_box(ctx: RefCounted, box: StyleBox, fill: Palette.Key, border: Palette.Key, label: String, border_width: int) -> void:
 	if not ctx.check(box is StyleBoxFlat, "%s 应为 StyleBoxFlat" % label):
 		return
@@ -183,6 +209,6 @@ func _check_box(ctx: RefCounted, box: StyleBox, fill: Palette.Key, border: Palet
 	ctx.equal(flat.border_width_bottom, border_width, "%s 下边框宽度" % label)
 	ctx.equal(flat.corner_radius_top_left, 0, "%s 应为像素直角" % label)
 	ctx.check(not flat.anti_aliasing, "%s 不得开抗锯齿" % label)
-	ctx.equal(flat.shadow_color, Palette.get_color(Palette.Key.NAVY_900), "%s 硬阴影色" % label)
-	ctx.equal(flat.shadow_size, 0, "%s 不得带 shadow_*（实测会引入 1px 羽化，违反「不模糊」）" % label)
-	ctx.equal(flat.shadow_offset, Vector2(1, 1), "%s 阴影应为右下 1px" % label)
+	# 保留这一条：面板自己不得再叠 shadow_*。shadow_color / shadow_offset 的断言已随
+	# 生产代码里的残留配置一并删除 —— 那两项不再被设置，断言它们等于断言默认值。
+	ctx.equal(flat.shadow_size, 0, "%s 面板自身不得带 shadow_*（硬阴影由 PanelShadow 叠层承载）" % label)

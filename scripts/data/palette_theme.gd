@@ -16,7 +16,6 @@ const CONTENT_MARGIN: int = 4
 const PANEL_CONTENT_MARGIN: int = 12
 const PANEL_SECONDARY_CONTENT_MARGIN: int = 8
 const BODY_FONT_SIZE: int = 8
-const HARD_SHADOW_OFFSET: Vector2 = Vector2(1, 1)
 
 ## Theme 类型变体名。S1-06 起的场景用 theme_type_variation 引用它们。
 const TYPE_PANEL_FRAME: StringName = &"PanelFrame"
@@ -103,13 +102,22 @@ func _build_panels() -> void:
 	set_stylebox(&"panel", TYPE_PANEL_SECONDARY, secondary)
 
 
-## 06 §2.1 v0.1.4 第三层「高光」：1px 暖高光 GOLD_200 + 选中辉光 BLUE_300。
-## 本层是叠在内芯之上的装饰层，故只画 1px 描边、不填中心（draw_center = false），
-## 场景把它当作 Panel 的 theme_type_variation 叠在外框内沿即可。
+## 06 §2.1 第三层「高光」。本层是叠在内芯之上的装饰层，只画 1px 描边、不填中心
+## （draw_center = false），场景把它当作 Panel 的 theme_type_variation 叠在外框内沿即可。
 ## BLUE_300 按 DSH 裁定**始终留在 Theme**，不随外框素材化移交。
+##
+## **边数（v0.1.6，Codex 裁定）：两者不得共用同一套边数。**
+##   GOLD_200 静态内高光 → 仅上边 + 左边。材质受光有方向性，与 05 §3「光源方向统一为左上」
+##                          一致；四边整圈会退化成「无方向的金色描边框」。
+##   BLUE_300 选中辉光   → 四边整圈。状态提示而非材质受光，密集蓝图网格上需包围式轮廓才读得稳。
+## 两种几何必须分开落笔：共用一条路径会让改高光时连带削掉选中态的包围轮廓，削弱其可发现性。
 func _build_panel_highlight() -> void:
 	set_type_variation(TYPE_PANEL_HIGHLIGHT, BASE_TYPE_PANEL)
-	set_stylebox(&"panel", TYPE_PANEL_HIGHLIGHT, _highlight_box(Palette.Key.GOLD_200))
+	var warm: StyleBoxFlat = _highlight_box(Palette.Key.GOLD_200)
+	warm.border_width_right = 0
+	warm.border_width_bottom = 0
+	set_stylebox(&"panel", TYPE_PANEL_HIGHLIGHT, warm)
+
 	set_type_variation(TYPE_PANEL_SELECTED, BASE_TYPE_PANEL)
 	set_stylebox(&"panel", TYPE_PANEL_SELECTED, _highlight_box(Palette.Key.BLUE_300))
 
@@ -141,7 +149,8 @@ func _build_panel_shadow() -> void:
 	set_stylebox(&"panel", TYPE_PANEL_SHADOW, box)
 
 
-## 高光层的通用盒：只画 1px 描边，颜色只来自 Palette。
+## 高光层的**整圈**基底盒：四边各 1px 描边，不填中心，颜色只来自 Palette。
+## 仅 `PanelSelected` 直接使用它；`PanelHighlight` 另需把右/下两边清零，见 _build_panel_highlight()。
 func _highlight_box(token: Palette.Key) -> StyleBoxFlat:
 	var box: StyleBoxFlat = StyleBoxFlat.new()
 	box.draw_center = false
@@ -172,9 +181,11 @@ func _button_box(fill: Palette.Key, border: Palette.Key) -> StyleBoxFlat:
 	return box
 
 
-## 06 §1：像素直角、无抗锯齿。阴影不在这里给 —— 本盒的 border_color 已被规格占用，
-## 而 StyleBoxFlat 的 border_color 是单值，无法再在右下叠一条 NAVY_900。
-## 硬阴影由 TYPE_PANEL_SHADOW 变体单独提供，见 _build_panel_shadow()。
+## 06 §1：像素直角、无抗锯齿。
+## 本盒**不设任何 shadow_\* 配置** —— 06 §2.2 v0.1.5 起面板自身不带阴影，硬阴影由
+## TYPE_PANEL_SHADOW 叠层单独承载（见 _build_panel_shadow()）。此前这里残留的三行
+## shadow_color / shadow_size / shadow_offset 是 S1-A 早期方案的遗迹，实测全部无效
+## （shadow_size = 0 时引擎一个阴影像素都不画），留着只会被误读成「面板自带阴影」。
 func _panel_box(fill: Palette.Key, border: Palette.Key) -> StyleBoxFlat:
 	var box: StyleBoxFlat = StyleBoxFlat.new()
 	box.bg_color = Palette.get_color(fill)
@@ -182,10 +193,6 @@ func _panel_box(fill: Palette.Key, border: Palette.Key) -> StyleBoxFlat:
 	box.set_border_width_all(BORDER_WIDTH)
 	box.set_corner_radius_all(0)
 	box.anti_aliasing = false
-	box.shadow_color = Palette.get_color(Palette.Key.NAVY_900)
-	# 保持 0：实测 shadow_size > 0 必然带出 1px 50% 羽化，违反 06 §2.2「不模糊」。
-	box.shadow_size = 0
-	box.shadow_offset = HARD_SHADOW_OFFSET
 	box.content_margin_left = PANEL_CONTENT_MARGIN
 	box.content_margin_top = PANEL_CONTENT_MARGIN
 	box.content_margin_right = PANEL_CONTENT_MARGIN

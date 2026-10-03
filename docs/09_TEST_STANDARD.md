@@ -1,6 +1,6 @@
 # 09 — 测试规范（TEST STANDARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.1**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.2**｜维护者 DSH
 > **「看起来能跑」不算完成。**
 
 ## 1. 测试层级
@@ -73,6 +73,19 @@ D:\GameDev\PixelFusion\tests\output
   至少要有**一条像素级或渲染产物证据**证明它真的被绘制出来。
   只断言字段值不算 —— 实例：`shadow_size = 0` 时字段断言全绿，而阴影**一个像素都没画**，
   等于「断言了一个空实现」。取像素需真实渲染路径（`--headless` 的 dummy 驱动不产像素）。
+- **像素探针的常驻编排**（v0.1.2）：光有上一条规则不够 —— 没有「谁在什么时候跑」的约定，规则会**静默腐烂**
+  （2026-10-03 的教训：探针首版自身坐标写错，字段层 390 条断言全绿，**只有像素图暴露了问题**）。
+  - **触发条件**：任何改动 **Theme / StyleBox / 视觉 Token** 的批次，
+    以及任何**要宣称「某个视觉结果已实现」**的批次 —— 在常规 `--headless` 回归之外**必须**再跑像素探针。
+  - **探针刻意不进** `run_tests.gd`：它需要真实渲染上下文，`--headless` 的 dummy 驱动不产像素。
+  - **探针必须自证判别力**：每条断言都要能被一次「故意改坏」的反向对照打红；只写正面断言不算数。
+  - **执行者**：改动视觉的 Agent 在 L1 自测时必须跑，并把像素输出贴回；DSH 在 L2 审查时核对。
+  - **命令**（逐条跑，**不加** `--headless`）：
+
+    ```
+    tools\godot\Godot_v4.7.1-stable_win64_console.exe --path D:\GameDev\PixelFusion --script res://tests/unit/render_shadow_probe.gd
+    tools\godot\Godot_v4.7.1-stable_win64_console.exe --path D:\GameDev\PixelFusion --script res://tests/unit/render_highlight_probe.gd
+    ```
 
 ## 5. 完成定义（Definition of Done）
 
