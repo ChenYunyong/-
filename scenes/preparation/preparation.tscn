@@ -1,0 +1,295 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/preparation_screen.gd" id="1_prep"]
+[ext_resource type="Theme" path="res://assets/ui/theme_main.tres" id="2_theme"]
+[ext_resource type="PackedScene" path="res://scenes/components/message_panel.tscn" id="3_notice"]
+
+[node name="Preparation" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_prep")
+
+[node name="Backdrop" type="ColorRect" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Shell" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Frame" type="Panel" parent="Shell"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_type_variation = &"PanelFrame"
+
+[node name="Core" type="Panel" parent="Shell"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 3.0
+offset_top = 3.0
+offset_right = -3.0
+offset_bottom = -3.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_type_variation = &"PanelCore"
+
+[node name="Highlight" type="Panel" parent="Shell"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 3.0
+offset_top = 3.0
+offset_right = -3.0
+offset_bottom = -3.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_type_variation = &"PanelHighlight"
+
+[node name="RegionLeft" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 15.0
+offset_top = 8.0
+offset_right = 88.0
+offset_bottom = 132.0
+mouse_filter = 2
+
+[node name="Shadow" type="Panel" parent="RegionLeft"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_type_variation = &"PanelShadow"
+
+[node name="Frame" type="Panel" parent="RegionLeft"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_type_variation = &"PanelSecondary"
+
+[node name="Title" type="Label" parent="RegionLeft"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+text = "关卡信息"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="RegionCenter" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 98.0
+offset_top = 8.0
+offset_right = 226.0
+offset_bottom = 132.0
+mouse_filter = 2
+
+[node name="Shadow" type="Panel" parent="RegionCenter"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_type_variation = &"PanelShadow"
+
+[node name="Frame" type="Panel" parent="RegionCenter"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_type_variation = &"PanelSecondary"
+
+[node name="Title" type="Label" parent="RegionCenter"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+text = "蓝图工作区"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="RegionRight" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 226.0
+offset_top = 8.0
+offset_right = 309.0
+offset_bottom = 132.0
+mouse_filter = 2
+
+[node name="Shadow" type="Panel" parent="RegionRight"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_type_variation = &"PanelShadow"
+
+[node name="Frame" type="Panel" parent="RegionRight"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_type_variation = &"PanelSecondary"
+
+[node name="Title" type="Label" parent="RegionRight"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+text = "节点详情"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="RegionBottom" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 15.0
+offset_top = 132.0
+offset_right = 309.0
+offset_bottom = 180.0
+mouse_filter = 2
+
+[node name="Shadow" type="Panel" parent="RegionBottom"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_type_variation = &"PanelShadow"
+
+[node name="Frame" type="Panel" parent="RegionBottom"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_type_variation = &"PanelSecondary"
+
+[node name="Slots" type="ScrollContainer" parent="RegionBottom"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+grow_horizontal = 2
+grow_vertical = 2
+horizontal_scroll_mode = 1
+vertical_scroll_mode = 0
+
+[node name="SlotsRow" type="HBoxContainer" parent="RegionBottom/Slots"]
+layout_mode = 2
+theme_override_constants/separation = 28
+
+[node name="Placeholder" type="Label" parent="RegionBottom/Slots/SlotsRow"]
+layout_mode = 2
+text = "节点仓库（占位 · 槽位与拖放属 S2-03）"
+vertical_alignment = 1
+
+[node name="RegionAction" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 246.0
+offset_top = 148.0
+offset_right = 310.0
+offset_bottom = 162.0
+mouse_filter = 2
+
+[node name="ButtonStartCombat" type="Button" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 246.0
+offset_top = 142.0
+offset_right = 310.0
+offset_bottom = 162.0
+text = "开始战斗"
+
+[node name="NoticePanel" parent="." instance=ExtResource("3_notice")]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = 30.0
+offset_right = -24.0
+offset_bottom = -30.0
+grow_horizontal = 2
+grow_vertical = 2
