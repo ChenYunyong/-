@@ -5,6 +5,25 @@
 
 ## [Unreleased]
 
+### 用户裁定：导出模板「选 B」+ 登记为 GATE 9 强制项（2026-10-03）
+
+用户回复（原文要点）：「选 B。当前先继续开发，不因为导出模板中断项目推进。」
+「将『重新安装完整 Godot 4.7.1 Stable Export Templates』记录为 GATE 9 前的必须完成项。」
+「在进入正式 Web Release、Windows 打包或 Release Candidate 阶段前，再执行完整模板重装与导出验证。」
+「当前不要因此阻塞 PET-58 或其他正常开发任务。」
+
+#### Decisions
+- **方针 = B**：不因导出模板中断 Stage 1 推进。
+- **登记项**：**重新安装完整的 Godot 4.7.1 Stable Export Templates** —— 列为 **GATE 9 的必须完成项**；
+  执行点在**进入正式 Web Release / Windows 打包 / Release Candidate 之前**，届时执行完整重装 + 导出验证。
+- 已写入 `11_TASK_BOARD.md`（`S0-21` 状态与「GATE 9 强制项」说明），并同步进 S1-14 的建卡要求。
+
+#### Notes
+- 现状不变：只有 `web_debug.zip` 可用 → **debug + Threads 的 Web 导出可跑通**（PET-57 已验证）；
+  **release Web 导出与桌面导出不可用**，直到模板重装。
+- 本条**不阻塞** PET-58，也不阻塞 Stage 1 的后续开发。
+
+
 ### S1-13 交付复核 + 打包排除缺陷（DSH）— 2026-10-03
 
 #### Fixed

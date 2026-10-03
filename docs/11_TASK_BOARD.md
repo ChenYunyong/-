@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.7**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.8**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -39,7 +39,7 @@
 | S0-18 | Godot 4.7.1 portable 安装（D 盘自包含） | DSH | `ACCEPTED` | `tools/godot/`（已验证不写 C 盘） |
 | S0-19 | 参考图 A/B/C 落盘 + 逐像素取色实测 | DSH | `ACCEPTED` | `04` §2（证据） |
 | S0-20 | `04`/`05` 按参考图实测校准（v0.1.1） | DSH | `REVIEW` | docs/04, docs/05 |
-| S0-21 | 导出模板安装到 portable 引擎（**落盘在 E:**，见 `01` §11） | DSH | `PARTIAL`（仅 `web_debug.zip` 可用 —— 用户既有 `templates.tpz` 截断，见 12 的 Notes） | `tools/godot/editor_data/export_templates/` → E: |
+| S0-21 | 导出模板安装到 portable 引擎（**落盘在 E:**，见 `01` §11） | DSH | `PARTIAL`（当前**接受现状＝用户裁定选 B**；完整重装列为 **GATE 9 强制项**，执行点在正式 Web Release / Windows 打包 / RC 之前 —— 见下方「GATE 9 强制项」与 12 的 Notes） | `tools/godot/editor_data/export_templates/` → E: |
 | S0-27 | 存储分层：E 盘纳入 + build/editor_data 重定向 | DSH | `ACCEPTED` | `01_STORAGE_RULES` §11 |
 | S0-22 | Codex 对 `04/05/06` 的独立视觉审查 | Codex | `ACCEPTED` | 4 项 blocking 全部核验并采纳 |
 | S0-23 | 依 Codex 第一轮审查修正 `04`→v0.1.2 | DSH | `ACCEPTED` | 04/05/06 |
@@ -124,6 +124,12 @@
 > （`palette.gd:87 resolve`：`Attempt to call a method on a placeholder instance`）。PET-57 的受控对照显示
 > 与 preset 无关（单跑 `--editor --quit` 同样刷 32 条），热缓存为 0，**运行时不受影响**（全套套件全绿）。
 > 属 `@tool` 扫描期的占位实例问题，登记待办，本轮不派卡。
+>
+> **GATE 9 强制项（用户 2026-10-03 裁定）**：**重新安装完整的 Godot 4.7.1 Stable Export Templates**。
+> 用户选定 **B：当前继续开发，不因导出模板中断项目推进** —— 同时明确要求把该条**登记为 GATE 9 前的必须完成项**，
+> 并在**进入正式 Web Release、Windows 打包或 Release Candidate 阶段之前**执行**完整模板重装 + 导出验证**。
+> 现状：`S0-21 = PARTIAL`，只有从截断的 `templates.tpz` 抢救出的 `web_debug.zip` 可用，
+> 因此 **release Web 导出与桌面导出当前不可用**。这**不阻塞** Stage 1 的后续开发，也不阻塞 PET-58。
 
 **Stage 1 绝对禁止**：真实战斗、真实伤害、蓝图编辑逻辑、敌人 AI。
 
