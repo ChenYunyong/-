@@ -5,6 +5,30 @@
 
 ## [Unreleased]
 
+### 规范一致性修复：`03 §8` 触摸口径 + `11` 任务板状态回填（DSH）— 2026-10-03
+
+#### Fixed
+- `03_ARCHITECTURE.md` → **v0.1.2**：`§8` 原文「触摸目标最小命中尺寸 **44×44 px**（逻辑像素，按缩放换算）」是
+  `06 §1` 已明确废弃的自相矛盾写法（`06 §1` 现为 **44×44 设备像素（物理）** = 2× 缩放下 22 逻辑像素、4× 下 11 逻辑像素）。
+  `03` 当时漏改，现按 `06 §1` 对齐，并补上「触摸平台最小缩放 ≥ 2×」的推论；明确本节**不另立口径，数值以 `06 §1` 为准**。
+- `11_TASK_BOARD.md` → **v0.1.3**：任务板状态长期未回填 —— S1-06~S1-10 七个场景（PET-40 / PET-42 / PET-43 / PET-45 / PET-48，
+  以及 PET-47 的 COMBAT 状态带修订）**均已交付并进入 in_review**，板上却仍写 `TODO`。现按平台真实状态回填为 `ACCEPTED`；
+  S1-01~S1-04 的 `DONE` 一并改为 `ACCEPTED`（`§1` 状态定义中 `DONE` 专属**用户 L4 验收**，尚未发生）。
+  另补两行收尾修复 `S1-08R`（PET-50）/ `S1-09R`（PET-52），S1-11 置 `IN_PROGRESS`，依赖由 S1-07 改为 S1-10。
+- `12_CHANGELOG.md`（本文件）：补记 Stage 1 的 L2/L3 验收行 —— 此前 `验收记录` 只有 Stage 0 一行，而 10 个 Stage 1 子任务早已进入 `in_review`。
+
+#### Notes
+- **新登记待办（窄屏取样轴序写反）**：`tests/unit/test_combat.gd:38`、`tests/unit/test_reward.gd:28`、
+  `tests/unit/test_result.gd:27` 的 `SHORT_NARROW_VIEWPORT` 仍是 `Vector2(180.0, 120.0)`。
+  `CombatLayout.is_narrow()` 的判据是 `viewport_size.x / viewport_size.y < NARROW_ASPECT_MAX`（`NARROW_ASPECT_MAX = 1.0`，
+  见 `combat_layout.gd:31/39`），故 `180×120` 宽高比 1.5 → **判为宽屏**，与常量名及用例意图相反；
+  `tests/integration/combat_smoke.gd:38` 已是正确的 `Vector2(120.0, 180.0)`。
+  三个单元测试直接调 `layout.*_rects()`，**绕开了 `is_narrow` 这道闸**，所以该缺陷不会被自己发现。修法：三处统一为 `120×180`。
+- **自记（本次写入事故）**：本条目首次写入时用 `String.Replace` 定位，而 `## [Unreleased]` 在正文中另有 3 处**行内引用**，
+  `Replace` 是**全量替换** → 条目被插入 4 次，其中 2 次切断了两行正文。已 `git checkout` 还原后用**行首锚点**重写。
+  教训：文档手术的锚点必须带边界（前后裹换行）或按行匹配，不得依赖「子串在全文中唯一」。
+
+
 ### Codex 裁定写回：RESULT 版面 + 次级面板阴影方向（PET-51）— 2026-10-03
 
 #### Fixed
@@ -651,4 +675,5 @@ Codex Visual Reviewer 对 `04/05/06` 提交了 4 项 blocking + 3 项建议。**
 | 日期 | 阶段/任务 | 等级 | 结论 | 打回原因 | 验收人 |
 |---|---|---|---|---|---|
 | 2026-10-03 | Stage 0 文档 | L2/L3 | 已审查，提交用户 | — | DSH |
+| 2026-10-03 | Stage 1 S1-05~S1-10（七场景 + PET-41/44/46/49/51 裁定写回 + PET-50 冒烟修复） | L2/L3 | 逐项审查通过，全量套件绿（unit 1116 · integration 19 · 七场景冒烟 663 · 探针 241） | — | DSH |
 | 2026-10-03 | Stage 0 文档 | L4 | 等待用户批准 | — | 用户 |

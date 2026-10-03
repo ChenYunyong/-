@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.2**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.3**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -77,17 +77,19 @@
 
 | ID | 任务 | 负责人 | 依赖 | 状态 |
 |---|---|---|---|---|
-| S1-01 | `project.godot` 初始化 + Autoload 骨架（EventBus / GameFlow / DataRegistry / RunState / Settings） | Claude | S0 批准 | `DONE`（PET-38） |
-| S1-02 | `GameFlow` 六状态机 + 切换硬规则 R1-R5 + 单元测试 | Claude | S1-01 | `DONE`（PET-38） |
-| S1-03 | `scripts/data/palette.gd` + `assets/palette.tres`（依 04 §5） | Claude | S0 批准 | `DONE`（PET-38） |
-| S1-04 | 全局 Theme（依 06） | Claude | S1-03 | `DONE`（PET-38） |
+| S1-01 | `project.godot` 初始化 + Autoload 骨架（EventBus / GameFlow / DataRegistry / RunState / Settings） | Claude | S0 批准 | `ACCEPTED`（PET-38） |
+| S1-02 | `GameFlow` 六状态机 + 切换硬规则 R1-R5 + 单元测试 | Claude | S1-01 | `ACCEPTED`（PET-38） |
+| S1-03 | `scripts/data/palette.gd` + `assets/palette.tres`（依 04 §5） | Claude | S0 批准 | `ACCEPTED`（PET-38） |
+| S1-04 | 全局 Theme（依 06） | Claude | S1-03 | `ACCEPTED`（PET-38） |
 | S1-05 | BOOT 场景（数据校验 + 失败提示）**＋ 接线 `PanelShadow` ＋ 合并像素探针入口** | Claude | S1-01 ✅ | `ACCEPTED`（PET-39 · L2/L3 通过，待用户 L4） |
-| S1-06 | MAIN_MENU 场景（占位：Logo/开始/继续/设置/退出）**＋ 落地 `06 §2.2` 面板标题栏（见 §3 已登记待办）** | Claude | S1-04 | `TODO` |
-| S1-07 | PREPARATION 场景（五分区布局 + 唯一动作「开始战斗」） | Claude | S1-06 | `TODO` |
-| S1-08 | COMBAT 场景（占位战场 + 紧凑 HUD） | Claude | S1-07 | `TODO` |
-| S1-09 | REWARD 场景（3 选项 + 跳过） | Claude | S1-08 | `TODO` |
-| S1-10 | RESULT 场景（结算 + 返回） | Claude | S1-09 | `TODO` |
-| S1-11 | 双端输入适配（键鼠 + 触摸，44px 命中） | Claude | S1-07 | `TODO` |
+| S1-06 | MAIN_MENU 场景（占位：Logo/开始/继续/设置/退出）**＋ 落地 `06 §2.2` 面板标题栏（见 §3 已登记待办）** | Claude | S1-04 | `ACCEPTED`（PET-40 · PET-41 裁定已写回 06） |
+| S1-07 | PREPARATION 场景（五分区布局 + 唯一动作「开始战斗」） | Claude | S1-06 | `ACCEPTED`（PET-42 · PET-44 裁定已写回 06） |
+| S1-08 | COMBAT 场景（占位战场 + 紧凑 HUD） | Claude | S1-07 | `ACCEPTED`（PET-43 · PET-47 修订 · PET-46 裁定已写回 06） |
+| S1-09 | REWARD 场景（3 选项 + 跳过） | Claude | S1-08 | `ACCEPTED`（PET-45 · PET-49 裁定已写回 06） |
+| S1-10 | RESULT 场景（结算 + 返回） | Claude | S1-09 | `ACCEPTED`（PET-48 · PET-51 裁定已写回 06） |
+| S1-11 | 双端输入适配（键鼠 + 触摸，44px 命中） | Claude | S1-10 | `IN_PROGRESS`（PET-53） |
+| S1-08R | 收尾修复：COMBAT 冒烟 exit-notice 用例已被证伪，替换为 REWARD/RESULT 真实路由断言 | Claude | S1-08 | `ACCEPTED`（PET-50 · COMBAT 冒烟 103/103 转绿） |
+| S1-09R | 规范一致性修复：REWARD 选项卡补 `PanelShadow` 叠层（Codex 裁定选 A） | Claude | S1-09 | `IN_PROGRESS`（PET-52） |
 | S1-12 | 状态循环集成测试（10 次循环、防重入、不自动推进） | Claude | S1-10 | `TODO` |
 | S1-13 | Web Export 冒烟验证 | Claude | S1-12 | `TODO` |
 | S1-14 | Stage 1 用户验收 | 用户 | S1-13 | `TODO` |
@@ -95,6 +97,12 @@
 > **已登记待办（S1-05 复核产生）**：`06 §2.2` 的**面板标题栏**（高度 16px / 底色 `NAVY_700` + 1px 底部 `GOLD_600` 分隔线）
 > 在 Theme 与 `scenes/**` 均无落点。Codex 2026-10-03 独立复核裁定：S1-05 的 BOOT 占位面板不必补，**列为 S1-06 验收项**
 > —— 做真实面板/菜单 UI 时落地，并按 `09 §4` 做像素取证。
+> **已登记待办（DSH 2026-10-03 回填任务板时新增）**：
+> `tests/unit/test_combat.gd:38` / `tests/unit/test_reward.gd:28` / `tests/unit/test_result.gd:27` 的
+> `SHORT_NARROW_VIEWPORT` 轴序写反 —— 值是 `Vector2(180.0, 120.0)`（宽高比 1.5，`is_narrow` 判为**宽屏**），
+> 须统一为 `Vector2(120.0, 180.0)`；`test_reward.gd` 与 PET-52 的文件集相交，**必须排在 PET-52 之后串行**执行。
+> 该缺陷由 `tests/integration/combat_smoke.gd` 侧的注释指出：单元测试直接调 `layout.*_rects()`，
+> **绕开了 `is_narrow` 这道闸**，所以它无法自证。
 
 **Stage 1 绝对禁止**：真实战斗、真实伤害、蓝图编辑逻辑、敌人 AI。
 
