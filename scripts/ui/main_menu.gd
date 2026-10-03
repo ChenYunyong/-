@@ -1,14 +1,16 @@
 ## main_menu.gd
 ## 职责：MAIN_MENU 场景 —— 占位主菜单（Logo / 开始 / 继续 / 设置 / 退出）+ 面板标题栏落地（06 §2.2、§6）。
 ## 所属系统：ui
-## 依赖：Palette、Theme、GameFlow、MessagePanel、PanelTitleBar
+## 依赖：Palette、Theme、GameFlow、MessagePanel、PanelTitleBar、InputScreen
 ## 禁止：本文件不得调用 change_scene_to_file() —— 场景路由只能由 GameFlow 落地（03 §1.1 R3）；
 ##       不得写任何字面色值（06 §10.7）；
+##       不得判断任何原始输入事件类型（InputEventMouseButton 等）—— 输入一律经 InputScreen
+##       归一后的语义事件（03 §8）；
 ##       不得实现任何玩法或存档 —— 设置界面、退出逻辑、存档读写均属后续批次。
 ##
 ## 占位素材位（Codex 出稿后替换，位置尺寸由场景定，脚本不引用）：ArtSkyIsland / ArtGirl / ArtCat。
 
-extends Control
+extends InputScreen
 
 ## 面板规格（06 §2.2）：3px 外框 + 内芯 12px 内容边距 = 15px。面板内的容器要缩进这么多，
 ## 才能落在内芯填充区上 —— 描边画在矩形内侧，外框那 3px 也要算进去。
@@ -32,6 +34,7 @@ const NOTICE_EXIT: String = "退出逻辑属后续批次，尚未实现。"
 @onready var _backdrop: ColorRect = %Backdrop
 @onready var _title_bar: PanelTitleBar = %TitleBar
 @onready var _button_start: Button = %ButtonStart
+@onready var _button_continue: Button = %ButtonContinue
 @onready var _button_settings: Button = %ButtonSettings
 @onready var _button_exit: Button = %ButtonExit
 @onready var _notice_panel: MessagePanel = %NoticePanel
@@ -47,6 +50,14 @@ func _ready() -> void:
 	_button_start.pressed.connect(_on_start_pressed)
 	_button_settings.pressed.connect(_on_settings_pressed)
 	_button_exit.pressed.connect(_on_exit_pressed)
+	# 06 §1：四个按钮的命中区补齐到触摸下限。四个按钮在场景里都是 90×20（主菜单面板的内芯宽度
+	# 减去左右各 15px 边距），高度差 2 逻辑像素 —— 见 hit_button.gd 说明为何不能靠改 size 补。
+	# 「继续」当前 disabled、不是可交互元素，一并装上只是让本场景不留例外（它将来会启用）。
+	for button: Button in [_button_start, _button_continue, _button_settings, _button_exit]:
+		install_hit_minimum(button)
+	# 提示面板可点任意处关闭；键盘导航从「开始」起步（它是最上面一个可用按钮）。
+	register_dismissible_notice(_notice_panel)
+	register_focus_root(_button_start)
 
 
 ## 「开始」：请求进入 PREPARATION（03 §1 状态图 MAIN_MENU → PREPARATION）。
@@ -78,15 +89,9 @@ func _show_notice(message_key: String) -> void:
 	_notice_panel.show_message(NOTICE_TITLE, PackedStringArray([message_key, NOTICE_DISMISS]))
 
 
-## 点击任意处关闭提示。MessagePanel 自己不会消失（S1-05 的 BOOT 失败面板是一去不回的终态），
-## 而这里的提示会盖住菜单按钮 —— 关不掉的话，按过一次「开始」之后菜单就再也点不动了。
-##
-## 用 _input 而不是 _unhandled_input：按钮会消费落在自己身上的事件，
-## 而「点按钮时也能关掉上一次的提示」正是想要的。只认按下不认抬起，
-## 否则「按 设置 → 提示出现 → 同一次点击抬起」会把刚出现的提示立刻关掉。
-func _input(event: InputEvent) -> void:
-	if not _notice_panel.visible:
-		return
-	var mouse: InputEventMouseButton = event as InputEventMouseButton
-	if mouse != null and mouse.pressed:
-		_notice_panel.visible = false
+## Escape 在 MAIN_MENU 里**不做事**：它是 03 §1 状态图的入口态，
+## ALLOWED_TRANSITIONS 里没有任何一条边回到它，也就没有「上一态」可退。
+## 按 Escape 若强行退出应用，那是「退出逻辑」，属后续批次（见 NOTICE_EXIT）。
+## 提示面板的关闭由 InputScreen._handle_notice() 统一处理，本场景不必再写 _input。
+func _on_back_requested() -> bool:
+	return false

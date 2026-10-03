@@ -3,16 +3,18 @@
 ##       玩家**选定**其中一项后经 GameFlow 回到 PREPARATION。
 ##       **本批只做骨架与布局，不含任何奖励数值逻辑。**
 ## 所属系统：ui
-## 依赖：GameFlow、RewardLayout、RewardCard、RewardOption、MessagePanel、Palette
+## 依赖：GameFlow、RewardLayout、RewardCard、RewardOption、MessagePanel、Palette、InputScreen
 ## 禁止：本文件不得调用 change_scene_to_file() —— 场景路由只能由 GameFlow 落地（03 §1.1 R3）；
 ##       不得写任何字面色值（06 §10.7）；
+##       不得判断任何原始输入事件类型（InputEventMouseButton 等）—— 输入一律经 InputScreen
+##       归一后的语义事件（03 §8）；
 ##       不得出现任何会自动推进的构造（Timer / create_timer / timeout / _process /
 ##       _physics_process，见 03 §2 与 00 §5 交互硬规则第 1 条）—— 进入 REWARD 后永远等玩家，
 ##       不倒计时、不自动选中、不自动离开；
 ##       不得实现奖励数值 / 掉落池 / 稀有度权重（属 Stage 4 的 S4-07），
 ##       也不得实现 RESULT 场景（属 S1-10）。
 
-extends Control
+extends InputScreen
 
 ## 06 §9 的界面标题。
 const TITLE_KEY: String = "选择奖励"
@@ -46,6 +48,13 @@ func _ready() -> void:
 	# 本批没有奖励数据源（掉落池属 Stage 4 的 S4-07），故填一组纯展示用的占位选项，
 	# 保证 06 §9 的五个展示位在这一批就有落点。数据接入后改由 set_options() 传入即可。
 	set_options(default_options())
+	# 提示面板可点任意处关闭。
+	register_dismissible_notice(_notice_panel)
+	# 刻意**不登记 focus root**：本场景的三个可点面是 RewardCard（Panel + gui_input），
+	# 不是 Button。Control 虽然都有 focus_mode，但 Godot 只替 Button 一类把「确认键」
+	# 接到 pressed 上；要让卡片吃键盘，得自己实现一套「焦点 → 确认 → 选项」的映射，
+	# 成本明显超出本卡（交付物 3 允许 Escape + 点击，但要求把取舍写进 CONSTRAINT CHECK）。
+	# 故本场景的键盘路径是 Escape 返回，方向键 + Enter 留在后续批次（卡片键盘化）。
 	# 折叠由可用区尺寸驱动，不用计时器、也不轮询（03 §2）。
 	resized.connect(_on_resized)
 	apply_layout_for(size)
@@ -120,16 +129,21 @@ func _show_notice(message_key: String) -> void:
 	_notice_panel.show_message(NOTICE_TITLE, PackedStringArray([message_key, NOTICE_DISMISS]))
 
 
-## 点击任意处关闭提示。本阶段的奖励界面是终态前的最后一屏，提示关不掉就等于卡死。
-## 用 _input 而不是 _unhandled_input：卡片会消费落在自己身上的事件，
-## 而「点卡片时也能关掉上一次的提示」正是想要的。只认按下不认抬起，
-## 否则「按 卡片 → 提示出现 → 同一次点击抬起」会把刚出现的提示立刻关掉。
-func _input(event: InputEvent) -> void:
-	if not _notice_panel.visible:
-		return
-	var mouse: InputEventMouseButton = event as InputEventMouseButton
-	if mouse != null and mouse.pressed:
-		_notice_panel.visible = false
+## Escape：放弃本次奖励，回 PREPARATION（03 §1 状态图 REWARD → PREPARATION）。
+##
+## 这是 06 §9「跳过」语义的键盘等价物：三个选项卡本来就是「可选其一，也可以不选」，
+## 玩家按 Escape 时**没有选定任何一项**，故 _chosen_option 保持 null ——
+## 它记录的正是「离开本场景的原因」，而「没选」与「选了跳过」是两件事，不能混为一谈。
+##
+## 与 _on_option_chosen() 同款先查路由：静默无效是验收不接受的。
+## 提示面板的关闭由 InputScreen._handle_notice() 统一处理，本场景不必再写 _input。
+func _on_back_requested() -> bool:
+	var target_path: String = GameFlow.get_scene_path_for(GameFlow.GameState.PREPARATION)
+	if target_path.is_empty() or not ResourceLoader.exists(target_path):
+		_show_notice(NOTICE_PREPARATION)
+		return true
+	GameFlow.change_state(GameFlow.GameState.PREPARATION)
+	return true
 
 
 ## 把控件贴到矩形上。都是场景根或卡片区下的普通 Control（非容器），故直接给位置与尺寸。

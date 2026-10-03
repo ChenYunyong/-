@@ -2,9 +2,11 @@
 ## 职责：REWARD 界面上**一张选项卡**（06 §9）—— 把一项 RewardOption 的五个展示位画出来，
 ##       并在被点击时把那一项抛给上层。**它自己不做任何路由、不改任何状态。**
 ## 所属系统：ui
-## 依赖：RewardOption, Palette, palette_theme.gd（内容边距）
+## 依赖：RewardOption, Palette, palette_theme.gd（内容边距）, InputNormalizer
 ## 禁止：不得调用 GameFlow / change_scene_to_file（路由唯一落点是 reward_screen.gd）；
 ##       不得写任何字面色值（图标色取自 Palette，见 icon_color()）；
+##       不得判断任何原始输入事件类型（InputEventMouseButton 等）—— 输入一律经
+##       InputNormalizer 归一后的语义事件（03 §8）；
 ##       不得出现任何奖励数值逻辑（属 Stage 4 的 S4-07）。
 ##
 ## 为什么是 Panel + gui_input 而不是 Button：卡片要显示的是 5 行结构化内容，不是一行文案，
@@ -78,11 +80,13 @@ static func icon_color(kind: RewardOption.Kind) -> Color:
 			return Palette.get_color(Palette.Key.GREY_500)
 
 
-## 只认「左键按下」。触摸在 Godot 里被合成为左键（emulate_mouse_from_touch 默认开），
-## 于是这一条同时覆盖桌面点击与移动端点按；抬起不响应，免得一次点击算两下。
+## 只认「按下」。事件先经输入层归一：触摸按下与鼠标左键按下在这里已经是同一条
+## POINTER_PRESS（03 §8），不再依赖「触摸被引擎合成为鼠标」那条间接路径 ——
+## 直接推入的 InputEventScreenTouch 也走这条同样的分支。
+## 抬起不响应，免得一次点击算两下。
 func _on_gui_input(event: InputEvent) -> void:
-	var button: InputEventMouseButton = event as InputEventMouseButton
-	if button == null or not button.pressed or button.button_index != MOUSE_BUTTON_LEFT:
+	var semantic: SemanticInput = InputNormalizer.from_event(event)
+	if semantic == null or semantic.action != SemanticInput.Action.POINTER_PRESS:
 		return
 	option_chosen.emit(_option)
 	accept_event()

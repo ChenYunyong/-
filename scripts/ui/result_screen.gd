@@ -4,16 +4,18 @@
 ##       出口：「再来一局」经 GameFlow 回 PREPARATION，「返回主菜单」经 GameFlow 回 MAIN_MENU。
 ##       **本批只做骨架与布局，不含任何玩法统计。**
 ## 所属系统：ui
-## 依赖：GameFlow、RunState、ResultLayout、PanelTitleBar、MessagePanel、Palette
+## 依赖：GameFlow、RunState、ResultLayout、PanelTitleBar、MessagePanel、Palette、InputScreen
 ## 禁止：本文件不得调用 change_scene_to_file() —— 场景路由只能由 GameFlow 落地（03 §1.1 R3）；
 ##       不得写任何字面色值（06 §10.7）；
+##       不得判断任何原始输入事件类型（InputEventMouseButton 等）—— 输入一律经 InputScreen
+##       归一后的语义事件（03 §8）；
 ##       不得出现任何会自动推进的构造（Timer / create_timer / timeout / _process /
 ##       _physics_process，见 03 §2 与 00 §5 交互硬规则第 1 条）—— 进入 RESULT 后永远等玩家，
 ##       不倒计时、不自动回主菜单；
 ##       不得实现任何玩法统计（波次计分 / 掉落结算 / 局外成长属 Stage 4 的 S4-08）——
 ##       本文件只把 set_result() 递进来的两个读数摆到界面上，一个数都不算。
 
-extends Control
+extends InputScreen
 
 ## 06 §2.2 的面板标题栏文案。06 §11：文本走 tr() key；本阶段没有翻译表，中文原文即 key。
 const TITLE_KEY: String = "战斗结算"
@@ -59,6 +61,11 @@ func _ready() -> void:
 	# 03 §6：随机种子由 RunState 逐局记录，结算界面展示它是**规范点名**的用途。
 	# 这里读的正是那一份，不另建第二份来源 —— 界面只读不回写。
 	set_result(WAVE_PLACEHOLDER, RunState.get_run_seed())
+	# 提示面板可点任意处关闭；键盘导航从「再来一局」起步 —— 它是本屏的主动作（06 §3 的
+	# 主按钮变体），也是玩家在结算界面最可能想按的那一个。焦点本身由 InputScreen
+	# 在第一次方向键时才交出去，默认渲染（Normal 态）不受影响。
+	register_dismissible_notice(_notice_panel)
+	register_focus_root(_button_retry)
 	# 折叠由可用区尺寸驱动，不用计时器、也不轮询（03 §2）。
 	resized.connect(_on_resized)
 	apply_layout_for(size)
@@ -142,16 +149,16 @@ func _show_notice(message_key: String) -> void:
 	_notice_panel.show_message(NOTICE_TITLE, PackedStringArray([message_key, NOTICE_DISMISS]))
 
 
-## 点击任意处关闭提示。本阶段的结算界面是终态前的最后一屏，提示关不掉就等于卡死。
-## 用 _input 而不是 _unhandled_input：按钮会消费落在自己身上的事件，
-## 而「点按钮时也能关掉上一次的提示」正是想要的。只认按下不认抬起，
-## 否则「按 按钮 → 提示出现 → 同一次点击抬起」会把刚出现的提示立刻关掉。
-func _input(event: InputEvent) -> void:
-	if not _notice_panel.visible:
-		return
-	var mouse: InputEventMouseButton = event as InputEventMouseButton
-	if mouse != null and mouse.pressed:
-		_notice_panel.visible = false
+## Escape：与「返回主菜单」同一个出口（03 §1 状态图 RESULT → MAIN_MENU）。
+##
+## 两个出口里选 MAIN_MENU 而不是 PREPARATION：Escape 的语义是「退出 / 返回」，
+## 而「再来一局」是**开始**一件事，不是一个「返回」动作 —— 拿 Escape 触发它会让人误开局。
+## 故这里复用 _request()，与按钮走完全同一条路（同一份路由检查、同一条提示）。
+##
+## 提示面板的关闭由 InputScreen._handle_notice() 统一处理，本场景不必再写 _input。
+func _on_back_requested() -> bool:
+	_request(GameFlow.GameState.MAIN_MENU, NOTICE_MAIN_MENU)
+	return true
 
 
 ## 把控件贴到矩形上。都是场景根或按钮区下的普通 Control（非容器），故直接给位置与尺寸。

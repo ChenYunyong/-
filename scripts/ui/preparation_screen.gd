@@ -3,21 +3,24 @@
 ##       以及右下角「开始战斗」这个进入 COMBAT 的唯一入口。
 ##       **本批只做骨架与布局，不含任何蓝图玩法。**
 ## 所属系统：ui
-## 依赖：Palette、Theme、GameFlow、PreparationLayout、MessagePanel
+## 依赖：Palette、Theme、GameFlow、PreparationLayout、MessagePanel、InputScreen、InputNormalizer
 ## 禁止：本文件不得调用 change_scene_to_file() —— 场景路由只能由 GameFlow 落地（03 §1.1 R3）；
 ##       不得写任何字面色值（06 §10.7）；
+##       不得判断任何原始输入事件类型（InputEventMouseButton 等）—— 输入一律经 InputScreen
+##       归一后的语义事件（03 §8）；
 ##       不得出现任何会自动推进的构造（Timer / create_timer / _process / _physics_process，
 ##       见 03 §2 与 06 §10.1 R1）—— 进入 PREPARATION 后永远等玩家，
 ##       停留任意时长都不会自行进入 COMBAT；
 ##       不得实现节点放置 / 连线 / 删除 / 撤销 / 信号传播 / 存档（全部属 Stage 2/3）。
 
-extends Control
+extends InputScreen
 
-## 提示面板文案。COMBAT 已由 S1-08 落地，这里的提示只在**路由故障**时出现
+## 提示面板文案。COMBAT 与 RESULT 均已由 S1-08 / S1-10 落地，这里的提示只在**路由故障**时出现
 ## （场景文件缺失 / 路径写错），措辞与 main_menu.gd 的同名提示对齐。
 const NOTICE_TITLE: String = "尚未实现"
 const NOTICE_DISMISS: String = "点击任意处关闭"
 const NOTICE_COMBAT: String = "战斗场景（COMBAT）的路由未就绪，本次留在整备场景。"
+const NOTICE_RESULT: String = "结算场景（RESULT）的路由未就绪，本次留在整备场景。"
 
 @onready var _backdrop: ColorRect = %Backdrop
 @onready var _region_left: Control = %RegionLeft
@@ -43,6 +46,14 @@ func _ready() -> void:
 	_button_start_combat.pressed.connect(_on_start_combat_pressed)
 	# 06 §7.1：窄屏下左栏收起成信息条，点它展开为覆盖层。
 	_region_left.gui_input.connect(_on_info_bar_gui_input)
+	# 06 §1：命中区补齐。CTA 实机尺寸 64×20（06 §7.2 ①，且被像素探针逐值断言），
+	# 差 2 逻辑像素；窄屏信息条高 16（PreparationLayout.INFO_BAR_HEIGHT）—— 两个都不达标，
+	# 两个都不能靠改 size 补（前者会打红像素基线，后者是布局常量、不归本卡改）。
+	install_hit_minimum(_button_start_combat)
+	install_hit_minimum(_region_left)
+	# 提示面板可点任意处关闭；键盘导航从 CTA 起步（本场景唯一的可用按钮）。
+	register_dismissible_notice(_notice_panel)
+	register_focus_root(_button_start_combat)
 	# 折叠由可用区尺寸驱动，不用计时器、也不轮询（03 §2）。
 	resized.connect(_on_resized)
 	apply_layout_for(size)
@@ -87,10 +98,11 @@ func _on_resized() -> void:
 
 
 ## 06 §7.1：窄屏下左栏收起为 16px 信息条，**点击展开为覆盖层**。
-## 只认左键按下；触摸端由引擎合成鼠标事件，故鼠标与触摸走同一条路径（06 §10.6）。
+## 事件先经输入层归一，这里只看语义：触摸按下与鼠标左键按下在 InputNormalizer 里
+## 已经合流成同一条 POINTER_PRESS，不再需要「触摸端由引擎合成鼠标事件」那条间接路径（03 §8）。
 func _on_info_bar_gui_input(event: InputEvent) -> void:
-	var mouse: InputEventMouseButton = event as InputEventMouseButton
-	if mouse == null or not mouse.pressed or mouse.button_index != MOUSE_BUTTON_LEFT:
+	var semantic: SemanticInput = InputNormalizer.from_event(event)
+	if semantic == null or semantic.action != SemanticInput.Action.POINTER_PRESS:
 		return
 	_info_expanded = not _info_expanded
 	apply_layout_for(_viewport_size)
@@ -118,18 +130,24 @@ func _show_notice(message_key: String) -> void:
 	_notice_panel.show_message(NOTICE_TITLE, PackedStringArray([message_key, NOTICE_DISMISS]))
 
 
-## 点击任意处关闭提示。MessagePanel 自己不会消失（BOOT 的失败面板是一去不回的终态），
-## 而这里的提示会盖住整个整备界面 —— 关不掉的话，按过一次「开始战斗」之后界面就再也点不动了。
+## Escape：从 PREPARATION 退出本局 → RESULT（03 §1 状态图 PREPARATION → RESULT）。
 ##
-## 用 _input 而不是 _unhandled_input：按钮会消费落在自己身上的事件，
-## 而「点按钮时也能关掉上一次的提示」正是想要的。只认按下不认抬起，
-## 否则「按 开始战斗 → 提示出现 → 同一次点击抬起」会把刚出现的提示立刻关掉。
-func _input(event: InputEvent) -> void:
-	if not _notice_panel.visible:
-		return
-	var mouse: InputEventMouseButton = event as InputEventMouseButton
-	if mouse != null and mouse.pressed:
-		_notice_panel.visible = false
+## 走 request_end_run() 而不是 change_state()：R3 把这个语义入口定为「→ RESULT」的**唯一**
+## 合法通道，与 combat_screen.gd 的 on_core_destroyed() 同一条路。本场景是「还没开打就退出」，
+## 语义上正是「结束本局」。
+##
+## 先查路由是否就绪再调用：GameFlow 的提交点先落状态再路由，对缺失的场景只打印一行、
+## 当前场景不动 —— 直接调用会让状态与场景脱钩，玩家看到的是「按了没反应」，
+## 那正是验收不接受的静默无效（与 _on_start_combat_pressed 同款判断）。
+##
+## 提示面板的关闭由 InputScreen._handle_notice() 统一处理，本场景不必再写 _input。
+func _on_back_requested() -> bool:
+	var target_path: String = GameFlow.get_scene_path_for(GameFlow.GameState.RESULT)
+	if target_path.is_empty() or not ResourceLoader.exists(target_path):
+		_show_notice(NOTICE_RESULT)
+		return true
+	GameFlow.request_end_run()
+	return true
 
 
 ## 把分区贴到矩形上。分区都是场景根下的普通 Control（非容器），故直接给位置与尺寸。
