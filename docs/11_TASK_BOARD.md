@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 v0.1.0｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.1**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -65,21 +65,22 @@
 
 ### 当前是否可推进（2026-10-03 更新）
 
-- **Stage 1（项目骨架）：✅ 可推进** —— GATE 1 已批准。已派发第一批 S1-01~S1-04 给 Claude。
+- **Stage 1（项目骨架）：🟢 进行中** —— GATE 1 已批准。**第一批 S1-01~S1-04 已于 2026-10-03 交付并通过 L2/L3**
+  （PET-38，提交 `2f6d4c7` + `f9656fe`）；第二批 **S1-05** 依赖已满足，已开 **PET-39** 派发。
 - Stage 0 收尾（导出模板安装 S0-21、Git 远端）：✅ 可推进（属 DSH 默认执行权）。
 - **视觉相关工作一律交 Codex**（用户 2026-10-03 明确提醒）；DSH 只提供测量数据与约束，不代替 Codex 做视觉判断。
 
-## 3. STAGE 1 — PROJECT SKELETON（未开始）
+## 3. STAGE 1 — PROJECT SKELETON（进行中：S1-01~S1-04 已交付）
 
 只实现状态循环，允许全部占位图。**首先验证整个游戏状态循环。**
 
 | ID | 任务 | 负责人 | 依赖 | 状态 |
 |---|---|---|---|---|
-| S1-01 | `project.godot` 初始化 + Autoload 骨架（EventBus / GameFlow / DataRegistry / RunState / Settings） | Claude | S0 批准 | `TODO` |
-| S1-02 | `GameFlow` 六状态机 + 切换硬规则 R1-R5 + 单元测试 | Claude | S1-01 | `TODO` |
-| S1-03 | `scripts/data/palette.gd` + `assets/palette.tres`（依 04 §5） | Claude | S0 批准 | `TODO` |
-| S1-04 | 全局 Theme（依 06） | Claude | S1-03 | `TODO` |
-| S1-05 | BOOT 场景（数据校验 + 失败提示） | Claude | S1-01 | `TODO` |
+| S1-01 | `project.godot` 初始化 + Autoload 骨架（EventBus / GameFlow / DataRegistry / RunState / Settings） | Claude | S0 批准 | `DONE`（PET-38） |
+| S1-02 | `GameFlow` 六状态机 + 切换硬规则 R1-R5 + 单元测试 | Claude | S1-01 | `DONE`（PET-38） |
+| S1-03 | `scripts/data/palette.gd` + `assets/palette.tres`（依 04 §5） | Claude | S0 批准 | `DONE`（PET-38） |
+| S1-04 | 全局 Theme（依 06） | Claude | S1-03 | `DONE`（PET-38） |
+| S1-05 | BOOT 场景（数据校验 + 失败提示）**＋ 接线 `PanelShadow` ＋ 合并像素探针入口** | Claude | S1-01 ✅ | `IN_PROGRESS`（PET-39） |
 | S1-06 | MAIN_MENU 场景（占位：Logo/开始/继续/设置/退出） | Claude | S1-04 | `TODO` |
 | S1-07 | PREPARATION 场景（五分区布局 + 唯一动作「开始战斗」） | Claude | S1-06 | `TODO` |
 | S1-08 | COMBAT 场景（占位战场 + 紧凑 HUD） | Claude | S1-07 | `TODO` |
