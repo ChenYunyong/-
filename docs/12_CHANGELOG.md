@@ -5,6 +5,20 @@
 
 ## [Unreleased]
 
+### 用户提问：S1-14 验收卡上先问「游戏文件在哪」（DSH）— 2026-10-03
+
+用户回复（原文）：「游戏文件在哪」
+
+#### Notes
+- 用户**未给出 L4 裁决**（既非「通过」也非「打回」），按规则**只回答、不判断**：
+  `11_TASK_BOARD.md` 的 S1-14 **状态不变**（仍 `REVIEW`，assignee = 用户本人）；DSH 未代判、未改看板、未派卡。
+- DSH 已在 PET-59 原帖回复文件位置（源代码树 / portable 引擎 / Web 构建产物 / GitHub 远端，含打开与复跑方式）。
+- 待办不变：**等用户 L4 结论**。通过 → 回填 `S1-14 = DONE` 并把「重新安装完整 Godot 4.7.1 Stable Export Templates」
+  转到 Stage 2 看板持续跟踪；打回 → 逐项拆卡派发。已重新登记 `comment.created` 唤醒（只认用户本人）接住下一条回复。
+- 环境备注（**与项目无关**）：DSH 本次在 agent 沙箱内无法启动引擎 —— 沙箱只允许写会话工作区，
+  Godot 写不了 `%APPDATA%\Godot\app_userdata\...\logs`，启动即在 `core/io/dir_access.cpp:429` 段错误退出；
+  `01_STORAGE_RULES.md` §5 的临时目录重定向在本沙箱同样被拒。**用户本机手动运行不受此限。**
+
 ### PET-58 交付复核：测试卫生 + Web 打包排除全部落地（DSH）— 2026-10-03
 
 #### Fixed
