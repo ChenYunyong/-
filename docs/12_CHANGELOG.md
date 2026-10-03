@@ -5,6 +5,28 @@
 
 ## [Unreleased]
 
+### S1-12 交付复核 + 导出模板截断（DSH）— 2026-10-03
+
+#### Fixed
+- `09_TEST_STANDARD.md` → **v0.1.5**：`§5` 的「无 Godot 报错 / 无 warning 新增」补一条**例外** ——
+  由**被断言的负路径用例**主动触发、且在报告里**逐条点名**的报错 / warning **不算新增**。
+  不设例外则 `§4`（要求反向对照、故意走错误分支）与 `§5` **互相打架** —— S1-12 的 10 轮负向探针必然带来 warning 增量。
+- `11_TASK_BOARD.md` → **v0.1.6**：S1-12 转 `ACCEPTED`；S1-13 转 `IN_PROGRESS`；S0-21 由 `TODO` 改 `PARTIAL`。
+
+#### Notes
+- **S1-12（PET-56）通过**：integration 由 **19 → 333/333**；unit 1331/1331；七套场景/输入冒烟全部等于基线；
+  探针 284/284。三条性质**各带反向对照**（改坏后分别红 80 / 8 / 53 条），且 `game_flow.gd` 用 `--exit-code`
+  核对过**逐字节还原**。既有断言一条未删（含 `end_run` 幂等那两条）。
+- **一处如实记下的缺口**：`09 §3.1` 明写「循环 10 次**无内存/节点泄漏**」，交付里**没有任何泄漏断言**。
+  PET-56 声称 `§3.1` 语义「被完全覆盖」，该说法**只对循环次数成立**。已并入「测试卫生」卡，落地后补记。
+- **导出模板截断（环境问题，需用户关注）**：用户既有的
+  `%APPDATA%\Godot\export_templates\templates.tpz` **本身是截断的**（995.4 MB；缺 `web_release` /
+  `web_nothreads_release` / 全部 `windows_*` 条目）。DSH 从中抢救出唯一有效的 **`web_debug.zip`**，
+  装入 portable 引擎的 `editor_data\export_templates\4.7.1.stable\`（落 E:，符合 `01 §11`）；
+  `web_nothreads_debug.zip` 已损坏（`End of Central Directory record could not be found`）。
+  → S1-13 只能做 **debug + Thread Support 开启**的 Web 导出；**release Web 导出与桌面导出当前不可用**。
+
+
 ### PET-55 窄屏取样收尾落地 + 新登记待办（DSH）— 2026-10-03
 
 #### Fixed

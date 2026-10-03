@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.5**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.6**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -39,7 +39,7 @@
 | S0-18 | Godot 4.7.1 portable 安装（D 盘自包含） | DSH | `ACCEPTED` | `tools/godot/`（已验证不写 C 盘） |
 | S0-19 | 参考图 A/B/C 落盘 + 逐像素取色实测 | DSH | `ACCEPTED` | `04` §2（证据） |
 | S0-20 | `04`/`05` 按参考图实测校准（v0.1.1） | DSH | `REVIEW` | docs/04, docs/05 |
-| S0-21 | 导出模板安装到 portable 引擎（**落盘在 E:**，见 `01` §11） | DSH | `TODO`（S1-13 前完成） | `tools/godot/editor_data/export_templates/` → E: |
+| S0-21 | 导出模板安装到 portable 引擎（**落盘在 E:**，见 `01` §11） | DSH | `PARTIAL`（仅 `web_debug.zip` 可用 —— 用户既有 `templates.tpz` 截断，见 12 的 Notes） | `tools/godot/editor_data/export_templates/` → E: |
 | S0-27 | 存储分层：E 盘纳入 + build/editor_data 重定向 | DSH | `ACCEPTED` | `01_STORAGE_RULES` §11 |
 | S0-22 | Codex 对 `04/05/06` 的独立视觉审查 | Codex | `ACCEPTED` | 4 项 blocking 全部核验并采纳 |
 | S0-23 | 依 Codex 第一轮审查修正 `04`→v0.1.2 | DSH | `ACCEPTED` | 04/05/06 |
@@ -91,8 +91,8 @@
 | S1-08R | 收尾修复：COMBAT 冒烟 exit-notice 用例已被证伪，替换为 REWARD/RESULT 真实路由断言 | Claude | S1-08 | `ACCEPTED`（PET-50 · COMBAT 冒烟 103/103 转绿） |
 | S1-09R | 规范一致性修复：REWARD 选项卡补 `PanelShadow` 叠层（Codex 裁定选 A） | Claude | S1-09 | `ACCEPTED`（PET-52） |
 | S1-08R2 | 窄屏取样轴序统一 + 期望值按 `06 §7.1` 重导 + 补「25% 上限真的咬住」的专用取样 | Claude | S1-08R | `ACCEPTED`（PET-54 发现 → PET-55 完成） |
-| S1-12 | 状态循环集成测试（10 次循环、防重入、不自动推进） | Claude | S1-10 | `TODO` |
-| S1-13 | Web Export 冒烟验证 | Claude | S1-12 | `TODO` |
+| S1-12 | 状态循环集成测试（10 次循环、防重入、不自动推进） | Claude | S1-10 | `ACCEPTED`（PET-56 · integration 19→333，三条性质各带反向对照；`09 §3.1` 的「无节点泄漏」一条并入测试卫生卡） |
+| S1-13 | Web Export 冒烟验证 | Claude | S1-12 | `IN_PROGRESS`（PET-57 · 受限于只有 threads 版 debug 模板，见 12 的 Notes） |
 | S1-14 | Stage 1 用户验收 | 用户 | S1-13 | `TODO` |
 
 > **已登记待办（S1-05 复核产生）**：`06 §2.2` 的**面板标题栏**（高度 16px / 底色 `NAVY_700` + 1px 底部 `GOLD_600` 分隔线）
@@ -108,6 +108,10 @@
 > `maxf(bottom - readout_top(), 0.0)`「夹到 0」分支**没有任何取样触发**（`120×180` 下读数区仍剩 36px；
 > 实测需 `120×140` 才会夹到 0），故 `readout_rect(...).size.y >= 0.0` 对现有三个取样**恒真** ——
 > 与上一条同类。另有两处已失准字符串待清：`tests/integration/combat_smoke.gd:33-37`、`scripts/ui/result_layout.gd:122`。
+>
+> **已登记待办（DSH 2026-10-03 S1-12 复核新增）**：`09 §3.1` 明写「循环 10 次**无内存/节点泄漏**」，
+> 而 `tests/integration/test_state_loop.gd` 里**没有任何泄漏断言**（全文无 `orphan` / `child_count`）。
+> PET-56 声称 `§3.1` 的语义「被完全覆盖」，该说法**只对循环次数成立**。已并入「测试卫生」卡。
 
 **Stage 1 绝对禁止**：真实战斗、真实伤害、蓝图编辑逻辑、敌人 AI。
 
