@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.9**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.2.0**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -95,6 +95,7 @@
 | S1-13 | Web Export 冒烟验证 | Claude | S1-12 | `ACCEPTED`（PET-57 · debug+Threads 导出跑通、「人看清单」齐备） |
 | S1-13R | 测试卫生 + Web 打包排除：夹到 0 覆盖 · 失准文案 · 10 轮泄漏断言 · `exclude_filter` | Claude | S1-13 | `ACCEPTED`（PET-58 · unit 1338 · integration 356 · 产物冒烟 36/36 · 四件各带反向对照） |
 | S1-14 | Stage 1 用户验收（**GATE 9**） | 用户 | S1-13 | `REVIEW`（PET-59 · 验收清单已交用户，等用户 L4 结论；DSH 不得代判） |
+| S1-14C | **Crash Investigation：Godot 原生崩溃（`0xc0000005`，用户报告）** | Claude | S1-14 | `IN_PROGRESS`（PET-60 · 调查中；**未定位前 Stage 1 不得标稳定**） |
 
 > **已登记待办（S1-05 复核产生）**：`06 §2.2` 的**面板标题栏**（高度 16px / 底色 `NAVY_700` + 1px 底部 `GOLD_600` 分隔线）
 > 在 Theme 与 `scenes/**` 均无落点。Codex 2026-10-03 独立复核裁定：S1-05 的 BOOT 占位面板不必补，**列为 S1-06 验收项**
@@ -132,6 +133,12 @@
 > （分别红 2 / 文案类无断言可红 / 恰 10 / 恰 3 条），且 DSH 在正式树里独立复跑确认：
 > 修复后连导两次 pck **Δ0**，清空 `exclude_filter` 后 pck 由 95,712 涨到 **3,659,192**。
 >
+> # ⛔ 开发暂停（用户指令 2026-10-03）
+>
+> 用户报告 **Godot 原生崩溃**（WER：`Exception code 0xc0000005`，faulting module = **Godot 本体**，
+> fault offset `0x3e15854`）并要求：**暂停继续开发并建立 Crash Investigation**。
+> **在根因定位之前：不派发任何 Stage 1 收尾/新功能开发；`S1-14` 不得置 `DONE`；Stage 1 与后续 Stage 一律不得标为稳定。**
+> 调查卡：`S1-14C`（PET-60）。用户原始指令全文见 `12_CHANGELOG.md` 同日条目。
 > **GATE 9 强制项（用户 2026-10-03 裁定）**：**重新安装完整的 Godot 4.7.1 Stable Export Templates**。
 > 用户选定 **B：当前继续开发，不因导出模板中断项目推进** —— 同时明确要求把该条**登记为 GATE 9 前的必须完成项**，
 > 并在**进入正式 Web Release、Windows 打包或 Release Candidate 阶段之前**执行**完整模板重装 + 导出验证**。

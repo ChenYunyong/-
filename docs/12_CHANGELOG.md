@@ -5,6 +5,42 @@
 
 ## [Unreleased]
 
+### ⛔ 用户报告 Godot 原生崩溃 → 开发暂停 + 建立 Crash Investigation（2026-10-03）
+
+用户原文要点：
+
+> 「**发现 Godot 原生崩溃，请暂停继续开发并建立 Crash Investigation。**」
+> `Godot_v4.7.1-stable_win64.exe` 出现 Windows Application Error：
+> `0x00007FF67E785854 指令引用了 0x0000000000000058 内存，该内存不能为 read。`
+> 「这不是普通 GDScript runtime error，请不要把它当普通脚本错误处理。」
+> 并给出 9 步排查顺序与 7 项汇报要求；末尾两条硬约束：
+> 「**不允许通过『忽略崩溃继续开发』关闭问题**」「**未定位前不要把 Stage 1 / 后续 Stage 标为稳定**」。
+
+#### Decisions
+- **开发暂停**：根因定位前不派发 Stage 1 收尾/新功能开发；`S1-14`（GATE 9）保持 `REVIEW`，**不得置 `DONE`**；
+  Stage 1 与后续 Stage 一律**不得标为稳定**。
+- 建立 **Crash Investigation**（`S1-14C` / PET-60，assignee Claude），交付物是**报告**而非修复；
+  若定位到根因，再另开最小修复卡。
+
+#### DSH 先期取证（已并入 PET-60）
+- 从 Windows 事件日志取到**权威签名**：`Exception code 0xc0000005`（访问违例）、
+  fault offset `0x3e15854`、**faulting module = `Godot_v4.7.1-stable_win64.exe` 本体**
+  （**不是**显卡驱动 DLL）；全日志中 Godot 的 Application-Error 事件**只有这 1 条**（一次性，非稳定必现）。
+- **未能复现**：6 种配置（项目 / `--editor` / GUI 本体 / 项目管理器 × Compatibility 与 Vulkan `forward_plus`）
+  限时后强制结束，**一个都没崩**。
+- **但复现到一条真实、可重复的引擎级误用**（本卡最强线索）：Vulkan 路径 stderr 稳定出现
+  `Parent node is busy adding/removing children, remove_child() can't be called at this time`，
+  backtrace 落在 `game_flow.gd:159 change_scene_to_file()` ← `_commit_transition:138` ← `change_state:81`
+  ← `boot_screen.gd:53 _hand_off_to_game_flow ← apply_check_result:41 ← _ready:34`
+  —— 即**在 BOOT 的 `_ready()` 里同步换场景**，而 `change_scene_to_file()` 内部会立即 `remove_child`。
+  这类误用正是能升级成 native 崩溃的典型。
+- 步骤 4 结论：全项目**零** GDExtension / 第三方原生插件 / DLL。
+
+#### Notes
+- 另有一条需**分开定性**的事实：一个尝试处理该崩溃报告的 **DSH run 自身以 `exit status 0xc0000409`
+  终止**（PET-59 15:44）。它可能与用户崩溃同源，也可能纯粹是 DSH 运行时问题 —— 不得混为一谈。
+
+
 ### 用户提问：S1-14 验收卡上先问「游戏文件在哪」（DSH）— 2026-10-03
 
 用户回复（原文）：「游戏文件在哪」
