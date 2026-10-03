@@ -1,11 +1,13 @@
 ## test_state_loop.gd
 ## 职责：在真实 Autoload 单例 + **真实场景路由**上跑状态流转（09 §1 集成层）。
-##       四段：
+##       五段：
 ##       ① 既有接线核对 —— 五个 Autoload 就位、EventBus 转发、RunState 种子与生命周期；
-##       ② S1-12 · 十轮完整循环：状态与场景逐轮成对、逐轮序列逐项相同（不漂移）；
+##       ② S1-12 · 十轮完整循环：状态与场景逐轮成对、逐轮序列逐项相同（不漂移）、
+##          每轮跑完 /root 子节点数与孤儿节点数都回到基线（09 §3.1 的「无内存/节点泄漏」）；
 ##       ③ S1-12 · R5 防重入：切换进行中的再次请求 / 同帧连点不得多切一次；
 ##       ④ S1-12 · R1 不自动推进：PREPARATION / COMBAT / REWARD 各停 10 分钟模拟时间纹丝不动，
-##          并各配一次「真实确认」的反向对照，证明停住不是因为整条链路是死的。
+##          并各配一次「真实确认」的反向对照，证明停住不是因为整条链路是死的；
+##       ⑤ PET-58 件 ③ · 泄漏断言的判别力：故意留一个孤儿节点，② 的那组口径必须当场变红。
 ## 所属系统：tests
 ## 依赖：test_context, GameFlow / EventBus / RunState / DataRegistry 四个 Autoload
 ## 禁止：本文件不得改动 Autoload 的业务状态 —— 用完必须还原到 MAIN_MENU；
@@ -32,11 +34,13 @@ const HOLD_SECONDS: float = 600.0
 const VIEWPORT: Vector2 = Vector2(320.0, 180.0)
 ## 本局固定种子（03 §6：全项目随机必须且只能来自 RunState，且必须可复现）。
 const RUN_SEED: int = 20261003
-## S1-12 四段至少应有的断言条数（实测 313，取 300 作下限）。
-## 反向对照实测：让路由整体失效后，本文件的断言数会从 313 掉到 ~201 ——
-## 因为「场景里找不到 CTA / 卡片」这类前置会连带跳过后续断言。
+## 本文件（run_tests.gd 里唯一的 integration 用例）至少应有的断言条数。
+## PET-58 件 ③ 后实测 356，取下限 343（沿用 S1-12 时「实测 313 取 300」留的同一档余量）。
+## 反向对照实测（S1-12 当时，基线 313）：让路由整体失效后，断言数会掉到 ~201 ——
+## 因为「场景里找不到 CTA / 卡片」这类前置会连带跳过后续断言；件 ③ 新增的 23 条挂在
+## 十轮循环里，同样会随之中断，故下限仍按同一比例留白。
 ## 少了这条下限，那种情况只表现为「失败的没几条」，很容易被读成「基本没事」。
-const MIN_ASSERTIONS: int = 300
+const MIN_ASSERTIONS: int = 343
 
 var _ctx: RefCounted = null
 var _tree: SceneTree = null
@@ -102,6 +106,7 @@ func run(ctx: RefCounted, tree: SceneTree) -> void:
 	await _settle()  # 让上面那两次延迟路由落地：起点是真实的 main_menu 场景 + MAIN_MENU。
 	var wave_rolls: Array = await _run_round_loop(ctx)
 	_run_run_state_replay(ctx, wave_rolls)
+	_run_leak_discrimination(ctx)
 	_run_pairing_discrimination(ctx)
 	await _run_reentrancy(ctx)
 	await _run_hold_checks(ctx)
@@ -130,6 +135,9 @@ func _run_round_loop(ctx: RefCounted) -> Array:
 	var waves: Array = []
 	var rounds: Array = []
 	var moved_from: int = _transitions.size()
+	# 09 §3.1 的「10 次无内存/节点泄漏」：以**进入循环前**为唯一基线，每轮跑完跟它比 ——
+	# 比「轮轮之间相邻比」更严：任何一轮的残留都会一直留在与基线的差额里，不会被下一轮抹平。
+	var leak_baseline: Dictionary = _snapshot()
 
 	for round_index: int in ROUND_COUNT:
 		var label: String = "第 %d 轮" % (round_index + 1)
@@ -153,6 +161,7 @@ func _run_round_loop(ctx: RefCounted) -> Array:
 		moved_from = _transitions.size()
 		ctx.equal(seq, _path_array(), "%s 的状态序列应与约定路径逐项相同" % label)
 		rounds.append(seq)
+		_check_no_leak(ctx, label, leak_baseline)
 
 	ctx.equal(rounds.size(), ROUND_COUNT, "完成的轮数")
 	var baseline: Array = rounds[0]
@@ -162,6 +171,51 @@ func _run_round_loop(ctx: RefCounted) -> Array:
 			label += "（末轮）"
 		ctx.equal(rounds[index], baseline, "%s 的状态序列应与第 1 轮逐项相同" % label)
 	return waves
+
+
+## 09 §3.1「COMBAT → REWARD → PREPARATION 循环 10 次**无内存/节点泄漏**」的取样口径。
+##
+## 两个数一起看，因为它们抓的不是同一种漏：
+##   children —— `/root` 的直接子节点数。场景是 `/root` 的子节点，换场景时上一轮场景必须真的被摘下来；
+##               「只 queue_free 忘了摘」与「摘了但没 free」在这里表现相同（都回到基线），要靠下面那个数。
+##   orphans  —— `Performance.OBJECT_ORPHAN_NODE_COUNT`，**已构造但既不在树里、也未被 free** 的节点数。
+##               未被 free 的旧场景正好落进这个口径，且它**只增不减** —— 漏一轮就永久留下。
+##
+## 阈值不用魔数：基线就地取「进入十轮循环前」的实测值，断言的是**不增长**（`==`），
+## 不是「小于某个数」。引擎自己启动期留下的常量孤儿（若有）因此不影响判定，判的纯粹是本循环的增量。
+func _snapshot() -> Dictionary:
+	return {
+		"children": _tree.root.get_child_count(),
+		"orphans": int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT)),
+	}
+
+
+## 一轮跑完后的泄漏判定。轮末停在 MAIN_MENU，故 `children` 应当**逐值等于**基线。
+func _check_no_leak(ctx: RefCounted, label: String, baseline: Dictionary) -> void:
+	var now: Dictionary = _snapshot()
+	ctx.equal(int(now["children"]), int(baseline["children"]),
+		"%s 结束后 /root 的子节点数应回到基线 %d（旧场景没被摘干净）" % [label, int(baseline["children"])])
+	ctx.equal(int(now["orphans"]), int(baseline["orphans"]),
+		"%s 结束后孤儿节点数不得增长（基线 %d，实得 %d）—— 旧场景被摘下来却没 free" % [
+			label, int(baseline["orphans"]), int(now["orphans"])])
+
+
+## 09 §4 的反向对照：上面那条「不增长」若对任何输入都为真，就等于没写。
+## 故意造一个**不入树、也不 free** 的节点 —— 同一套口径必须当场判它增长；
+## 再把它 free 掉，计数必须**回落**（只会涨不会落的计数器同样抓不住泄漏，那是另一个方向的恒真）。
+func _run_leak_discrimination(ctx: RefCounted) -> void:
+	ctx.begin_case("S1-12 · 泄漏断言的判别力（故意留孤儿必须变红）")
+	var before: Dictionary = _snapshot()
+	var orphan: Node = Node.new()
+	orphan.name = "DeliberateOrphan"
+	var during: Dictionary = _snapshot()
+	ctx.equal(int(during["orphans"]) - int(before["orphans"]), 1,
+		"留一个不入树也不释放的节点后，孤儿计数应恰 +1 —— 否则上面那条「不得增长」是恒真的")
+
+	orphan.free()
+	var after: Dictionary = _snapshot()
+	ctx.equal(int(after["orphans"]), int(before["orphans"]), "该节点被 free 后孤儿计数应回落到基线")
+	ctx.equal(int(after["children"]), int(before["children"]), "反向对照本身不得往 /root 里留下常驻节点")
 
 
 ## 交付物 1 的收尾：十轮之后本局种子与波次序列仍可复现（03 §6）。

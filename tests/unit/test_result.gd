@@ -26,6 +26,23 @@ const REFERENCE_VIEWPORT: Vector2 = Vector2(320.0, 180.0)
 const NARROW_VIEWPORT: Vector2 = Vector2(180.0, 320.0)
 const SHORT_NARROW_VIEWPORT: Vector2 = Vector2(120.0, 180.0)
 
+## 06 §7.1（窄屏折叠）+ 06 §9.2（窄屏三区竖排）的**下边界**取样：120×140。
+##
+## 为什么非要另一个取样：竖排后按钮区高固定 96（两个 44 加一条间距），贴底部安全线，
+## 屏幕再矮就只剩下压读数区。上面的 320×180 / 180×320 / 120×180 三档余量分别是 88 / 176 / 36，
+## **全为正** —— 于是 result_layout.gd 里 maxf(bottom - readout_top(), 0.0) 的「夹到 0」分支
+## 从没有任何取样走到过，那条 `size.y >= 0.0` 对现有三个取样恒真。
+##
+## 140 这个数的来历（**独立推导**，不是抄实现输出）：
+##   读数区上沿   = 安全边距 8 + 标题栏 16 + 间距 8        = 32
+##   按钮区高     = 44 × 2 + 间距 8                        = 96
+##   可用底边     = 140 - 贴底安全边距 8 - 96 - 间距 8      = 28
+##   余量         = 28 - 32 = **-4**，负 —— 夹取分支真的被走到。
+## 宽取 120 是为了同时满足两个前提：宽 < 高（§7.1 判窄屏），且 120-16=104 ≥ 44（按钮仍守住下限）。
+const CLAMP_VIEWPORT: Vector2 = Vector2(120.0, 140.0)
+## 夹到 0 的只是**高**：位置仍是读数区上沿 32，宽度仍是 120-16=104。
+const CLAMP_READOUT_RECT: Rect2 = Rect2(8.0, 32.0, 104.0, 0.0)
+
 ## 06 没有 RESULT 版面，未给实测矩形；下面是本文件**独立复写**的期望值，
 ## 刻意不从 ResultLayout 取 —— 测试若与被测实现同源，实现里把 148 写成 138 时
 ## 两边一起错，断言就永远是绿的。推导依据见 result_layout.gd 的文件头。
@@ -73,6 +90,7 @@ func run(ctx: RefCounted, _tree: SceneTree) -> void:
 	_run_source_checks(ctx)
 	_run_layout_checks(ctx)
 	_run_narrow_layout_checks(ctx)
+	_run_readout_clamp_checks(ctx)
 	_run_touch_size_checks(ctx)
 	_run_readout_checks(ctx)
 	_run_button_theme_checks(ctx)
@@ -206,6 +224,32 @@ func _run_narrow_layout_checks(ctx: RefCounted) -> void:
 	ctx.equal(rects[1].position.y - rects[0].end.y, 8.0, "折叠后的行间距（06 §1）")
 	ctx.equal(rects[0].size.x, NARROW_ACTIONS_RECT.size.x, "折叠后按钮应铺满可用宽")
 	ctx.equal(NARROW_ACTIONS_RECT.end.y, NARROW_VIEWPORT.y - 8.0, "折叠后按钮区仍贴底部安全线")
+
+
+## 06 §7.1 / §9.2 的下边界：屏幕矮到按钮区顶到标题栏下方时，读数区的余量**转负**，
+## 实现把它夹到 0（宁可读数区消失，也不画出负矩形 —— 同 RewardLayout 的取舍）。
+##
+## 这条必须先自证「余量确实为负」再断言 0：不然一个「读数区高度恒为 0」的实现，
+## 或者一个余量恰好为 0 的取样，都会让 `size.y == 0` 白绿。负余量由**独立复写**的
+## 几何关系推出（见 CLAMP_VIEWPORT 的推导），不取被测实现的中间量。
+func _run_readout_clamp_checks(ctx: RefCounted) -> void:
+	ctx.begin_case("RESULT · 极矮窄屏下读数区夹到 0（06 §7.1 / §9.2）")
+	var layout: GDScript = load(LAYOUT_SCRIPT_PATH)
+	if not ctx.check(layout != null, "result_layout.gd 应能加载"):
+		return
+	ctx.check(layout.is_narrow(CLAMP_VIEWPORT), "120×140 宽 < 高，应判定为窄屏")
+
+	var readout_top: float = 8.0 + 16.0 + 8.0
+	var available_bottom: float = CLAMP_VIEWPORT.y - 8.0 - (MIN_TOUCH_SIZE * 2.0 + 8.0) - 8.0
+	ctx.check(available_bottom < readout_top,
+		"120×140 的读数区余量应为负（可用底边 %.0f < 上沿 %.0f）—— 否则这条取样走不到夹取分支" % [
+			available_bottom, readout_top])
+	ctx.equal(layout.readout_rect(CLAMP_VIEWPORT), CLAMP_READOUT_RECT, "余量为负时读数区应夹到 0 高")
+
+	# 夹掉的只是高度：上沿仍按 06 §1 落在标题栏下隔一个间距，按钮区与触摸下限不受牵连。
+	ctx.equal(layout.readout_rect(CLAMP_VIEWPORT).position.y,
+		layout.title_rect(CLAMP_VIEWPORT).end.y + 8.0, "夹到 0 后读数区上沿仍是标题栏下隔一个间距")
+	_check_touch_and_degenerate(ctx, layout, CLAMP_VIEWPORT)
 
 
 ## 06 §1：可点击区域 —— 两个出口本身就是可点击区域，任何档位下都不得低于下限。

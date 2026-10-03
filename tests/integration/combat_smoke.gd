@@ -28,13 +28,12 @@ const LOG_PATH: String = "res://tests/output/combat_smoke.log"
 const REFERENCE_VIEWPORT: Vector2 = Vector2(320.0, 180.0)
 ## 06 §7.1 的窄屏取样（均为竖屏），与 test_combat.gd 独立复写。
 const NARROW_VIEWPORT: Vector2 = Vector2(180.0, 320.0)
-## 比基准更矮的窄屏取样（120×180 竖屏）。
+## 比基准更矮的窄屏取样（120×180 竖屏）。test_combat.gd / test_reward.gd / test_result.gd
+## 与本文件如今一致取这个值。
 ##
-## ⚠ 这里刻意**不**沿用 test_combat.gd / test_reward.gd / test_result.gd 的 `Vector2(180, 120)`：
-## 那个值宽>高，是**横屏**，与它自己的名字和注释（test_result.gd 称其「极矮的竖屏」）不符，
-## 是一处轴序写反。那些用例直接调 `layout.*_rects()`，绕开了 `is_narrow` 这道闸，
-## 所以一直没暴露；本用例是唯一把取样喂给**场景**的（`apply_layout_for` 先问 `is_narrow`），
-## 180×120 会被正确地判成宽屏，于是折叠断言恒假。此处按本意取竖屏的 120×180。
+## 它必须**宽 < 高**：本用例是唯一把取样喂给**场景**的（`apply_layout_for` 先问 `is_narrow`），
+## 而 §7.1 的判据就是宽 < 高 —— 取样若写成 180×120 那样的横屏，会被正确地判成宽屏，
+## 下面的折叠断言于是恒假。120×180 才是「窄且矮」的那一档。
 const SHORT_NARROW_VIEWPORT: Vector2 = Vector2(120.0, 180.0)
 
 ## 06 §8 的实测值，在本文件独立复写一遍（期望值若与被测实现同源，实现改错时两边一起错）。

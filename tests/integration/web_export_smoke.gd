@@ -20,8 +20,9 @@ const CONTEXT_PATH: String = "res://tests/unit/test_context.gd"
 ## `D:\GameDev\PixelFusion\build\web\`（该目录是到 E: 的联接，属 01 §11 的 E 盘产物层）。
 const BUILD_DIR: String = "res://build/web"
 const HTML_NAME: String = "index.html"
+const PCK_NAME: String = "index.pck"
 const LOG_PATH: String = "res://tests/output/web_export_smoke.log"
-const TASK_LABEL: String = "S1-13（PET-57）Web 导出冒烟验证"
+const TASK_LABEL: String = "S1-13（PET-57）/ PET-58 件 ④ Web 导出冒烟验证"
 
 ## 产物清单：文件名 + 最小合理体积（字节）+ 该下限的来由。
 ## 下限刻意压到实测值的 1/3 以下 —— 它要抓的是「文件没了 / 被截断 / 换成了别的东西」，
@@ -30,7 +31,7 @@ const EXPECTED_PRODUCTS: Array[Dictionary] = [
 	{"name": "index.html", "min_size": 1024, "why": "HTML 外壳（实测 5441）"},
 	{"name": "index.js", "min_size": 100000, "why": "Emscripten 胶水（实测 358342）"},
 	{"name": "index.wasm", "min_size": 10000000, "why": "引擎 wasm，量级数十 MB（实测 38347038）"},
-	{"name": "index.pck", "min_size": 1, "why": "资源包，任务卡要求非 0 字节（实测 3649092）"},
+	{"name": "index.pck", "min_size": 1, "why": "资源包，任务卡要求非 0 字节（PET-58 件 ④ 排除后实测 95712）"},
 ]
 
 ## index.html 文本里必须出现的引用。第 1 条是 <script> 标签（浏览器据此加载引擎）；
@@ -47,8 +48,54 @@ const THREADS_MARKER: String = "const GODOT_THREADS_ENABLED = true;"
 
 ## 判别力自证用的假名字：它必须被判为「不存在」，否则存在性检查恒真。
 const BOGUS_PRODUCT: String = "index_not_exported.wasm"
-## 本文件全部用例跑完应有的断言条数（实测 23）。少一条就说明某个用例中途没跑完 —— 见 _finish()。
-const MIN_ASSERTIONS: int = 20
+
+## PET-58 件 ④：pck 的**目录索引是明文路径串**，故可直接搜字节。
+##
+## 下列串是「非运行时目录被卷进包」的判据，一律**不带 `res://` 前缀** ——
+## 索引里同一条路径会出现两种写法（`res://tests/x.gd` 与 remap 表里的 `tests/x.gd.remap`），
+## 不带前缀的串两种都能命中，带前缀的只能命中前一种。
+##
+## 各条在本工程的可观测性（决定反向对照时谁会真的变红）：
+##   build/web/       **可观测**。导出产物落在 res:// 内，一次 --import 会在 build/web/ 生成
+##                    .import 旁挂文件，下一次导出就把上一轮的 png/import 一起包进来
+##                    （PET-57 实测 pck 364340 → 388432，+24092，且逐轮增长）。
+##   .godot/imported/ **可观测**。上一条那些 png 被导入后生成的 .ctex 缓存。
+##   tests/           **可观测**。未排除时实测 75 条引用（.gd / .gdc / .gd.remap）。
+##   tools/godot/     预防性。本工程 tools/ 下只有 3 个 .py（不是资源，本就不会被扫进来），
+##                    真实的 tools/godot/editor_data/*.tres 只在 D:\GameDev\PixelFusion 存在，
+##                    PET-57 在那里实测到 2 条 res://tools/ 引用（含用户既有的编辑器设置）。
+##   docs/            预防性。.md 本就不被 all_resources 认作资源，排除是把策略写死。
+##   assets/_review/  预防性。07_ASSET_PIPELINE 的送审暂存区，今天还没有素材进去。
+const FORBIDDEN_PCK_MARKERS: PackedStringArray = [
+	"build/web/",
+	".godot/imported/",
+	"tests/",
+	"tools/godot/",
+	"docs/",
+	"assets/_review/",
+]
+
+## 排除**过头**比泄漏更糟 —— 它会把运行时真正要用的东西一起扫掉，而产物仍然「导出成功」。
+## 故这一组必须仍然**出现**在 pck 里，作为「过滤只减了份量、没减功能」的正面证据。
+##
+## ⚠ 与任务卡的一处**受测事实修正**：卡里写「不得出现 `res://.godot/`」，但实测（Godot 4.7.1）
+## 正确导出的 pck 里**必然**有 `res://.godot/exported/<N>/export-<md5>-<name>.scn`
+## —— 那是导出器自己的转换产物（场景转 .scn、资源转 .res 后存这里，remap 表再指回原路径），
+## **不是**本地缓存。一刀切禁 `res://.godot/` 会让断言在正确实现下也恒红。
+## 故禁的是 `.godot/` 下**除 exported/ 外**的缓存面；`.godot/` 本来就不带前缀出现在索引里
+## （见 FORBIDDEN_PCK_MARKERS 的说明），所以这里也用不带前缀的写法。
+const REQUIRED_PCK_MARKERS: PackedStringArray = [
+	"res://scripts/",                        # GDScript 本体
+	"res://scenes/",                         # 场景源
+	"res://.godot/exported/",                # 导出器的转换产物，必须留
+	".godot/global_script_class_cache.cfg",  # 运行时靠它解析 class_name
+	".godot/uid_cache.bin",
+]
+## 判别力自证用的假路径串：扫描函数必须判它「不存在」，否则上面那些「不得出现」恒真。
+const BOGUS_PCK_MARKER: String = "res://definitely_not_packed_9f3a/"
+
+## 本文件全部用例跑完应有的断言条数（PET-58 件 ④ 后实测 36）。少一条就说明某个用例中途没跑完 —— 见 _finish()。
+const MIN_ASSERTIONS: int = 33
 
 var _ctx: RefCounted = null
 var _lines: Array[String] = []
@@ -59,6 +106,7 @@ func _initialize() -> void:
 	var html: String = _read_text(BUILD_DIR.path_join(HTML_NAME))
 	_check_products()
 	_check_html_references(html)
+	_check_pack_exclusions(_read_pck_bytes())
 	_check_discrimination(html)
 	_finish()
 
@@ -103,7 +151,25 @@ func _check_html_references(html: String) -> void:
 		_ctx.equal(actual, declared, "%s 的磁盘体积应与 index.html 声明的一致" % name)
 
 
-## 判别力自证（09 §4）：存在性 / 引用 / 体积三类断言各配一次「换了就该判假」的自检。
+## PET-58 件 ④：pck 里该有的在、不该有的不在。
+##
+## 「该有的在」不是凑数 —— 它和「不该有的不在」互相兜底：一个恒真的扫描会让前半组全红，
+## 一个恒假的扫描会让后半组全红，两者都在就不可能同时全绿。这也顺带证明
+## `export_presets.cfg` 的 exclude_filter 没把运行时资源误伤掉。
+func _check_pack_exclusions(pck: PackedByteArray) -> void:
+	_ctx.begin_case("Web 导出冒烟 · pck 不得卷入非运行时目录（PET-58 件 ④）")
+	if not _ctx.check(pck.size() > 0,
+			"%s 应可读且非空（目录索引是明文路径串，可直接搜字节）" % PCK_NAME):
+		return
+	for marker: String in FORBIDDEN_PCK_MARKERS:
+		_ctx.check(not _pck_has_marker(pck, marker),
+			"%s 的路径索引里不得出现 %s —— 该目录不是运行时资源" % [PCK_NAME, marker])
+	for marker: String in REQUIRED_PCK_MARKERS:
+		_ctx.check(_pck_has_marker(pck, marker),
+			"%s 里仍应保留 %s —— 排除过头会打断运行时，不只是瘦身" % [PCK_NAME, marker])
+
+
+## 判别力自证（09 §4）：存在性 / 引用 / 体积 / pck 路径四类断言各配一次「换了就该判假」的自检。
 ## 缺了这一段，上面全绿也可能只是因为检查函数恒真。
 func _check_discrimination(html: String) -> void:
 	_ctx.begin_case("Web 导出冒烟 · 断言的判别力（不是恒真）")
@@ -112,6 +178,8 @@ func _check_discrimination(html: String) -> void:
 	_ctx.check(not html.contains(BOGUS_PRODUCT), "index.html 不应引用不存在的产物名")
 	_ctx.check(not html.contains("const GODOT_THREADS_ENABLED = false;"),
 		"线程开关的断言必须能区分 true / false —— 否则上面那条只是「字符串在不在」")
+	_ctx.check(not _pck_has_marker(_read_pck_bytes(), BOGUS_PCK_MARKER),
+		"pck 扫描必须判「不存在的路径串」为不存在 —— 否则件 ④ 那组断言恒绿")
 
 
 ## 文件字节数。不存在或打不开返回 -1（区别于「存在但为 0 字节」）。
@@ -122,6 +190,49 @@ func _size_of(path: String) -> int:
 	var size: int = int(file.get_length())
 	file.close()
 	return size
+
+
+## pck 整包按字节读出（文件头是 `GDPC` 魔数，目录索引就在前半段）。
+##
+## 走**字节**而不是先转 String：pck 里混着二进制载荷，
+## `get_string_from_ascii()` 实测在第一个 NUL 处就截断了（转换后只剩几十字节），
+## 于是每条「不得出现」都恒绿 —— 一个恒真的空扫描。字节比较没有这个失真。
+func _read_pck_bytes() -> PackedByteArray:
+	var file: FileAccess = FileAccess.open(BUILD_DIR.path_join(PCK_NAME), FileAccess.READ)
+	if file == null:
+		return PackedByteArray()
+	var bytes: PackedByteArray = file.get_buffer(int(file.get_length()))
+	file.close()
+	return bytes
+
+
+## 在整包字节里找一段 ASCII 路径串。
+##
+## 用原生 `PackedByteArray.find()`（底层是 memchr）逐个跳候选位置，而不是在 GDScript 里
+## 逐字节 for —— 反向对照时包有 3.6 MB，逐字节循环会慢到让冒烟变成一次等待。
+## 首字节命中后再比末字节、最后才进内层循环，绝大多数候选在第一跳就被排除。
+func _pck_has_marker(pck: PackedByteArray, marker: String) -> bool:
+	var pattern: PackedByteArray = marker.to_ascii_buffer()
+	var length: int = pattern.size()
+	if length == 0:
+		return true
+	var last_start: int = pck.size() - length
+	if last_start < 0:
+		return false
+	var head: int = pattern[0]
+	var tail: int = pattern[length - 1]
+	var at: int = pck.find(head, 0)
+	while at >= 0 and at <= last_start:
+		if pck[at + length - 1] == tail:
+			var matched: bool = true
+			for offset: int in range(1, length - 1):
+				if pck[at + offset] != pattern[offset]:
+					matched = false
+					break
+			if matched:
+				return true
+		at = pck.find(head, at + 1)
+	return false
 
 
 ## 读文本文件。读不到返回空串。

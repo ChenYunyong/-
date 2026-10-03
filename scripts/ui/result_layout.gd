@@ -119,7 +119,9 @@ static func narrow_actions_rect(viewport_size: Vector2) -> Rect2:
 
 
 ## 窄屏读数区：填满标题栏与按钮区之间余下的空间。
-## 退化尺寸（180×120 这类）下余量可能为负，夹到 0 —— 读数区消失也比画出负矩形好。
+## 屏幕矮到按钮区顶到标题栏下方时余量转负，夹到 0 —— 读数区消失也比画出负矩形好。
+## 阈值在**高 144**：上沿 32（8+16+8）+ 按钮区 96（44×2+8）+ 贴底 8 + 间距 8。120×180 还剩
+## 36px，故正案例测不到这条分支；真正走到它的取样与断言见 tests/unit/test_result.gd 的 CLAMP_VIEWPORT。
 static func narrow_readout_rect(viewport_size: Vector2) -> Rect2:
 	var bottom: float = narrow_actions_rect(viewport_size).position.y - GAP
 	return Rect2(SAFE_INSET, readout_top(), narrow_action_width(viewport_size),
