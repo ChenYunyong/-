@@ -5,6 +5,47 @@
 
 ## [Unreleased]
 
+### 运行环境事故：Claude runtime 离线导致 PET-38 积压（2026-10-03 第九轮）
+
+**现象**：子任务 PET-38 的 Claude 运行长时间停留在 `queued`，用户询问原因。
+
+**根因**（以 daemon 日志为证）：Claude Code 自动更新后，把启动器从 `D:\OpenClaw\npm-global`
+（Multica daemon **钉住**的路径，且在 PATH 中排在真正的 npm 目录之前）搬到了
+`C:\Users\20703\AppData\Roaming\npm`。daemon 每 5–10 分钟重试版本探测，每次都失败：
+
+```
+WRN re-resolved agent executable failed version detection; keeping pinned path
+    new_path=D:\OpenClaw\npm-global\claude.cmd
+    error="detect version for D:\\OpenClaw\\npm-global\\claude.cmd: exit status 1"
+WRN skip registering runtime name=claude attempts=2
+```
+
+于是 daemon **跳过注册 claude runtime** → 所有绑定该 runtime 的任务（含 PET-38）永久排队。
+
+**处置（DSH 执行）**：在该钉住路径补一个转发 shim `D:\OpenClaw\npm-global\claude.cmd`，
+指向真实的 `C:\Users\20703\AppData\Roaming\npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe`。
+daemon 立即接受：
+
+```
+INF adopted resolved agent executable provider=claude
+    new_path=D:\OpenClaw\npm-global\claude.cmd  version="2.1.288 (Claude Code)"
+```
+
+**遗留（需用户操作）**：claude **runtime 本身仍未注册/心跳** —— `4a169b9b` 状态 `offline`、
+`last_seen=2026-10-02`。注册只在 daemon 启动时发生，因此**需要重启 Multica 桌面端**才能恢复派发。
+DSH **不得**自行终止或重启 multica 进程（会打断其它正在运行的任务，且 AGENTS 明令禁止）。
+
+**给未来 Agent 的排查顺序**（下次再遇到 Claude 任务长期 `queued`）：
+
+1. `multica daemon status --output json` → 看 `skipped_agents`
+2. `daemon.log` → 搜 `skip registering runtime name=claude`
+3. `multica runtime list` → 看 claude runtime 的 `status` 与 `last_seen`
+4. `multica agent tasks <claude-agent-id> --limit 3` → 确认 run 是否卡在 `queued`
+
+> ⚠ **`daemon.log` 不带日期**，只按 `HH:MM:SS` 过滤会把历史条目混进来（本次排查中差点据此得出
+> 「daemon 正在跑 Claude 任务」的错误结论）。判断新近性请用 `Get-Content -Tail`，或结合
+> 其它带日期的字段。
+
 ### 存储分层：E 盘纳入（2026-10-03 第八轮）
 
 用户 2026-10-03：「可以，不用清理，你自行判断，有些东西也可以放到 E 盘中，你觉得可行的话」。
