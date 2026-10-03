@@ -1,6 +1,6 @@
 # 09 — 测试规范（TEST STANDARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.2**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.3**｜维护者 DSH
 > **「看起来能跑」不算完成。**
 
 ## 1. 测试层级
@@ -83,8 +83,7 @@ D:\GameDev\PixelFusion\tests\output
   - **命令**（逐条跑，**不加** `--headless`）：
 
     ```
-    tools\godot\Godot_v4.7.1-stable_win64_console.exe --path D:\GameDev\PixelFusion --script res://tests/unit/render_shadow_probe.gd
-    tools\godot\Godot_v4.7.1-stable_win64_console.exe --path D:\GameDev\PixelFusion --script res://tests/unit/render_highlight_probe.gd
+    tools\godot\Godot_v4.7.1-stable_win64_console.exe --path D:\GameDev\PixelFusion --script res://tests/unit/run_render_probes.gd
     ```
 
 ## 5. 完成定义（Definition of Done）
@@ -122,3 +121,9 @@ TEST REPORT
 - 禁止跳过失败测试直接交付。
 - 禁止为了让测试通过而放宽断言而不说明。
 - 禁止把测试写成永远 pass 的空壳。
+
+> **v0.1.3 修订（2026-10-03）**：原 `render_shadow_probe.gd` 与 `render_highlight_probe.gd` 已合并为
+> 单一聚合入口 `tests/unit/run_render_probes.gd`（一次运行、汇总退出码；基建拆到
+> `tests/unit/render_probe_harness.gd` 以守住 `02 §4` 的 300 行上限）。
+> 上面的命令已同步；由 PET-39 交付时发现并报备，DSH 修正。
+> 注意：`12_CHANGELOG.md` 里提到旧文件名的**历史条目不改** —— 变更日志是只追加的历史记录。

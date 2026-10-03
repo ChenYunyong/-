@@ -5,6 +5,28 @@
 
 ## [Unreleased]
 
+### 文档陈旧项修正（PET-39 报备，DSH 执行）— 2026-10-03
+
+PET-39 交付时报备了两处**指向已删文件**的规范条目（`docs/**` 仅 DSH 可改，故它未擅动）。
+
+#### Fixed
+- `09_TEST_STANDARD.md` → **v0.1.3**：§4 的两条探针命令（`render_shadow_probe.gd` /
+  `render_highlight_probe.gd`）本批已合并为单一聚合入口，命令改为
+  `--script res://tests/unit/run_render_probes.gd`，并补修订说明。
+- `06_UI_UX_STANDARD.md` → **v0.1.7**：§2.2 末尾的实测依据指针由已删的 `render_shadow_probe.gd`
+  改为 `run_render_probes.gd`。
+
+#### Decisions
+- `12_CHANGELOG.md` 中提及旧文件名的**历史条目保持原样**：变更日志是只追加的历史记录，
+  改历史会让「当时到底改了什么」失真。陈旧引用只在**规范性文档正文**里修正。
+
+#### Open（已授权，交由 Claude 在 PET-39 内完成）
+- `scripts/core/data_registry.gd` 的 `list_ids()` 契约违反（`Array[StringName].sort()` 比的是驻留指针而非字典序），
+  一行修法已授权并入本批。
+- `scripts/data/palette_theme.gd:127` 注释仍指向已删的 `render_shadow_probe.gd`。
+- `tests/unit/run_tests.gd` 报告表头硬编码任务号，应改为运行期传入。
+
+
 ### S1-A 骨架交付的规范裁定与修正（2026-10-03 第十二轮）
 
 PET-38（S1-A：`project.godot` + 五个 Autoload + 六状态机 + Palette/Theme）回报中列出 5 项偏离。

@@ -1,6 +1,6 @@
 # 06 — UI / UX 规范（UI & UX STANDARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.6**｜维护者 DSH（协同 Codex Visual Reviewer）
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.7**｜维护者 DSH（协同 Codex Visual Reviewer）
 > 本文件是 UI 实现的验收依据。所有数值为逻辑像素（基于 320×180 基准，双端整数倍缩放）。
 
 ## 1. 全局
@@ -51,7 +51,7 @@
 `border_width_right/bottom = 1`、`expand_margin_right/bottom = 1`）由场景叠在最外，**面板自身不带阴影**。
 **否决 (乙)**「让外框自己承担、右下各多 1px `BROWN`」：那会改掉本节指定的 `NAVY_900`，
 且 `BROWN` 深边压在 `BROWN` 外框上根本读不出阴影。
-接线属 S1-05（`scenes/**`）；实测依据 `tests/unit/render_shadow_probe.gd`。
+接线属 S1-05（`scenes/**`）；实测依据 `tests/unit/run_render_probes.gd`（聚合入口，见 `09_TEST_STANDARD.md` §4）。
 
 > ⚠ `StyleBoxFlat.shadow_*` **不可用**（v0.1.5 像素级实测）：`shadow_size = 0` 时**一个阴影像素都不画**，
 > 且 `shadow_offset` 同时失效；`shadow_size > 0` 则必然带出与 `shadow_size` 等宽的半透明羽化带。
