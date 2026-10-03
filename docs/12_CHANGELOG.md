@@ -5,6 +5,25 @@
 
 ## [Unreleased]
 
+### S1-11 交付复核 + 全局类缓存假红规则（DSH）— 2026-10-03
+
+#### Fixed
+- `09_TEST_STANDARD.md` → **v0.1.4**：新增验证纪律 —— **新增带 `class_name` 的文件后，必须先 `--headless --import`
+  刷新 `.godot/global_script_class_cache.cfg`，再跑套件**。该缓存不受 `git checkout` / `cherry-pick` 影响，
+  会让既有脚本 `extends` 新类时全线 `Parse Error: Could not find base class`，表现为**环境假红**。
+  同时写明判别特征（失败面大得不合理、**总断言数骤降**）与「打回前必须有受控对照」的反向纪律，
+  以及新脚本的 `.gd.uid` 必须随提交入库。
+- `11_TASK_BOARD.md` → **v0.1.4**：S1-11 由 `IN_PROGRESS` 转 `ACCEPTED`。
+
+#### Notes
+- **本轮差点误打回。** DSH 在工作树里直接复跑，6/6 场景冒烟全红、探针 284 → 68，一度判为「严重回归」。
+  根因是上述缓存未刷新（`.godot/` 早于新脚本）。刷新后**全绿**：unit 1327/1327 · integration 19/19 ·
+  六场景冒烟 544 · input_smoke 41/41 · 探针 284/284，0 失败、0 `SCRIPT ERROR`。教训已写进 `09 §4`。
+- **交付卫生（须避免的模式）**：PET-53 交付时报称「工作留在 `agent/claude-lead-developer/817a02e05277`」，
+  但那个分支上**没有任何提交** —— 16 个文件全是 worktree 脏改动。因重新派发的 Agent 会拿到**另一个克隆**
+  （看不到该工作），DSH 只能代为提交（`114dc4f`）。**交付必须包含一次真实提交**，否则「交付」只是工作树里的临时状态。
+
+
 ### 规范一致性修复：`03 §8` 触摸口径 + `11` 任务板状态回填（DSH）— 2026-10-03
 
 #### Fixed

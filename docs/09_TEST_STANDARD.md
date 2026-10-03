@@ -1,6 +1,6 @@
 # 09 — 测试规范（TEST STANDARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.3**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.4**｜维护者 DSH
 > **「看起来能跑」不算完成。**
 
 ## 1. 测试层级
@@ -85,6 +85,26 @@ D:\GameDev\PixelFusion\tests\output
     ```
     tools\godot\Godot_v4.7.1-stable_win64_console.exe --path D:\GameDev\PixelFusion --script res://tests/unit/run_render_probes.gd
     ```
+
+- **新增 `class_name` / 新脚本后，验证前必须先刷新全局类缓存**（v0.1.4，2026-10-03 实例 —— 差点造成误打回）：
+  Godot 把 `class_name` 的全局注册落在 **`.godot/global_script_class_cache.cfg`**，而 `.godot/` 被 gitignore。
+  这份缓存**不会**因为 `git checkout` / `cherry-pick` 拉进新脚本而自动更新 —— 于是新增一个带 `class_name` 的文件、
+  并让既有脚本 `extends` 它之后，**在工作树里直接跑测试会全线炸**：
+  `SCRIPT ERROR: Parse Error: Could not find base class "X"` → 脚本加载失败 → 场景 `_ready()` 不跑 →
+  冒烟用例**总数骤降**、探针大面积失败。**这是环境假红，不是代码缺陷。**
+  - **验证任何「新增了带 `class_name` 的文件」的批次之前，先跑一次**：
+
+    ```
+    tools\godot\Godot_v4.7.1-stable_win64_console.exe --headless --path D:\GameDev\PixelFusion --import
+    ```
+
+    然后确认缓存里**已出现新类名**：`Select-String .godot\global_script_class_cache.cfg -Pattern '<类名>'`。
+  - **判别特征**：失败面「大得不合理」（例如 6/6 场景冒烟全红，且**总断言数骤降**而非个别断言变红），
+    且日志里有 `Could not find base class` —— 先怀疑缓存，**别急着打回**。
+  - **反向纪律**：打回前必须确认**同一命令在同一棵树上、该改动之前是绿的**（受控对照）。
+    没有这个对照，就无法区分「被测改动导致」与「环境导致」。
+  - **`.gd.uid` 必须随提交入库**：新脚本导入时 Godot 会生成 `<脚本>.gd.uid`；本仓库既有 52 个 `.uid` 已入库，
+    新脚本的 `.uid` 一并提交，保证新旧脚本约定一致、UID 不因再次导入而漂移。
 
 ## 5. 完成定义（Definition of Done）
 

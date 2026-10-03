@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.3**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.4**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -87,7 +87,7 @@
 | S1-08 | COMBAT 场景（占位战场 + 紧凑 HUD） | Claude | S1-07 | `ACCEPTED`（PET-43 · PET-47 修订 · PET-46 裁定已写回 06） |
 | S1-09 | REWARD 场景（3 选项 + 跳过） | Claude | S1-08 | `ACCEPTED`（PET-45 · PET-49 裁定已写回 06） |
 | S1-10 | RESULT 场景（结算 + 返回） | Claude | S1-09 | `ACCEPTED`（PET-48 · PET-51 裁定已写回 06） |
-| S1-11 | 双端输入适配（键鼠 + 触摸，44px 命中） | Claude | S1-10 | `IN_PROGRESS`（PET-53） |
+| S1-11 | 双端输入适配（键鼠 + 触摸，44px 命中） | Claude | S1-10 | `ACCEPTED`（PET-53 · 统一输入层 6 文件 + 7 场景改造；交付时未提交，DSH 代为提交 `114dc4f`） |
 | S1-08R | 收尾修复：COMBAT 冒烟 exit-notice 用例已被证伪，替换为 REWARD/RESULT 真实路由断言 | Claude | S1-08 | `ACCEPTED`（PET-50 · COMBAT 冒烟 103/103 转绿） |
 | S1-09R | 规范一致性修复：REWARD 选项卡补 `PanelShadow` 叠层（Codex 裁定选 A） | Claude | S1-09 | `IN_PROGRESS`（PET-52） |
 | S1-12 | 状态循环集成测试（10 次循环、防重入、不自动推进） | Claude | S1-10 | `TODO` |
