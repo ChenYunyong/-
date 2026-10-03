@@ -13,10 +13,11 @@
 
 extends Control
 
-## 提示面板文案。COMBAT 属 S1-08，本批尚未实现。
+## 提示面板文案。COMBAT 已由 S1-08 落地，这里的提示只在**路由故障**时出现
+## （场景文件缺失 / 路径写错），措辞与 main_menu.gd 的同名提示对齐。
 const NOTICE_TITLE: String = "尚未实现"
 const NOTICE_DISMISS: String = "点击任意处关闭"
-const NOTICE_COMBAT: String = "「开始战斗」要进入战斗场景（COMBAT），该场景属 S1-08、尚未实现，本次留在整备场景。"
+const NOTICE_COMBAT: String = "战斗场景（COMBAT）的路由未就绪，本次留在整备场景。"
 
 @onready var _backdrop: ColorRect = %Backdrop
 @onready var _region_left: Control = %RegionLeft
@@ -98,12 +99,12 @@ func _on_info_bar_gui_input(event: InputEvent) -> void:
 
 ## 「开始战斗」：请求进入 COMBAT（03 §1 状态图 PREPARATION → COMBAT，硬规则 R1）。
 ##
-## COMBAT 属 S1-08、尚未实现，验收要求此时**停在 PREPARATION 并给出可读提示**。
-## 这里先查路由是否就绪，而不是闭眼调用 request_start_combat()：GameFlow 的提交点
-## 先落状态再路由，对未实现的场景只打印一行、当前场景不动（见 game_flow.gd 的 _route_to_scene），
+## S1-08 落地后这条路由已经通了，正常情况直接放行。这里仍然先查路由是否就绪，
+## 而不是闭眼调用 request_start_combat()：GameFlow 的提交点先落状态再路由，
+## 对缺失的场景只打印一行、当前场景不动（见 game_flow.gd 的 _route_to_scene），
 ## 直接调用会让状态与场景脱钩 —— 玩家看到的是「按了没反应」，那正是验收不接受的静默无效。
-## 查的是 GameFlow 自己登记的 SCENE_ROUTES（唯一路由来源），不在这里另抄一份路径；
-## 待 S1-08 落地、场景文件存在后，本判断自动放行，无需回头改这里。
+## 查的是 GameFlow 自己登记的 SCENE_ROUTES（唯一路由来源），不在这里另抄一份路径。
+## 它现在守的是真正的路由故障（场景文件缺失 / 路径写错），而不是「尚未实现」。
 func _on_start_combat_pressed() -> void:
 	var target_path: String = GameFlow.get_scene_path_for(GameFlow.GameState.COMBAT)
 	if target_path.is_empty() or not ResourceLoader.exists(target_path):

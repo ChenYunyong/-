@@ -20,6 +20,9 @@ extends SceneTree
 const CONTEXT_PATH: String = "res://tests/unit/test_context.gd"
 const CLOCK_PATH: String = "res://tests/unit/test_clock.gd"
 const PREP_SCENE_PATH: String = "res://scenes/preparation/preparation.tscn"
+## S1-08 起「开始战斗」会真的路由到这里。刻意写死路径而不是问 GameFlow 要 ——
+## 本用例要证的就是「路由表登记的就是这个文件」，问了被测实现就成了同义反复。
+const COMBAT_SCENE_PATH: String = "res://scenes/combat/combat.tscn"
 const PREP_SCRIPT_PATH: String = "res://scripts/ui/preparation_screen.gd"
 const LAYOUT_SCRIPT_PATH: String = "res://scripts/ui/preparation_layout.gd"
 const GAME_FLOW_PATH: String = "res://scripts/core/game_flow.gd"
@@ -78,10 +81,12 @@ func _initialize() -> void:
 	await _run_routed_entry_case()
 	_run_region_case()
 	_check_cta_case()
-	_run_click_case()
 	await _run_r1_time_stop_case()
 	await _run_narrow_case()
 	await _run_reentry_case()
+	# 「开始战斗」会把当前场景换成 COMBAT，故必须排在最后 —— 否则后面每个用例的
+	# `current_scene` 都已经不是整备界面，会连锁报一串与它们本身无关的失败。
+	await _run_start_combat_case()
 	_finish()
 
 
@@ -158,9 +163,16 @@ func _check_cta_case() -> void:
 	_ctx.equal(button.get_global_rect().end, action.end, "CTA 右下角必须与 §7 实测的区块右下角重合（实际最小 %s）" % minimum)
 
 
-## 验收要求：COMBAT 未实现，点击 CTA 必须停在 PREPARATION 并给出**可读**提示 —— 不崩、不静默无效。
-func _run_click_case() -> void:
-	_ctx.begin_case("PREPARATION 冒烟 · 点击开始战斗（COMBAT 未实现）")
+## 验收：点击 CTA 必须**真的经 GameFlow 路由进入 COMBAT**（03 §1.1 R1 / R3、06 §10.2）。
+##
+## S1-07 交付时这里断言的是「停在整备界面 + 未实现提示」（当时 combat.tscn 还不存在）。
+## 那条行为随 S1-08 落地而合法失效 —— 它不是被改坏了，而是它守的那个前提没了。
+## 「未实现 → 可读提示」这条路径本身没有失去覆盖：主菜单冒烟的设置 / 退出两条走的是同一套机制，
+## preparation_screen.gd 里那个路由就绪判断也仍然在，它现在守的是真正的路由故障。
+##
+## 本用例必须排在**最后**：它会把当前场景换成 COMBAT。
+func _run_start_combat_case() -> void:
+	_ctx.begin_case("PREPARATION 冒烟 · 点击开始战斗（经路由进入 COMBAT）")
 	var scene: Node = _scene_root()
 	if not _ctx.check(scene != null, "应已进入 PREPARATION 场景"):
 		return
@@ -168,15 +180,34 @@ func _run_click_case() -> void:
 	if not _ctx.check(notice != null, "应有提示面板"):
 		return
 	_ctx.check(not notice.visible, "前置：提示面板初始不可见")
+	var flow: Node = _autoload("GameFlow")
+	if not _ctx.check(flow != null, "GameFlow Autoload 应存在"):
+		return
+	_ctx.equal(String(flow.call(&"get_scene_path_for", _state("COMBAT"))), COMBAT_SCENE_PATH,
+		"按钮将要走的正是路由表登记的那条路径")
+
+	# R1 的反向核对落在这里：停留 600 秒零切换（上一条用例）证明「不会自动推进」，
+	# 显式输入恰好产生一次切换证明「入口没坏」。两者缺一，另一条都可能是空断言。
+	var transitions: Array = []
+	var handler: Callable = func(from, to) -> void: transitions.append([from, to])
+	flow.connect(&"state_changed", handler)
 
 	_press(_find(scene, "ButtonStartCombat") as Button)
-	_ctx.check(notice.visible, "COMBAT 未实现时点击 CTA 必须给出提示，不得静默无效")
-	_check_notice_text(notice, String(_prep_script.NOTICE_COMBAT), "CTA 的提示")
-	_ctx.equal(_state_of_flow(), _state("PREPARATION"), "COMBAT 未实现时状态必须停在 PREPARATION")
-	_ctx.equal(current_scene, scene, "COMBAT 未实现时不得换场景")
+	_ctx.equal(_state_of_flow(), _state("COMBAT"), "点击 CTA 后状态应为 COMBAT")
+	_ctx.equal(transitions.size(), 1, "点击 CTA 应恰好产生一次切换")
+	_ctx.check(not notice.visible, "路由就绪时不得弹出「未实现」提示")
+	flow.disconnect(&"state_changed", handler)
 
-	_dismiss(scene)
-	_ctx.check(not notice.visible, "点击后提示应可关闭（否则它挡住整个整备界面就再也点不动了）")
+	# change_scene_to_file 是延迟落地的，等两帧再看当前场景。
+	await process_frame
+	await process_frame
+	var combat: Node = current_scene
+	if not _ctx.check(combat != null, "切换后应存在当前场景"):
+		return
+	_ctx.equal(combat.scene_file_path, COMBAT_SCENE_PATH, "当前场景应是路由表登记的 COMBAT 路径")
+	_ctx.equal(combat.get_parent(), root, "当前场景应挂在 root 下")
+	_ctx.check(combat.get_script() != null, "COMBAT 场景应挂上自己的脚本")
+	_ctx.check(not is_instance_valid(scene), "切换后旧场景应被释放（不得两份界面同时挂着）")
 
 
 ## R1 回归（验收点名）：PREPARATION 是时间停止的场景 —— 停留 600 模拟秒不得自行进入 COMBAT。
@@ -205,21 +236,10 @@ func _run_r1_time_stop_case() -> void:
 	_ctx.equal(_state_of_flow(), _state("PREPARATION"), "10 分钟后应仍停留在 PREPARATION")
 	_ctx.equal(transitions.size(), 0, "停留期间不应发生任何状态切换（尤其不得进入 COMBAT）")
 	_ctx.equal(current_scene, scene, "停留期间不得换掉场景")
-
-	# 反向核对：不是「入口整个坏掉」才没推进 —— 显式请求必须仍然有效。
-	_ctx.check(bool(flow.call(&"request_start_combat")), "同一个单例上显式请求仍应能进入 COMBAT")
-	_ctx.equal(_state_of_flow(), _state("COMBAT"), "显式请求后状态应为 COMBAT")
-	_ctx.equal(transitions.size(), 1, "显式请求应恰好产生一次切换")
-
-	# 还原：COMBAT 未实现，场景没有真的换掉，但状态得推回去。
-	# 注意 COMBAT → PREPARATION **不是**合法边（03 §1 的状态图要经 REWARD），
-	# 直接切会被 ALLOWED_TRANSITIONS 拒掉，后续用例就会带着 COMBAT 跑。
 	flow.disconnect(&"state_changed", handler)
-	_ctx.check(bool(flow.call(&"change_state", _state("REWARD"))), "COMBAT → REWARD 应被接受")
-	_ctx.check(bool(flow.call(&"change_state", _state("PREPARATION"))), "REWARD → PREPARATION 应被接受")
-	await process_frame
-	await process_frame
-	_ctx.equal(_state_of_flow(), _state("PREPARATION"), "已还原到 PREPARATION")
+	# 反向核对（「入口没坏，只是没被触发」）随 S1-08 落地搬到了最后一条用例：
+	# request_start_combat() 现在会真的换掉场景，留在这里会把后面每条用例的前提掀掉。
+	# 那条用例按的是真实 CTA、断言恰好一次切换，判别力不降。
 
 
 ## 06 §7.1：折叠只改变布局，**不改变任何玩法规则与状态流**。这里用显式调用代替改窗口尺寸，
@@ -275,23 +295,13 @@ func _run_reentry_case() -> void:
 	_ctx.equal(root.get_child_count(), base, "释放后不应残留节点")
 
 
-func _check_notice_text(notice: Control, expected: String, label: String) -> void:
-	var message: Label = _find(notice, "Message") as Label
-	if not _ctx.check(message != null, "%s 应有正文" % label):
-		return
-	_ctx.check(message.text.contains(tr(expected)), "%s 应含 `%s`（实际：%s）" % [label, tr(expected), message.text])
-	_ctx.check(_has_cjk(message.text), "%s 必须是中文（屏幕上要读得懂）" % label)
-
-
+## 提示文案的三条核对（正文存在 / 含预期中文 / 确实是中文）随 S1-08 一并移交：
+## 整备界面现在只有「路由故障」一个提示出口，而那条路在冒烟里跑不到。
+## 承接它们的是 tests/integration/combat_smoke.gd —— COMBAT 的 REWARD / RESULT 出口当前仍是
+## 「未实现 → 可读提示」，那条路真的走得通，断言在那边才不是空转。
 func _press(button: Button) -> void:
 	if button != null:
 		button.emit_signal(&"pressed")
-
-
-func _dismiss(scene: Node) -> void:
-	var event: InputEventMouseButton = InputEventMouseButton.new()
-	event.pressed = true
-	scene.call(&"_input", event)
 
 
 func _scene_root() -> Node:
@@ -303,14 +313,6 @@ func _state_of_flow() -> int:
 	if flow == null:
 		return -1
 	return int(flow.call(&"get_state"))
-
-
-func _has_cjk(text: String) -> bool:
-	for index: int in text.length():
-		var code: int = text.unicode_at(index)
-		if code >= 0x4E00 and code <= 0x9FFF:
-			return true
-	return false
 
 
 func _collect_buttons(node: Node, found: Array[Button]) -> void:
@@ -344,7 +346,7 @@ func _finish() -> void:
 	_lines.append("- 单元测试：见 unit_tests.log")
 	_lines.append("- 集成测试：见 unit_tests.log")
 	_lines.append("- 场景冒烟：%d/%d" % [_ctx.passed, _ctx.passed + _ctx.failed])
-	_lines.append("- 手动场景：PREPARATION 经路由进入 · 五分区矩形 · CTA 唯一性 · 点击提示 · R1 停留 10 分钟 · 窄屏折叠 · 重复进入")
+	_lines.append("- 手动场景：PREPARATION 经路由进入 · 五分区矩形 · CTA 唯一性 · R1 停留 10 分钟 · 窄屏折叠 · 重复进入 · 点击开始战斗(→COMBAT)")
 	if _ctx.failures.is_empty():
 		_lines.append("- 失败项：无")
 	else:
