@@ -40,8 +40,14 @@ const EXPECTED_WIDE: Array[Rect2] = [
 ## 06 §8：状态带占画面高约 25%。窄屏下它是上限（§7.1「不得挤掉战场可读性」）。
 const STATUS_BAR_SHARE: float = 0.25
 
-## 06 §8 点名的状态 / 预览项，独立复写。
-const READOUT_CAPTIONS: PackedStringArray = ["波次", "CORE", "热量 / 能量", "待发射队列"]
+## 06 §8.1（v0.1.10，Codex 裁定）的 5 个只读读数块，独立复写一遍
+## （期望值若与被测实现同源，实现改错时两边一起错）。
+const READOUT_CAPTIONS: PackedStringArray = ["波次", "CORE", "热量", "能量", "队列"]
+const READOUT_VALUES: PackedStringArray = ["1/1", "100%", "0%", "0%", "0项"]
+## 06 §8.1 硬规则 1：热量与能量必须分格，故各自是一个独立节点。
+const SPLIT_READOUTS: PackedStringArray = ["Heat", "Energy"]
+## 06 §8.1 硬规则 2：CORE 用百分比读数，不用自然语言状态词。
+const CORE_VALUE: String = "100%"
 
 ## 两个出口的提示必须让玩家看得出「要往哪去」。这里只核关键词，不核整句 ——
 ## 整句由实现自己定，核整句就成了同义反复。
@@ -69,6 +75,7 @@ func _initialize() -> void:
 	await _run_routed_entry_case()
 	_run_region_case()
 	_run_status_bar_case()
+	_run_readout_case()
 	_run_exit_notice_case()
 	_run_narrow_case()
 	_finish()
@@ -191,6 +198,58 @@ func _run_status_bar_case() -> void:
 	_ctx.check(fill.get_index() < edge.get_index(), "上沿应画在底色之上，否则会被盖掉")
 
 
+## 06 §8.1（v0.1.10，Codex 裁定）：读数区恰好 5 个只读读数块，`热量` 与 `能量` 各自独立成块
+## （Heat 橙 / Energy 蓝语义不同，合并成一格 `0% / 0%` 时告警读不出是哪个系统），
+## CORE 改用可比较的百分比读数，且本批新增**零个**可点击控件。
+##
+## 这里量的是经路由进入后真实装配出来的节点；「这 5 格真的被画到屏幕上」归
+## tests/unit/combat_probe.gd 的像素取证（09 §4：视觉结果不能只断言配置项）。
+func _run_readout_case() -> void:
+	_ctx.begin_case("COMBAT 冒烟 · 读数区 5 个只读读数块（06 §8.1）")
+	var scene: Node = current_scene
+	if not _ctx.check(scene != null, "应已进入 COMBAT 场景"):
+		return
+	var row: Node = _find(scene, "ReadoutsRow")
+	if not _ctx.check(row != null, "状态带应有读数行的容器 ReadoutsRow"):
+		return
+
+	var blocks: Array[Node] = row.get_children()
+	if not _ctx.equal(blocks.size(), READOUT_CAPTIONS.size(),
+			"读数区应恰好 %d 个读数块" % READOUT_CAPTIONS.size()):
+		return
+	for index: int in READOUT_CAPTIONS.size():
+		var block: Node = blocks[index]
+		_ctx.check(block is VBoxContainer,
+			"第 %d 块应是「标题 + 读数」的纵向容器" % (index + 1))
+		var caption: Label = _find(block, "Caption") as Label
+		var value: Label = _find(block, "Value") as Label
+		if not _ctx.check(caption != null and value != null,
+				"第 %d 块应有 Caption 与 Value 两个只读 Label" % (index + 1)):
+			continue
+		_ctx.equal(caption.text, READOUT_CAPTIONS[index], "第 %d 块的 Caption" % (index + 1))
+		_ctx.equal(value.text, READOUT_VALUES[index], "第 %d 块的读数" % (index + 1))
+
+	# 硬规则 1：热量与能量必须分格 —— 是两个不同的节点、且相邻。
+	var heat: Node = _find(row, SPLIT_READOUTS[0])
+	var energy: Node = _find(row, SPLIT_READOUTS[1])
+	if _ctx.check(heat != null and energy != null, "热量与能量应各自有独立的读数块"):
+		_ctx.check(heat != energy, "热量与能量必须是两个不同的节点，不得是同一格的两种说法")
+		_ctx.equal(heat.get_index() + 1, energy.get_index(), "热量与能量应是相邻的两块")
+
+	# 硬规则 2：CORE 用可比较的百分比读数，不用 `完好` 这类自然语言状态词。
+	var core: Node = _find(row, "Core")
+	if _ctx.check(core != null, "应有 CORE 读数块（节点名 Core）"):
+		var core_value: Label = _find(core, "Value") as Label
+		if _ctx.check(core_value != null, "CORE 读数块应有 Value"):
+			_ctx.equal(core_value.text, CORE_VALUE,
+				"CORE 应是百分比读数，不得再用自然语言状态词")
+
+	# 硬规则 3 / 06 §10.3：本批新增零个 Button，整幕仍不得有可点击控件。
+	var buttons: Array[Node] = []
+	_collect_buttons(scene, buttons)
+	_ctx.equal(buttons.size(), 0, "整幕 COMBAT 应仍零 Button（实际：%s）" % _names(buttons))
+
+
 ## 验收：COMBAT → REWARD / COMBAT → RESULT 的**触发入口存在**，但目标场景尚未实现
 ## （REWARD 属 S1-09、RESULT 属 S1-10），故当前只做**可读提示**，不静默无效、也不崩。
 ##
@@ -284,6 +343,15 @@ func _has_no_window_ancestor(node: Node, scene: Node) -> bool:
 			return false
 		current = current.get_parent()
 	return true
+
+
+## 06 §8.1 硬规则 3：本批新增零个 Button。与 _collect_interactive 分开数，
+## 是为了让「零 Button」这条在失败信息里单独可见，而不是混在「可交互控件」里。
+func _collect_buttons(node: Node, found: Array[Node]) -> void:
+	if node is BaseButton:
+		found.append(node)
+	for child: Node in node.get_children():
+		_collect_buttons(child, found)
 
 
 func _collect_labels(node: Node, found: Array[Label]) -> void:
