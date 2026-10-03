@@ -41,7 +41,10 @@
 | S0-20 | `04`/`05` 按参考图实测校准（v0.1.1） | DSH | `REVIEW` | docs/04, docs/05 |
 | S0-21 | 导出模板安装到 D 盘 portable 引擎 | DSH | `TODO`（S1-13 前完成） | `tools/godot/editor_data/export_templates/` |
 | S0-22 | Codex 对 `04/05/06` 的独立视觉审查 | Codex | `ACCEPTED` | 4 项 blocking 全部核验并采纳 |
-| S0-23 | 依审查修正 `04`→v0.1.2 / `06` / `05` | DSH | `REVIEW` | 04/05/06 |
+| S0-23 | 依 Codex 第一轮审查修正 `04`→v0.1.2 | DSH | `ACCEPTED` | 04/05/06 |
+| S0-24 | Codex 第二轮**目视**审查（真读了 A/B/C） | Codex | `ACCEPTED` | 采纳 3 项、3 项过期已提前修完 |
+| S0-25 | 依目视审查修正 `04`→v0.1.3（节点卡 24px / 材质边界 / FX 三层） | DSH | `REVIEW` | 04/05/06 |
+| S0-26 | PREPARATION 外框层 UI 素材（Codex 出稿 → 用户批准） | Codex | `TODO`（Stage 1） | `assets/_review/pending/` |
 
 ### S0 退出条件
 - [ ] 全部文档获用户明确批准
