@@ -1,6 +1,6 @@
 ## combat_smoke.gd
 ## 职责：COMBAT 场景的场景冒烟（09 §1）—— 经真实 GameFlow 路由进入、两块区域的真实矩形、
-##       状态带**不含任何可交互控件**、REWARD / RESULT 两个出口的可读提示路径、
+##       状态带**不含任何可交互控件**、REWARD / RESULT 两个出口的真实路由换场景、
 ##       窄屏下状态带不挤掉战场可读性。**单独进程**运行。
 ## 所属系统：tests（场景冒烟层）
 ## 依赖：test_context, scenes/combat/combat.tscn, scripts/ui/combat_screen.gd
@@ -26,9 +26,16 @@ const LOG_PATH: String = "res://tests/output/combat_smoke.log"
 
 ## 06 §1 基准。所有实测值都以它为参照。
 const REFERENCE_VIEWPORT: Vector2 = Vector2(320.0, 180.0)
-## 06 §7.1 的窄屏取样，与 test_combat.gd 同值但独立复写。
+## 06 §7.1 的窄屏取样（均为竖屏），与 test_combat.gd 独立复写。
 const NARROW_VIEWPORT: Vector2 = Vector2(180.0, 320.0)
-const SHORT_NARROW_VIEWPORT: Vector2 = Vector2(180.0, 120.0)
+## 比基准更矮的窄屏取样（120×180 竖屏）。
+##
+## ⚠ 这里刻意**不**沿用 test_combat.gd / test_reward.gd / test_result.gd 的 `Vector2(180, 120)`：
+## 那个值宽>高，是**横屏**，与它自己的名字和注释（test_result.gd 称其「极矮的竖屏」）不符，
+## 是一处轴序写反。那些用例直接调 `layout.*_rects()`，绕开了 `is_narrow` 这道闸，
+## 所以一直没暴露；本用例是唯一把取样喂给**场景**的（`apply_layout_for` 先问 `is_narrow`），
+## 180×120 会被正确地判成宽屏，于是折叠断言恒假。此处按本意取竖屏的 120×180。
+const SHORT_NARROW_VIEWPORT: Vector2 = Vector2(120.0, 180.0)
 
 ## 06 §8 的实测值，在本文件独立复写一遍（期望值若与被测实现同源，实现改错时两边一起错）。
 ## 下标即 CombatLayout.Region。两块都全宽 —— §8 明写那条带「横贯全宽」。
@@ -49,10 +56,10 @@ const SPLIT_READOUTS: PackedStringArray = ["Heat", "Energy"]
 ## 06 §8.1 硬规则 2：CORE 用百分比读数，不用自然语言状态词。
 const CORE_VALUE: String = "100%"
 
-## 两个出口的提示必须让玩家看得出「要往哪去」。这里只核关键词，不核整句 ——
-## 整句由实现自己定，核整句就成了同义反复。
-const EXPECT_REWARD_KEYWORD: String = "REWARD"
-const EXPECT_RESULT_KEYWORD: String = "RESULT"
+## 03 §1.1 R2 的两个出口各自该去的场景路径，独立复写一遍，不转抄 GameFlow.SCENE_ROUTES ——
+## 期望值若与被测实现同源，路由表被改错时两边一起错，用例就成了同义反复。
+const REWARD_SCENE_PATH: String = "res://scenes/reward/reward.tscn"
+const RESULT_SCENE_PATH: String = "res://scenes/result/result.tscn"
 
 var _ctx: RefCounted = null
 var _scene: PackedScene = null
@@ -76,8 +83,10 @@ func _initialize() -> void:
 	_run_region_case()
 	_run_status_bar_case()
 	_run_readout_case()
-	_run_exit_notice_case()
 	_run_narrow_case()
+	# 两个出口都会把当前场景换掉，故必须排在最后（同 REWARD / RESULT 各自冒烟的排法）——
+	# 否则后面每个用例的 current_scene 都已经不是战斗界面，会连锁报一串与它们本身无关的失败。
+	await _run_exit_case()
 	_finish()
 
 
@@ -250,41 +259,47 @@ func _run_readout_case() -> void:
 	_ctx.equal(buttons.size(), 0, "整幕 COMBAT 应仍零 Button（实际：%s）" % _names(buttons))
 
 
-## 验收：COMBAT → REWARD / COMBAT → RESULT 的**触发入口存在**，但目标场景尚未实现
-## （REWARD 属 S1-09、RESULT 属 S1-10），故当前只做**可读提示**，不静默无效、也不崩。
+## 03 §1.1 R2：COMBAT 的两条出口**各自**只能由特定事件触发 —— 本波清空 → REWARD、
+## CORE 被摧毁 → RESULT；且两条都必须真的经 GameFlow 换掉当前场景（R3）。
 ##
-## 提示刻意做成战场里的只读 Label 而不是模态面板：06 §10.3 禁止 COMBAT 期间弹出
-## 需要玩家即时反应的模态窗口，而这条提示只是告知「出口还没做好」，不该打断观察。
-func _run_exit_notice_case() -> void:
-	_ctx.begin_case("COMBAT 冒烟 · REWARD / RESULT 出口给出可读提示（场景尚未实现）")
-	var scene: Node = current_scene
-	if not _ctx.check(scene != null, "应已进入 COMBAT 场景"):
+## 两个出口都会换掉 current_scene，故必须排在最后（同 REWARD / RESULT 各自冒烟的排法）——
+## 否则后面每个用例的 current_scene 都已经不是战斗界面，会连锁报一串与它们本身无关的失败。
+func _run_exit_case() -> void:
+	await _check_exit(&"on_wave_cleared", "REWARD", REWARD_SCENE_PATH, "本波清空")
+	await _reenter_combat()
+	await _check_exit(&"on_core_destroyed", "RESULT", RESULT_SCENE_PATH, "CORE 被摧毁")
+
+
+## 验一条出口：触发入口存在 → 状态真的切过去 → 当前场景真的来自路由表登记的路径 → 旧场景被释放。
+## 判别力：路由表路径写错、或入口只改状态不换场景，这里都会红。
+func _check_exit(method: StringName, target: String, scene_path: String, label: String) -> void:
+	_ctx.begin_case("COMBAT 冒烟 · %s → %s（03 §1.1 R2）" % [label, target])
+	var combat: Node = current_scene
+	if not _ctx.check(combat != null and combat.scene_file_path == COMBAT_SCENE_PATH,
+			"应已进入 COMBAT 场景（实际 %s）" % _scene_path()):
 		return
-	for entry: Array in [
-		[&"on_wave_cleared", _state("REWARD"), EXPECT_REWARD_KEYWORD, "本波清空 → REWARD"],
-		[&"on_core_destroyed", _state("RESULT"), EXPECT_RESULT_KEYWORD, "CORE 被摧毁 → RESULT"],
-	]:
-		var target: int = int(entry[1])
-		var label: String = String(entry[3])
-		_ctx.check(String(_flow_script.SCENE_ROUTES.get(target, {}).get("path", "")).is_empty()
-				or not ResourceLoader.exists(String(_flow_script.SCENE_ROUTES[target]["path"])),
-			"前置：%s 的目标场景当前确实尚未实现（否则本用例会空转）" % label)
-		if not _ctx.check(scene.has_method(entry[0]), "%s 的触发入口应存在" % label):
-			continue
+	if not _ctx.check(combat.has_method(method), "%s 的触发入口应存在" % label):
+		return
+	combat.call(method)
+	_ctx.equal(_state_of_flow(), _state(target), "%s 后状态应为 %s" % [label, target])
+	await process_frame
+	await process_frame
+	_ctx.equal(_scene_path(), scene_path, "%s 后当前场景应来自路由表登记的路径" % label)
+	_ctx.check(not is_instance_valid(combat), "切换后旧场景应被释放（不得两份界面同时挂着）")
 
-		var notice: Label = _find(scene, "NoticeLabel") as Label
-		if not _ctx.check(notice != null, "应有可读提示控件"):
-			continue
-		notice.visible = false
 
-		scene.call(entry[0])
-		_ctx.check(notice.visible, "%s 必须给出提示，不得静默无效" % label)
-		_ctx.check(notice.text.contains(String(entry[2])),
-			"%s 的提示应指明要去的场景（应含 `%s`，实际：%s）" % [label, entry[2], notice.text])
-		_ctx.check(_has_cjk(notice.text), "%s 的提示必须是中文（屏幕上要读得懂）" % label)
-		_ctx.equal(_state_of_flow(), _state("COMBAT"), "%s 在目标场景未实现时状态必须停在 COMBAT" % label)
-		_ctx.equal(current_scene, scene, "%s 在目标场景未实现时不得换场景" % label)
-		_ctx.check(_has_no_window_ancestor(notice, scene), "%s 的提示不得是模态窗口（06 §10.3）" % label)
+## 第一条出口把场景换到了 REWARD；验第二条之前先回 COMBAT：
+## REWARD → PREPARATION 是 03 §1 允许的边，再由 R1 指定的**唯一**入口 request_start_combat() 进战斗。
+func _reenter_combat() -> void:
+	var flow: Node = _autoload("GameFlow")
+	flow.call(&"change_state", _state("PREPARATION"))
+	await process_frame
+	await process_frame
+	flow.call(&"request_start_combat")
+	await process_frame
+	await process_frame
+	_ctx.begin_case("COMBAT 冒烟 · 复位：REWARD → PREPARATION →（request_start_combat）→ COMBAT")
+	_ctx.equal(_scene_path(), COMBAT_SCENE_PATH, "验完第一条出口后应能再次经路由回到 COMBAT")
 
 
 ## 06 §7.1：折叠只改变布局，**不改变任何玩法规则与状态流**；
@@ -308,8 +323,10 @@ func _run_narrow_case() -> void:
 		_ctx.check(bar.size.y <= sample.y * STATUS_BAR_SHARE + 0.001,
 			"%s：状态带不得超过画面高的 25%%（实际 %.0f%%，§7.1 不得挤掉战场可读性）" % [
 				sample, bar.size.y / sample.y * 100.0])
-		_ctx.equal(bar.position.y, battlefield.end.y, "%s：两块区域应首尾相接" % sample)
-		_ctx.equal(bar.end.y, sample.y, "%s：状态带应贴到画面底" % sample)
+		# `.end` 是 Rect2 的属性，Control 上没有 —— 必须经 get_rect() 取（写 `battlefield.end`
+		# 会在运行期抛错，把本用例从这一行起整个中断，后面几条断言一条都不会跑）。
+		_ctx.equal(bar.position.y, battlefield.get_rect().end.y, "%s：两块区域应首尾相接" % sample)
+		_ctx.equal(bar.get_rect().end.y, sample.y, "%s：状态带应贴到画面底" % sample)
 		_ctx.check(not battlefield.get_global_rect().intersects(bar.get_global_rect()),
 			"%s：两块区域不得重叠" % sample)
 
@@ -329,20 +346,6 @@ func _collect_interactive(node: Node, found: Array[Node]) -> void:
 		found.append(node)
 	for child: Node in node.get_children():
 		_collect_interactive(child, found)
-
-
-## 06 §10.3：COMBAT 期间不得弹出需要玩家即时反应的模态窗口。
-## 提示必须挂在普通 Control 树上 —— 场景自己的子树里一旦出现 Window / Popup，它就是模态的了。
-##
-## 只走到场景根为止：再往上必然经过 SceneTree 的 root，而那本身就是一个 Window，
-## 一路走到底会让这条断言恒假（写成 `notice is Window` 则恒真）—— 两种写法都没有判别力。
-func _has_no_window_ancestor(node: Node, scene: Node) -> bool:
-	var current: Node = node
-	while current != null and current != scene:
-		if current is Window or current is Popup:
-			return false
-		current = current.get_parent()
-	return true
 
 
 ## 06 §8.1 硬规则 3：本批新增零个 Button。与 _collect_interactive 分开数，
@@ -378,14 +381,6 @@ func _color(key_name: String) -> Color:
 	return _palette.get_color(_palette.Key[key_name])
 
 
-func _has_cjk(text: String) -> bool:
-	for index: int in text.length():
-		var code: int = text.unicode_at(index)
-		if code >= 0x4E00 and code <= 0x9FFF:
-			return true
-	return false
-
-
 ## 按名字找节点。刻意不用 `%` 唯一名：子场景实例的唯一名作用域挂在各自 owner 上，
 ## 跨子场景边界时语义容易出意外；按名字搜是确定的。
 func _find(node: Node, node_name: String) -> Node:
@@ -403,6 +398,11 @@ func _state(name: String) -> int:
 	return int(_flow_script.GameState[name])
 
 
+## 当前场景的场景路径。无当前场景时为空串 —— 失败信息里要看得见「实际是什么」。
+func _scene_path() -> String:
+	return String(current_scene.scene_file_path) if current_scene != null else ""
+
+
 func _autoload(singleton_name: String) -> Node:
 	return root.get_node_or_null(NodePath(singleton_name))
 
@@ -416,7 +416,7 @@ func _finish() -> void:
 	_lines.append("- 单元测试：见 unit_tests.log")
 	_lines.append("- 集成测试：见 unit_tests.log")
 	_lines.append("- 场景冒烟：%d/%d" % [_ctx.passed, _ctx.passed + _ctx.failed])
-	_lines.append("- 手动场景：COMBAT 经路由进入(点 CTA) · 两块区域矩形 · 状态带只读性 · REWARD/RESULT 出口提示 · 窄屏折叠")
+	_lines.append("- 手动场景：COMBAT 经路由进入(点 CTA) · 两块区域矩形 · 状态带只读性 · 窄屏折叠 · 本波清空→REWARD / CORE 被摧毁→RESULT 各自真实换场景")
 	if _ctx.failures.is_empty():
 		_lines.append("- 失败项：无")
 	else:
