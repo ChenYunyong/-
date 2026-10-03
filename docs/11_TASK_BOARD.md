@@ -35,7 +35,7 @@
 | S0-14 | `11_TASK_BOARD.md` | DSH | `REVIEW` | docs/11 |
 | S0-15 | `12_CHANGELOG.md` | DSH | `REVIEW` | docs/12 |
 | S0-16 | `.gitignore` + Git 初始化 | DSH | `ACCEPTED` | 仓库根 |
-| S0-17 | **用户批准全部 Stage 0 文档** | 用户 | `TODO` | L4 验收 |
+| S0-17 | **用户批准全部 Stage 0 文档** | 用户 | **`DONE`** ✅ | 2026-10-03 用户明确「**批准 Stage 0**」（L4 通过）|
 | S0-18 | Godot 4.7.1 portable 安装（D 盘自包含） | DSH | `ACCEPTED` | `tools/godot/`（已验证不写 C 盘） |
 | S0-19 | 参考图 A/B/C 落盘 + 逐像素取色实测 | DSH | `ACCEPTED` | `04` §2（证据） |
 | S0-20 | `04`/`05` 按参考图实测校准（v0.1.1） | DSH | `REVIEW` | docs/04, docs/05 |
@@ -47,7 +47,7 @@
 | S0-26 | PREPARATION 外框层 UI 素材（Codex 出稿 → 用户批准） | Codex | `TODO`（Stage 1） | `assets/_review/pending/` |
 
 ### S0 退出条件
-- [ ] 全部文档获用户明确批准
+- [x] 全部文档获用户明确批准（2026-10-03，L4 通过）
 - [x] Godot portable 安装完成并验证 `%APPDATA%\Godot` 未被写入（2026-10-03 实测通过）
 - [x] 三张参考图已取色实测并回写 `04` / `05`
 
@@ -57,15 +57,16 @@
 
 | GATE | 状态 | 说明 |
 |---|---|---|
-| **GATE 1** — Stage 0 首次完成 | 🔴 **等待用户批准** | 文档已产出并两轮汇报（2026-10-03）。**Stage 1 不得开工。** |
+| **GATE 1** — Stage 0 首次完成 | ✅ **已批准** | 用户 2026-10-03：「**批准 Stage 0**」→ Stage 1 解锁 |
 | **GATE 3** — 视觉方向变化 | 🟡 已知相关 | `04` v0.1.1 已按参考图取色校准（属**对齐**既定方向，非改变方向）。红/橙两组标记 `UNVERIFIED-AGAINST-REFS`，留 Stage 4 确认。 |
-| **GATE 7** — 工具无法避免写 C 盘 | 🔴 **等待用户裁定** | Multica 运行时任务工作区位于 `C:\Users\20703\multica_workspaces_desktop-api.multica.ai\...`，进程内无法重定向。详见 `01_STORAGE_RULES.md` §3.2 / §8。 |
+| **GATE 7** — 工具无法避免写 C 盘 | ✅ **已裁定** | 用户 2026-10-03：「**只要不是长期留存在 C 盘都可以**」→ 允许短暂中转，禁止长期留存。规则见 `01_STORAGE_RULES.md` §9，容量门禁见 §10 |
 | GATE 2 / 4 / 5 / 6 / 8 / 9 / 10 | ⚪ 未触发 | — |
 
-### 当前是否可推进
+### 当前是否可推进（2026-10-03 更新）
 
-- **Stage 1（项目骨架）：⛔ 不可推进** —— 阻塞于 GATE 1。
-- Stage 0 收尾（文档维护、Task Board、Git、导出模板安装 S0-21）：✅ 可推进（属 DSH 默认执行权）。
+- **Stage 1（项目骨架）：✅ 可推进** —— GATE 1 已批准。已派发第一批 S1-01~S1-04 给 Claude。
+- Stage 0 收尾（导出模板安装 S0-21、Git 远端）：✅ 可推进（属 DSH 默认执行权）。
+- **视觉相关工作一律交 Codex**（用户 2026-10-03 明确提醒）；DSH 只提供测量数据与约束，不代替 Codex 做视觉判断。
 
 ## 3. STAGE 1 — PROJECT SKELETON（未开始）
 
