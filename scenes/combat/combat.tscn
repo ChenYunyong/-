@@ -1,0 +1,171 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/combat_screen.gd" id="1_combat"]
+[ext_resource type="Theme" path="res://assets/ui/theme_main.tres" id="2_theme"]
+
+[node name="Combat" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_combat")
+
+[node name="Backdrop" type="ColorRect" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Battlefield" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_right = 320.0
+offset_bottom = 135.0
+mouse_filter = 2
+
+[node name="Placeholder" type="Label" parent="Battlefield"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+text = "战场（占位 · 敌人生成与推进 / CORE 运行 / 武器执行 / 伤害结算 属 Stage 4）"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="NoticeLabel" type="Label" parent="Battlefield"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="StatusBar" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_top = 135.0
+offset_right = 320.0
+offset_bottom = 180.0
+mouse_filter = 2
+
+[node name="StatusFill" type="ColorRect" parent="StatusBar"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="StatusEdge" type="ColorRect" parent="StatusBar"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 1.0
+grow_horizontal = 2
+mouse_filter = 2
+
+[node name="Readouts" type="ScrollContainer" parent="StatusBar"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+horizontal_scroll_mode = 1
+vertical_scroll_mode = 0
+
+[node name="ReadoutsRow" type="HBoxContainer" parent="StatusBar/Readouts"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Wave" type="VBoxContainer" parent="StatusBar/Readouts/ReadoutsRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(64, 0)
+
+[node name="Caption" type="Label" parent="StatusBar/Readouts/ReadoutsRow/Wave"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"LabelSecondary"
+text = "波次"
+
+[node name="Value" type="Label" parent="StatusBar/Readouts/ReadoutsRow/Wave"]
+layout_mode = 2
+mouse_filter = 2
+text = "1 / 1"
+
+[node name="Core" type="VBoxContainer" parent="StatusBar/Readouts/ReadoutsRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(64, 0)
+
+[node name="Caption" type="Label" parent="StatusBar/Readouts/ReadoutsRow/Core"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"LabelSecondary"
+text = "CORE"
+
+[node name="Value" type="Label" parent="StatusBar/Readouts/ReadoutsRow/Core"]
+layout_mode = 2
+mouse_filter = 2
+text = "完好"
+
+[node name="Thermal" type="VBoxContainer" parent="StatusBar/Readouts/ReadoutsRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(64, 0)
+
+[node name="Caption" type="Label" parent="StatusBar/Readouts/ReadoutsRow/Thermal"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"LabelSecondary"
+text = "热量 / 能量"
+
+[node name="Value" type="Label" parent="StatusBar/Readouts/ReadoutsRow/Thermal"]
+layout_mode = 2
+mouse_filter = 2
+text = "0% / 0%"
+
+[node name="Queue" type="VBoxContainer" parent="StatusBar/Readouts/ReadoutsRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(64, 0)
+
+[node name="Caption" type="Label" parent="StatusBar/Readouts/ReadoutsRow/Queue"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"LabelSecondary"
+text = "待发射队列"
+
+[node name="Value" type="Label" parent="StatusBar/Readouts/ReadoutsRow/Queue"]
+layout_mode = 2
+mouse_filter = 2
+text = "0 项"
