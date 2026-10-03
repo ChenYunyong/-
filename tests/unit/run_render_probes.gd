@@ -18,6 +18,7 @@ const HARNESS_PATH: String = "res://tests/unit/render_probe_harness.gd"
 const PREP_PROBE_PATH: String = "res://tests/unit/preparation_probe.gd"
 const COMBAT_PROBE_PATH: String = "res://tests/unit/combat_probe.gd"
 const REWARD_PROBE_PATH: String = "res://tests/unit/reward_probe.gd"
+const RESULT_PROBE_PATH: String = "res://tests/unit/result_probe.gd"
 const THEME_PATH: String = "res://assets/ui/theme_main.tres"
 const PANEL_SCENE_PATH: String = "res://scenes/components/message_panel.tscn"
 const TITLE_BAR_SCENE_PATH: String = "res://scenes/components/panel_title_bar.tscn"
@@ -82,6 +83,8 @@ func _initialize() -> void:
 	await load(COMBAT_PROBE_PATH).new().run(self, _h, _theme)
 	# S1-09 的 REWARD 三列 / 竖排选项卡与类型图标取证。
 	await load(REWARD_PROBE_PATH).new().run(self, _h, _theme)
+	# S1-10 的 RESULT 读数区（次级面板 + 硬阴影）与两个出口按钮取证。
+	await load(RESULT_PROBE_PATH).new().run(self, _h, _theme)
 
 	print("")
 	print("PROBE 结论：通过 %d / 失败 %d" % [_h.passed, _h.failed])
