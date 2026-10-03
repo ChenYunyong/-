@@ -17,6 +17,7 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 	{"path": "res://tests/unit/test_settings.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_theme.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_boot_check.gd", "layer": "unit"},
+	{"path": "res://tests/unit/test_main_menu.gd", "layer": "unit"},
 	{"path": "res://tests/integration/test_state_loop.gd", "layer": "integration"},
 ]
 
@@ -24,6 +25,8 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 ## 而 BOOT 是不可回退的启动态（ALLOWED_TRANSITIONS 里没有回到 BOOT 的边），
 ## 留在同一进程会污染上面 test_state_loop.gd 的「BOOT → MAIN_MENU」断言。
 ## 它必须单独进程跑：tests/integration/boot_scene_smoke.gd（09 §1 场景冒烟层）。
+## MAIN_MENU 同理：它的冒烟要真的走一遍 GameFlow 路由并检查提示面板，同样另起进程
+## （tests/integration/main_menu_smoke.gd）。
 
 const LOG_PATH: String = "res://tests/output/unit_tests.log"
 ## R1 用例靠 --fixed-fps 把 600 秒模拟时间压进毫秒级；漏加该参数时的兜底上限。
@@ -35,7 +38,7 @@ const WALL_CLOCK_BUDGET_MS: int = 120_000
 const DEFAULT_TASK_LABEL: String = "未指定（请用 -- --task \"<任务号> <标题>\" 传入）"
 ## 本入口不跑场景（场景冒烟要独立进程，见 TEST_SCRIPTS 上方的说明），
 ## 故这一行只做指路，不写任何「本批产出什么」的说法 —— 那种说法同样会过期。
-const MANUAL_SCENE_NOTE: String = "见 tests/output/scene_smoke.log（由 tests/integration/boot_scene_smoke.gd 独立进程产出）"
+const MANUAL_SCENE_NOTE: String = "见 tests/output/ 下的 scene_smoke.log 与 main_menu_smoke.log（各自独立进程产出）"
 
 var clock: Node = null
 
