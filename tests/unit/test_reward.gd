@@ -1,6 +1,7 @@
 ## test_reward.gd
 ## 职责：REWARD 场景的**布局数值**与**静态装配**是否落在 06 §9 / §7.1 的规格上
 ##       （路由登记、标题栏与三张卡片的矩形、五个展示位齐备、触摸下限、
+##       PanelShadow 叠层及其与内容 Layout 的先后次序、
 ##       无字面色值、无计时器构造、无奖励数值逻辑）。
 ## 所属系统：tests
 ## 依赖：test_context, scripts/ui/reward_layout.gd, scripts/ui/reward_option.gd, scripts/core/game_flow.gd
@@ -317,6 +318,15 @@ func _check_card(ctx: RefCounted, card: Node, index: int) -> void:
 	ctx.equal(control.mouse_filter, Control.MOUSE_FILTER_STOP,
 		"%s 必须收点击 —— 它的整个矩形就是 06 §1 说的可点击区域" % CARD_NAMES[index])
 	ctx.equal(control.theme_type_variation, &"PanelSecondary", "%s 的底色走次级面板变体（06 §3）" % CARD_NAMES[index])
+	# 06 §9.1 v0.1.12：选项卡是**浮动的次级面板**，应带 PanelShadow 叠层（与 RESULT 读数区同款），
+	# 且叠层必须排在内容 Layout **之前** —— 排到后面会盖住文字（Codex 点名）。像素证据见 reward_probe.gd。
+	var shadow: Panel = _find(control, "Shadow") as Panel
+	if ctx.check(shadow != null, "%s 应带 PanelShadow 叠层（06 §9.1）" % CARD_NAMES[index]):
+		ctx.equal(shadow.theme_type_variation, &"PanelShadow", "%s 阴影叠层的变体" % CARD_NAMES[index])
+		ctx.equal(shadow.mouse_filter, Control.MOUSE_FILTER_IGNORE, "%s 阴影叠层不得吃掉点击" % CARD_NAMES[index])
+		var layout: Control = _find(control, "Layout") as Control
+		ctx.check(layout != null and shadow.get_index() < layout.get_index(),
+			"%s 的 Shadow 必须排在内容 Layout 之前（06 §9.1）" % CARD_NAMES[index])
 	_check_literals(ctx, control, "", CARD_RECTS[index], true)
 
 	for field: String in FIELD_NAMES:

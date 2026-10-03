@@ -16,6 +16,8 @@
 ##   反向对照二 —— 把卡片区整体右移 4px，六条描边必须整体跟着移 4px。
 ##                 量不到这个位移，就说明上面那些断言只是在「某处找深色线」，
 ##                 证明不了它们落在 8 / 103 / 112 / 207 / 216 / 311 这几个位置上。
+##   反向对照三 —— 藏掉某张卡的 PanelShadow 叠层：那张卡的右下环带必须整体归零，
+##                 而它自己的 BROWN_600 描边仍在（06 §9.1 v0.1.12：卡片自身不带阴影）。
 ##
 ## 分工：本探针只量**真实渲染矩形**。布局算得对不对由 tests/unit/test_reward.gd 覆盖，
 ## 交互（选中后回 PREPARATION、不自动推进）由 tests/integration/reward_smoke.gd 覆盖。
@@ -60,6 +62,17 @@ const NARROW_TITLE_GOLD: int = 164
 const ICON_SIZE: int = 16
 const ICON_AREA: int = ICON_SIZE * ICON_SIZE
 
+## 06 §1 的安全边距。06 §9.1 v0.1.12：卡片是**浮动的次级面板**，右下各外扩 1px NAVY_900 硬阴影
+## （与 RESULT 读数区同款）。阴影那 1px **不计入**安全区 —— 卡片矩形仍停在「视口 - 8」，
+## 阴影另占安全边距的第 1 列 / 行。这与 RESULT 是同一口径：`result_probe.gd` 里读数区矩形右缘
+## 312 = 320 - 8，阴影列同样是 312。卡片矩形若为阴影让位缩 1px，下面两条会当场红。
+const SAFE_INSET: int = 8
+## 末张卡片（宽屏的第三列 / 窄屏的第三行）矩形的右缘与下缘，即安全线本身。
+const WIDE_CARD_RIGHT_EDGE: int = 312
+const WIDE_CARD_BOTTOM_EDGE: int = 172
+const NARROW_CARD_RIGHT_EDGE: int = 172
+const NARROW_CARD_BOTTOM_EDGE: int = 312
+
 ## 反向对照的位移量。
 const SHIFT: float = 4.0
 
@@ -69,6 +82,7 @@ var _theme: Theme = null
 var _scene: Control = null
 var _border: Color = Color.BLACK
 var _gold: Color = Color.BLACK
+var _shadow: Color = Color.BLACK
 var _type_colors: Array[Color] = []
 
 
@@ -80,6 +94,7 @@ func run(tree: SceneTree, harness: RefCounted, theme: Theme) -> void:
 	_theme = theme
 	_border = Palette.get_color(Palette.Key.BROWN_600)
 	_gold = Palette.get_color(Palette.Key.GOLD_600)
+	_shadow = Palette.get_color(Palette.Key.NAVY_900)
 	_type_colors = [
 		Palette.get_color(Palette.Key.GOLD_400),
 		Palette.get_color(Palette.Key.BLUE_400),
@@ -88,13 +103,14 @@ func run(tree: SceneTree, harness: RefCounted, theme: Theme) -> void:
 
 	print("")
 	print("=== 组 10：REWARD 三列 / 竖排选项卡与类型图标（06 §9 像素取证）===")
-	print("  判据色：卡片描边=BROWN_600%s 标题栏分隔线=GOLD_600%s 类型色=%s/%s/%s" % [
-		_h.color_text(_border), _h.color_text(_gold),
+	print("  判据色：卡片描边=BROWN_600%s 标题栏分隔线=GOLD_600%s 阴影=NAVY_900%s 类型色=%s/%s/%s" % [
+		_h.color_text(_border), _h.color_text(_gold), _h.color_text(_shadow),
 		_h.color_text(_type_colors[0]), _h.color_text(_type_colors[1]), _h.color_text(_type_colors[2]),
 	])
 	await _probe_wide()
 	await _probe_icons()
 	await _probe_narrow()
+	await _probe_shadow()
 	await _probe_reverse()
 
 
@@ -191,6 +207,123 @@ func _probe_narrow() -> void:
 
 	_h.check(_h.count_row(image, TITLE_GOLD_ROW, 0, NARROW.x, _gold) == NARROW_TITLE_GOLD,
 		"标题栏分隔线应随可用宽收窄到 %dpx" % NARROW_TITLE_GOLD)
+
+
+## 组 10d：06 §9.1 v0.1.12 —— 卡片是**浮动的次级面板**，右下各外扩 1px NAVY_900 硬阴影
+## （做法与 RESULT 读数区同款，见 result_probe.gd 的 _assert_readout_shadow）。
+##
+## 三条一起才说清「真的画成了」：
+##   ① 三张卡各自的右下环带数与几何一致（w + h + 1），上 / 左一个都没有；
+##   ② 整幅画面的 NAVY_900 **恰好**是这三条环带之和 —— 多一个像素就说明阴影漫进了卡片，
+##      于是「不覆盖文字」由像素总数钉死，而不是靠「配置项写了 draw_center = false」宣称；
+##   ③ 阴影那 1px 落在安全边距里，卡片矩形不为它让位 —— 与 RESULT 同口径。
+func _probe_shadow() -> void:
+	var image: Image = await _open_scene(WIDE)
+	if image == null:
+		return
+	var ring: int = 0
+	for index: int in 3:
+		ring += _assert_card_shadow(image, WIDE_BORDER_X[index * 2], WIDE_CARD_TOP,
+			WIDE_BORDER_X[index * 2 + 1], WIDE_CARD_BOTTOM, "320×180 第 %d 张卡" % (index + 1))
+	_check_shadow_inset(image, WIDE_BORDER_X[4], WIDE_BORDER_X[5], WIDE_CARD_TOP, WIDE_CARD_BOTTOM,
+		WIDE, "320×180")
+	_assert_shadow_total(image, ring, "320×180")
+
+	image = await _open_scene(NARROW)
+	if image == null:
+		return
+	ring = 0
+	for index: int in 3:
+		ring += _assert_card_shadow(image, NARROW_CARD_LEFT, NARROW_BORDER_Y[index * 2],
+			NARROW_CARD_RIGHT, NARROW_BORDER_Y[index * 2 + 1], "180×320 第 %d 张卡" % (index + 1))
+	_check_shadow_inset(image, NARROW_CARD_LEFT, NARROW_CARD_RIGHT, NARROW_BORDER_Y[4],
+		NARROW_BORDER_Y[5], NARROW, "180×320")
+	_assert_shadow_total(image, ring, "180×320")
+
+	# 反向对照三：藏掉 Card1 的 Shadow 叠层 —— 那张卡的右下环带必须整体归零，另两张一个像素不动。
+	# 量不到这个「少 w+h+1」，上面那条总数断言就只是碰巧对上。
+	image = await _open_scene(WIDE)
+	if image == null:
+		return
+	var card: Node = _scene.find_child("Card1", true, false)
+	var layer: Node = (card.find_child("Shadow", true, false) if card != null else null)
+	if not _h.check(layer != null, "Card1 应有 Shadow 叠层"):
+		return
+	layer.set(&"visible", false)
+	var hidden: Image = (await _h.settle())["image"]
+	if hidden == null:
+		return
+	_h.check(_h.count_col(hidden, WIDE_BORDER_X[3] + 1, WIDE_CARD_TOP, WIDE_CARD_BOTTOM + 2,
+			_shadow) == 0
+			and _h.count_row(hidden, WIDE_CARD_BOTTOM + 1, WIDE_BORDER_X[2], WIDE_BORDER_X[3] + 2,
+				_shadow) == 0,
+		"反向对照：藏掉 Card1 的 Shadow 后它的右下环带应一个阴影像素都不剩")
+	# 藏掉的是**叠层**，卡片本体的描边必须原样还在 —— 否则「阴影由叠层承载」就无从谈起。
+	_h.check(_h.count_col(hidden, WIDE_BORDER_X[2], WIDE_CARD_TOP, WIDE_CARD_BOTTOM + 1,
+			_border) == WIDE_CARD_BOTTOM - WIDE_CARD_TOP + 1,
+		"反向对照：藏掉 Shadow 后 Card1 自己的 BROWN_600 描边仍在（卡片自身不带阴影）")
+	var expected: int = 2 * _ring_size(WIDE_BORDER_X[0], WIDE_BORDER_X[1], WIDE_CARD_TOP, WIDE_CARD_BOTTOM)
+	var left_count: int = int(_measure(hidden, _shadow)["count"])
+	_h.check(left_count == expected,
+		"反向对照：藏掉 Card1 的 Shadow 后全图 NAVY_900 应只剩另两张卡的环带 %d px（实际 %d）" % [
+			expected, left_count])
+
+
+## 一张卡的硬阴影契约：右边一列、下边一行各外扩 1px，上 / 左没有；且**卡片矩形内零阴影**。
+## 返回该卡的环带像素数（w + h + 1，右下角点只画一次）—— 由几何推出，不是抄来的魔数。
+func _assert_card_shadow(image: Image, left: int, top: int, right: int, bottom: int,
+		label: String) -> int:
+	var width: int = right - left + 1
+	var height: int = bottom - top + 1
+	_h.check(_h.count_col(image, right + 1, top, bottom + 2, _shadow) == height + 1,
+		"%s：右边应外扩 1px NAVY_900，共 %d 个" % [label, height + 1])
+	_h.check(_h.count_row(image, bottom + 1, left, right + 2, _shadow) == width + 1,
+		"%s：下边应外扩 1px NAVY_900，共 %d 个" % [label, width + 1])
+	_h.check(_h.count_row(image, top - 1, left, right + 1, _shadow) == 0,
+		"%s：上边不得有阴影" % label)
+	_h.check(_h.count_col(image, left - 1, top, bottom + 1, _shadow) == 0,
+		"%s：左边不得有阴影" % label)
+	# 不覆盖文字：卡片矩形内一个阴影像素都不许有。阴影若被画成填满中心、四边整圈，或整层被排到
+	# 内容之后而压住文字，这一条立刻变红 —— 正是 Codex 点名的那个风险。
+	_h.check(_count_rect(image, Rect2i(left, top, width, height), _shadow) == 0,
+		"%s：卡片矩形内不得有阴影像素 —— 右下 1px 不得压到文字上" % label)
+	return _ring_size(left, right, top, bottom)
+
+
+## 整幅画面的 NAVY_900 必须**恰好**等于各卡环带之和。多一个像素就说明阴影漫到了别处
+## （铺进卡片、盖住文字、或溢出到卡片之外），是「不覆盖文字」的全局版断言。
+func _assert_shadow_total(image: Image, expected: int, label: String) -> void:
+	var count: int = int(_measure(image, _shadow)["count"])
+	_h.check(count == expected,
+		"%s：全图 NAVY_900 应恰好是三张卡的右下环带共 %d px（实际 %d）—— 一个像素都不许多" % [
+			label, expected, count])
+
+
+## 安全区口径（06 §9.2 边界说明，Codex 明确要求与 RESULT 一致）：右下 1px 装饰阴影**不计入**安全区。
+## RESULT 侧：读数区矩形右缘 312（= 320 - 8），阴影列同样是 312（result_probe.gd）。
+## REWARD 侧必须同款 —— 卡片矩形停在安全线上，阴影另占安全边距的第 1 列 / 行。
+func _check_shadow_inset(image: Image, left: int, right: int, top: int, bottom: int,
+		canvas: Vector2i, label: String) -> void:
+	_h.check(right + 1 == canvas.x - SAFE_INSET and bottom + 1 == canvas.y - SAFE_INSET,
+		"%s：末张卡片矩形应停在安全线上（x=%d / y=%d = 视口 - %d），不得为阴影让位" % [
+			label, right + 1, bottom + 1, SAFE_INSET])
+	_h.check(_h.count_col(image, canvas.x - SAFE_INSET, top, bottom + 2, _shadow) == bottom - top + 2
+			and _h.count_row(image, canvas.y - SAFE_INSET, left, right + 2, _shadow) == right - left + 2,
+		"%s：阴影那 1px 应恰好落在安全边距的第 1 列 / 行（x=%d / y=%d）—— 与 RESULT 读数区同口径" % [
+			label, canvas.x - SAFE_INSET, canvas.y - SAFE_INSET])
+
+
+## 环带像素数：右边 h+1 个 + 下边 w+1 个，右下角点被数了两次，故减 1。
+func _ring_size(left: int, right: int, top: int, bottom: int) -> int:
+	return (right - left + 1) + (bottom - top + 1) + 1
+
+
+## 矩形内的判据色计数 —— 用来证明「阴影只画在矩形外侧」。
+func _count_rect(image: Image, rect: Rect2i, wanted: Color) -> int:
+	var hits: int = 0
+	for y: int in range(rect.position.y, rect.end.y):
+		hits += _h.count_row(image, y, rect.position.x, rect.end.x, wanted)
+	return hits
 
 
 ## 反向对照一 / 二：证明上面数到的像素确实来自卡片本身、且位置由布局决定。
