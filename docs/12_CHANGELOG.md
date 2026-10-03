@@ -5,6 +5,42 @@
 
 ## [Unreleased]
 
+### 追加二：OpenCode Go 端点修复 —— 凭据变量用错（2026-10-03 第十一轮）
+
+用户提供密钥并要求「**修 opencode 端点**」。DSH 定位到根因是**密钥放错了变量**并修复。
+
+**根因**：OpenCode Go 的 Anthropic 兼容端点只认 `x-api-key` 请求头；而 Claude Code 只有在密钥放在
+`ANTHROPIC_API_KEY` 时才会发这个头。用户把密钥放在 `ANTHROPIC_AUTH_TOKEN`，Claude Code 于是发
+`Authorization: Bearer …`，端点回 **`401 Missing API key.`** —— 正是 PET-38 的失败原因。
+
+**证据（两条独立来源互相印证）**：
+
+1. 官方 cc-switch 预设 PR #6196（*connect OpenCode Go directly in Claude Code*）写明
+   `ANTHROPIC_BASE_URL: "https://opencode.ai/zen/go"`、`apiKeyField: "ANTHROPIC_API_KEY"`，
+   且其单元测试明确断言 `expect(env).not.toHaveProperty("ANTHROPIC_AUTH_TOKEN")`。
+2. DSH 直连同一 URL 实测：
+
+   | 请求头 | 结果 |
+   |---|---|
+   | `x-api-key: <key>` | 通过鉴权（返回与鉴权无关的业务错误） |
+   | `Authorization: Bearer <key>` | `401 {"type":"AuthError","message":"Missing API key."}` |
+
+**处置**：把 `~/.claude/settings.json` 的 `env` 中密钥由 `ANTHROPIC_AUTH_TOKEN` 移至 `ANTHROPIC_API_KEY`
+（其余配置一律不动），并在同目录留下备份 `settings.json.dsh-backup-<时间戳>`。
+
+**验证**：CLI 端到端复跑，错误**从 401 变成完全不同的 400** —— 说明鉴权这一环已经通了：
+
+```
+API Error: 400 Upstream request failed: This Go model requires Global regions.
+           Select Global in your workspace's Privacy settings to use it.
+```
+
+**新的剩余阻塞（只有用户能解）**：需在 OpenCode 工作区的 **Privacy settings** 中选择 **Global** 区域。
+这属于**数据驻留 / 隐私设置**，是用户的决定而非技术细节，**DSH 不代为更改**。
+
+**排查提示**：对 Go 端点做裸 HTTP 探测会被 `MissingSessionID` 挡住（需要 `x-opencode-session` 头，
+由真实客户端补上），因此**只有用真实 CLI 才能可靠验证**模型权限 —— 本轮结论均以 CLI 实测为准。
+
 ### 追加：PET-38 首次派发失败 = Claude Code 凭据问题（2026-10-03 第十轮）
 
 运行时恢复后（用户重启桌面端），PET-38 于 17:05:53 成功派发，但 3m07s 后失败、工具调用数为 0：
