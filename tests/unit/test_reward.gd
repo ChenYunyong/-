@@ -26,7 +26,7 @@ const PALETTE_SCRIPT_PATH: String = "res://scripts/data/palette.gd"
 ## 06 §1 基准与 §7.1 的窄屏取样。
 const REFERENCE_VIEWPORT: Vector2 = Vector2(320.0, 180.0)
 const NARROW_VIEWPORT: Vector2 = Vector2(180.0, 320.0)
-const SHORT_NARROW_VIEWPORT: Vector2 = Vector2(180.0, 120.0)
+const SHORT_NARROW_VIEWPORT: Vector2 = Vector2(120.0, 180.0)
 
 ## 06 §9 只规定了「3 个选项 + 不足时以跳过补齐」，未给实测矩形；下面是本文件**独立复写**的
 ## 期望值，刻意不从 RewardLayout 取 —— 测试若与被测实现同源，实现里把 96 写成 86 时

@@ -24,7 +24,7 @@ const THEME_PATH: String = "res://assets/ui/theme_main.tres"
 ## 06 §1 基准与 §7.1 的窄屏取样。
 const REFERENCE_VIEWPORT: Vector2 = Vector2(320.0, 180.0)
 const NARROW_VIEWPORT: Vector2 = Vector2(180.0, 320.0)
-const SHORT_NARROW_VIEWPORT: Vector2 = Vector2(180.0, 120.0)
+const SHORT_NARROW_VIEWPORT: Vector2 = Vector2(120.0, 180.0)
 
 ## 06 没有 RESULT 版面，未给实测矩形；下面是本文件**独立复写**的期望值，
 ## 刻意不从 ResultLayout 取 —— 测试若与被测实现同源，实现里把 148 写成 138 时
@@ -228,9 +228,10 @@ func _run_touch_size_checks(ctx: RefCounted) -> void:
 
 ## 一个档位下的两件事：出口不得低于触摸下限；退化尺寸下也不得算出负矩形。
 ##
-## 两者会互相拉扯 —— 180×120 这类极矮的竖屏放不下「读数区 + 两个 44 的按钮」，
-## 实现的选择是让按钮区整体上移（宁可压掉读数区，也不缩到点不准，同 RewardLayout 的取舍），
-## 读数区高度夹到 0。这条把该取舍钉住：按钮守住下限，读数区不出现负尺寸。
+## 两者会互相拉扯 —— 竖屏一矮，固定 96 高的按钮区就往上顶，读数区被压薄
+## （SHORT_NARROW_VIEWPORT 的 120×180 下只剩 36px，宽屏是 88px）；再矮下去余量转负，
+## 实现的选择是把它夹到 0（宁可压掉读数区，也不缩按钮到点不准，同 RewardLayout 的取舍）。
+## 这条把该取舍钉住：按钮守住下限，读数区不出现负尺寸。
 func _check_touch_and_degenerate(ctx: RefCounted, layout: GDScript, viewport: Vector2) -> void:
 	var rects: Array[Rect2] = layout.action_rects(viewport)
 	var bad: int = 0

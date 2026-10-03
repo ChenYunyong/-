@@ -33,16 +33,26 @@ const STATUS_BAR_SHARE: float = 0.25
 
 ## 06 §7.1 的窄屏取样（竖屏）。
 const NARROW_VIEWPORT: Vector2 = Vector2(180.0, 320.0)
-## 比基准更矮的窄屏取样。§7.1 只给了「窄屏」这个条件，没给「多矮」——
-## 状态带的 25% 上限只有在视口比基准更矮时才会咬住，故单列一个取样。
-const SHORT_NARROW_VIEWPORT: Vector2 = Vector2(180.0, 120.0)
+## 「另一个窄屏」取样，与 test_reward.gd / test_result.gd / combat_smoke.gd **共享** ——
+## 它们还把它喂给触摸下限检查，故本文件不得改它的值。
+## ⚠ 它高 180，与基准同高：min(45, 180 × 0.25) = 45 —— 状态带的 25% 上限**咬不住**（见下面的 TIGHT）。
+const SHORT_NARROW_VIEWPORT: Vector2 = Vector2(120.0, 180.0)
 const EXPECTED_NARROW: Array[Rect2] = [
 	Rect2(0.0, 0.0, 180.0, 275.0),
 	Rect2(0.0, 275.0, 180.0, 45.0),
 ]
 const EXPECTED_SHORT_NARROW: Array[Rect2] = [
-	Rect2(0.0, 0.0, 180.0, 90.0),
-	Rect2(0.0, 90.0, 180.0, 30.0),
+	Rect2(0.0, 0.0, 120.0, 135.0),
+	Rect2(0.0, 135.0, 120.0, 45.0),
+]
+## 只给 COMBAT 用的专用取样：**比基准更矮**的窄屏，专门让状态带的 25% 上限真的咬住。
+## §7.1 只给了「窄屏」这个条件，没给「多矮」—— 上限只有在视口比基准（320×180）矮时才生效。
+## 120 / 160 = 0.75 < 1 → 窄屏；160 < 180 → 比基准矮；min(45, 160 × 0.25 = 40) = 40 < 45 → 上限咬住。
+## REWARD / RESULT 不掺这个更小的视口，以免牵连它们的触摸下限断言。
+const TIGHT_NARROW_VIEWPORT: Vector2 = Vector2(120.0, 160.0)
+const EXPECTED_TIGHT_NARROW: Array[Rect2] = [
+	Rect2(0.0, 0.0, 120.0, 120.0),
+	Rect2(0.0, 120.0, 120.0, 40.0),
 ]
 
 ## 06 §8.1（v0.1.10，Codex 裁定）的 5 个只读读数块，按带内从左到右的顺序。
@@ -164,10 +174,29 @@ func _run_narrow_layout_checks(ctx: RefCounted) -> void:
 	for index: int in EXPECTED_NARROW.size():
 		ctx.equal(rects[index], EXPECTED_NARROW[index], "%s 的折叠矩形" % REGION_NAMES[index])
 
-	# 收缩取样：状态带是固定高的 HUD 条，不随视口长高；但它在矮视口上不得突破 §8 实测的 25% 份额。
+	# 共享取样 120×180：与基准**同高**的窄屏。状态带是固定高的 HUD 条，不随视口长高 ——
+	# 这里钉的正是「不随视口长高」：高仍是 §8 实测的 45（min(45, 180 × 0.25) = 45，上限没生效）。
 	var short: Array[Rect2] = layout.narrow_rects(SHORT_NARROW_VIEWPORT)
 	for index: int in EXPECTED_SHORT_NARROW.size():
-		ctx.equal(short[index], EXPECTED_SHORT_NARROW[index], "%s 在 180×120 下的矩形" % REGION_NAMES[index])
+		ctx.equal(short[index], EXPECTED_SHORT_NARROW[index],
+			"%s 在 %s 下的矩形" % [REGION_NAMES[index], SHORT_NARROW_VIEWPORT])
+
+	# COMBAT 专用取样 120×160：比基准**更矮**，于是 §8 实测的 25% 份额反过来成为上限并真的咬住。
+	# 这一案是 120×180 测不到的 —— 那一个高与基准相同，上限恒不生效（这正是当年被掩盖的问题）。
+	var tight: Array[Rect2] = layout.narrow_rects(TIGHT_NARROW_VIEWPORT)
+	for index: int in EXPECTED_TIGHT_NARROW.size():
+		ctx.equal(tight[index], EXPECTED_TIGHT_NARROW[index],
+			"%s 在 %s 下的矩形" % [REGION_NAMES[index], TIGHT_NARROW_VIEWPORT])
+
+	# 光钉矩形还不够 —— 把「上限真的咬住了」这条**性质**单独钉一次：矩形一旦被改坏，
+	# 失败信息里能直接读出是上限没生效，而不是只看到一个 40 ≠ 45。
+	var cap: float = REFERENCE_VIEWPORT.y * STATUS_BAR_SHARE
+	var tight_bar: Rect2 = tight[layout.Region.STATUS_BAR]
+	ctx.check(tight_bar.size.y < cap,
+		"收缩窄屏 %s：状态带高应严格小于基准下的 %.0f（25%% 上限真的咬住；实得 %.1f）" % [
+			TIGHT_NARROW_VIEWPORT, cap, tight_bar.size.y])
+	ctx.equal(tight_bar.size.y, TIGHT_NARROW_VIEWPORT.y * STATUS_BAR_SHARE,
+		"收缩窄屏 %s：状态带高应恰为画面高的 25%%（上限的取值点）" % TIGHT_NARROW_VIEWPORT)
 
 	for sample: Vector2 in [NARROW_VIEWPORT, SHORT_NARROW_VIEWPORT]:
 		var sample_rects: Array[Rect2] = layout.narrow_rects(sample)
