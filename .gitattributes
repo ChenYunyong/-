@@ -1,0 +1,17 @@
+# Normalize text files to LF in the repository (see 02_CODE_STANDARD.md SS1)
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.webp binary
+*.ttf binary
+*.otf binary
+*.aseprite binary
+*.kra binary
+*.psd binary
+*.pck binary
+
+*.tscn text eol=lf
+*.tres text eol=lf
+*.gd text eol=lf
+*.godot text eol=lf
