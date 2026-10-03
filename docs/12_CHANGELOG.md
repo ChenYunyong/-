@@ -5,6 +5,24 @@
 
 ## [Unreleased]
 
+### 存储分层：E 盘纳入（2026-10-03 第八轮）
+
+用户 2026-10-03：「可以，不用清理，你自行判断，有些东西也可以放到 E 盘中，你觉得可行的话」。
+
+#### Decisions
+- **C 盘旧遗留不清**（用户决定），GATE 8 删除议题关闭。
+- **E 盘纳入为「大块 · 可再生」层**，`01_STORAGE_RULES.md` 新增 **§11 存储分层**：
+  - **D:** 必须进 git 的东西（源码 / docs / .git / scripts / scenes / data / tests）
+  - **E:** 体积大且可再生 / 不进 git 的东西（`build/` 导出产物、素材源文件、Godot editor data 含约 1 GB 导出模板）
+  - **C:** 仅短暂中转（§9 不变）
+- 依据：D 盘可用率 16.0% 是三个卷里最紧的，E 盘 48.6% 最宽松。
+
+#### Changed
+- `D:\GameDev\PixelFusion\build` 与 `D:\GameDev\PixelFusion\tools\godot\editor_data` 改为**目录联接**，
+  实际落盘到 `E:\GameDev\PixelFusion\`。**逻辑路径不变**，因此原提示词的路径约定与已派发给 Claude 的任务卡都不受影响。
+- 明确纪律：只允许写 `E:\GameDev\` 与 `E:\Temp\PixelFusion`；**不得触碰 `E:\godot\`（用户自己的引擎）**及 E 盘其它用户目录。
+- `11_TASK_BOARD` S0-21 注明模板落盘位置改为 E:；新增 S0-27 记录本次分层。
+
 ### GATE 1 通过 + GATE 7 裁定（2026-10-03 第七轮）
 
 用户 2026-10-03 明确指令：
