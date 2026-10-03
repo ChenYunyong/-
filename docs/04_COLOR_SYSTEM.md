@@ -27,7 +27,7 @@ var panel_bg := Color("#172747")
 ## 2. 取色实测记录（证据）
 
 **方法**：纯标准库 PNG 解码 → 每 3px 采样 → 每通道 16 级量化 → 统计占比。
-**脚本**：`tools/ref_palette_probe.py`（Stage 1 随仓库提交）。
+**脚本**：`tools/ref_palette_probe.py`（已随仓库提交为 tools/ref_palette_probe.py，可复跑）。
 **原始性质**：三张图均为 1672×941、RGB 8-bit。
 
 | 参考图 | 用途 | 唯一颜色数 | 主色调 |
