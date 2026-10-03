@@ -45,8 +45,14 @@ const EXPECTED_SHORT_NARROW: Array[Rect2] = [
 	Rect2(0.0, 90.0, 180.0, 30.0),
 ]
 
-## 06 §8 点名的四类状态 / 预览项。这条带**不是**动作栏，里面只许有这些只读读数。
-const READOUT_CAPTIONS: PackedStringArray = ["波次", "CORE", "热量 / 能量", "待发射队列"]
+## 06 §8.1（v0.1.10，Codex 裁定）的 5 个只读读数块，按带内从左到右的顺序。
+## 这条带**不是**动作栏，里面只许有这些只读读数。
+const READOUT_CAPTIONS: PackedStringArray = ["波次", "CORE", "热量", "能量", "队列"]
+## 06 §8.1 表里的占位值。CORE 用可比较读数，不用自然语言状态词。
+const READOUT_VALUES: PackedStringArray = ["1/1", "100%", "0%", "0%", "0项"]
+## 06 §8.1 硬规则 1：热量与能量必须**分格**（Heat 归橙 / Energy 归蓝，语义不同，
+## 合并后告警读不出是哪个系统）。这里按节点名钉住它们各自独立。
+const SPLIT_READOUTS: PackedStringArray = ["Heat", "Energy"]
 
 ## 本批禁令（任务卡 FORBIDDEN：禁止实现任何战斗玩法）。
 ## COMBAT 在 Stage 4 会**合法地**引入固定 tick（03 §2 的 TICK_RATE / _physics_process），
@@ -192,6 +198,7 @@ func _run_structure_checks(ctx: RefCounted, packed: PackedScene) -> void:
 
 	ctx.check(_find(scene, "Backdrop") != null, "应有全屏底色层（色值在 _ready() 里取自 Palette）")
 	_check_status_bar_read_only(ctx, scene, bar)
+	_check_readout_blocks(ctx, scene)
 	scene.free()
 
 
@@ -256,6 +263,60 @@ func _check_status_bar_read_only(ctx: RefCounted, scene: Node, bar: Control) -> 
 	ctx.equal(fill.offset_bottom, 0.0, "底色应铺满状态带")
 	# 上沿必须画在底色**之上**：同为全矩形时，兄弟顺序决定谁盖住谁。
 	ctx.check(edge.get_index() > fill.get_index(), "上沿应排在底色之后（否则会被底色盖掉）")
+
+
+## 06 §8.1（v0.1.10，Codex 裁定）：读数区恰好 5 个只读读数块，热量与能量各自独立成块，
+## CORE 用百分比读数。这里量的是装配出来的节点结构与文案；
+## 「这 5 格真的被画到屏幕上」归 tests/unit/combat_probe.gd 的像素取证（09 §4）。
+func _check_readout_blocks(ctx: RefCounted, scene: Node) -> void:
+	ctx.begin_case("COMBAT · 读数区 5 个只读读数块（06 §8.1）")
+	var row: Node = _find(scene, "ReadoutsRow")
+	if not ctx.check(row != null, "状态带应有读数行的容器 ReadoutsRow"):
+		return
+
+	var blocks: Array[Node] = row.get_children()
+	if not ctx.equal(blocks.size(), READOUT_CAPTIONS.size(),
+			"读数区应恰好 %d 个读数块" % READOUT_CAPTIONS.size()):
+		return
+	for index: int in READOUT_CAPTIONS.size():
+		_check_one_readout(ctx, blocks[index], index)
+
+	# 硬规则 1：热量与能量**必须分格**，不得再合并成一格 `0% / 0%`。
+	var heat: Node = _find(row, SPLIT_READOUTS[0])
+	var energy: Node = _find(row, SPLIT_READOUTS[1])
+	if ctx.check(heat != null and energy != null, "热量与能量应各自有独立的读数块"):
+		ctx.check(heat != energy, "热量与能量必须是两个不同的节点，不得是同一格的两种说法")
+		ctx.equal(heat.get_index() + 1, energy.get_index(), "热量与能量应是相邻的两块")
+		for block: Node in [heat, energy]:
+			var value: Label = _find(block, "Value") as Label
+			ctx.check(value != null and not value.text.contains("/"),
+				"%s 的读数不得写成合并形式（读数里不得出现 `/`）" % block.name)
+
+	# 硬规则 2：CORE 用可比较的百分比读数，不用 `完好` 这类自然语言状态词。
+	var core: Node = _find(row, "Core")
+	if ctx.check(core != null, "应有 CORE 读数块（节点名 Core）"):
+		var core_value: Label = _find(core, "Value") as Label
+		if ctx.check(core_value != null, "CORE 读数块应有 Value"):
+			ctx.check(core_value.text.ends_with("%"), "CORE 应是百分比读数（实际：%s）" % core_value.text)
+			ctx.check(core_value.text.trim_suffix("%").is_valid_int(),
+				"CORE 的百分号前应是可比较的整数（实际：%s）" % core_value.text)
+
+
+func _check_one_readout(ctx: RefCounted, block: Node, index: int) -> void:
+	var label: String = "第 %d 块（%s）" % [index + 1, READOUT_CAPTIONS[index]]
+	ctx.check(block is VBoxContainer, "%s 应是「标题 + 读数」的纵向容器" % label)
+	var caption: Label = _find(block, "Caption") as Label
+	var value: Label = _find(block, "Value") as Label
+	if not ctx.check(caption != null and value != null, "%s 应有 Caption 与 Value 两个 Label" % label):
+		return
+	# 只读：读数块里除了这两个 Label 不许再有别的控件（按钮 / 输入框 / 滑条）。
+	var extra: Array[Node] = []
+	for child: Node in block.get_children():
+		if child != caption and child != value:
+			extra.append(child)
+	ctx.check(extra.is_empty(), "%s 内除 Caption / Value 外不得再有控件" % label)
+	ctx.equal(caption.text, READOUT_CAPTIONS[index], "%s 的 Caption" % label)
+	ctx.equal(value.text, READOUT_VALUES[index], "%s 的读数" % label)
 
 
 ## 可交互控件：按钮、滑条、输入框。ScrollContainer 不算 —— 它只是被动滚动一个只读列表，
