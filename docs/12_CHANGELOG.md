@@ -5,6 +5,29 @@
 
 ## [Unreleased]
 
+### S1-13 交付复核 + 打包排除缺陷（DSH）— 2026-10-03
+
+#### Fixed
+- `.gitignore`：删掉 `export_presets.cfg` 那行忽略 —— 它现在是 **S1-13 的交付物**（只含相对路径与
+  `variant/thread_support`，无机密、无机器相关项），**刻意入库**。PET-57 已用 `git add -f` 收编，
+  DSH 复核后去掉那行会误导人的忽略规则。
+- `11_TASK_BOARD.md` → **v0.1.7**：S1-13 转 `ACCEPTED`。
+
+#### Notes
+- **S1-13（PET-57）通过**：preset 落地、真跑一次 debug + Threads 导出（exit 0）、产物冒烟 **23/23**
+  并带两条外部改坏的反向对照（移走 `index.wasm` → 19/21；`index.pck` 换 0 字节 → 21/23，md5 恢复后回到 23/23）；
+  全套基线一条未退；「人要看什么」清单齐备（COOP/COEP 服务脚本 + 6 条肉眼项）。
+- **DSH 独立确认了一个真实打包缺陷**：`export_presets.cfg` 走默认 `export_filter="all_resources"`，
+  而 `build/` / `.godot/` / `tools/` 都在 `res://` 之内。**DSH 自己的导出日志逐字打出**它在打包
+  `res://tools/godot/editor_data/editor_settings-4.7.tres.remap`、`res://.godot/global_script_class_cache.cfg`、
+  `res://.godot/uid_cache.bin` —— 即**用户既有的编辑器设置与本地缓存被塞进了 `index.pck`**；
+  且上一轮导出产物会被打进下一轮（实测 pck +29,680）。修法是加 `exclude_filter`，而
+  **原卡「不要发明额外开关」那句让它无法修** —— 已在本轮明确授权，并入「测试卫生 + Web 打包排除」卡。
+- **另一处如实登记（PET-57 发现，非本批引入）**：冷缓存导出会刷 64 条 `SCRIPT ERROR`
+  （`palette.gd:87 resolve`：`Attempt to call a method on a placeholder instance`）。其受控对照显示
+  与 preset 无关（单跑 `--editor --quit` 同样刷 32 条），热缓存为 0，**运行时不受影响**（全套套件全绿）。
+
+
 ### S1-12 交付复核 + 导出模板截断（DSH）— 2026-10-03
 
 #### Fixed

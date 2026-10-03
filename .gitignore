@@ -2,7 +2,7 @@
 .godot/
 .import/
 export.cfg
-export_presets.cfg
+# export_presets.cfg **刻意入库**：它是 S1-13 的交付物（Web 导出 preset），只含相对路径与线程开关，无机密/机器相关项。
 *.translation
 
 # ---- Build / export output ----

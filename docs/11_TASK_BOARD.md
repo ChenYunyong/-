@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.6**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.1.7**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -92,7 +92,7 @@
 | S1-09R | 规范一致性修复：REWARD 选项卡补 `PanelShadow` 叠层（Codex 裁定选 A） | Claude | S1-09 | `ACCEPTED`（PET-52） |
 | S1-08R2 | 窄屏取样轴序统一 + 期望值按 `06 §7.1` 重导 + 补「25% 上限真的咬住」的专用取样 | Claude | S1-08R | `ACCEPTED`（PET-54 发现 → PET-55 完成） |
 | S1-12 | 状态循环集成测试（10 次循环、防重入、不自动推进） | Claude | S1-10 | `ACCEPTED`（PET-56 · integration 19→333，三条性质各带反向对照；`09 §3.1` 的「无节点泄漏」一条并入测试卫生卡） |
-| S1-13 | Web Export 冒烟验证 | Claude | S1-12 | `IN_PROGRESS`（PET-57 · 受限于只有 threads 版 debug 模板，见 12 的 Notes） |
+| S1-13 | Web Export 冒烟验证 | Claude | S1-12 | `ACCEPTED`（PET-57 · debug+Threads 导出跑通、产物冒烟 23/23 带反向对照、「人看清单」齐备；**打包排除缺陷**并入测试卫生卡） |
 | S1-14 | Stage 1 用户验收 | 用户 | S1-13 | `TODO` |
 
 > **已登记待办（S1-05 复核产生）**：`06 §2.2` 的**面板标题栏**（高度 16px / 底色 `NAVY_700` + 1px 底部 `GOLD_600` 分隔线）
@@ -112,6 +112,18 @@
 > **已登记待办（DSH 2026-10-03 S1-12 复核新增）**：`09 §3.1` 明写「循环 10 次**无内存/节点泄漏**」，
 > 而 `tests/integration/test_state_loop.gd` 里**没有任何泄漏断言**（全文无 `orphan` / `child_count`）。
 > PET-56 声称 `§3.1` 的语义「被完全覆盖」，该说法**只对循环次数成立**。已并入「测试卫生」卡。
+>
+> **已登记待办（DSH 2026-10-03 S1-13 复核新增，本批真实缺陷）**：`export_presets.cfg` 走默认
+> `export_filter="all_resources"`，而 `build/` / `.godot/` / `tools/` 都在 `res://` 之内 ——
+> DSH 自己的导出日志**逐字打出**它在打包 `res://tools/godot/editor_data/editor_settings-4.7.tres.remap`、
+> `res://.godot/global_script_class_cache.cfg`、`res://.godot/uid_cache.bin`，即**用户既有的编辑器设置与本地缓存
+> 被塞进了 `index.pck`**；且上一轮导出产物会被打进下一轮（实测 pck +29,680）。修法是加 `exclude_filter` ——
+> 原卡「不要发明额外开关」那句让它无法修，已在本轮明确授权，并入「测试卫生 + Web 打包排除」卡。
+>
+> **已登记待办（DSH 2026-10-03 S1-13 复核新增，非本批引入）**：冷缓存导出会刷 64 条 `SCRIPT ERROR`
+> （`palette.gd:87 resolve`：`Attempt to call a method on a placeholder instance`）。PET-57 的受控对照显示
+> 与 preset 无关（单跑 `--editor --quit` 同样刷 32 条），热缓存为 0，**运行时不受影响**（全套套件全绿）。
+> 属 `@tool` 扫描期的占位实例问题，登记待办，本轮不派卡。
 
 **Stage 1 绝对禁止**：真实战斗、真实伤害、蓝图编辑逻辑、敌人 AI。
 
