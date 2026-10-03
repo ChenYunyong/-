@@ -17,6 +17,7 @@ const HARNESS_PATH: String = "res://tests/unit/render_probe_harness.gd"
 ## S1-07 / S1-08 的用例模块。聚合入口只留一次调用，见 09 §4 v0.1.3 的拆分先例。
 const PREP_PROBE_PATH: String = "res://tests/unit/preparation_probe.gd"
 const COMBAT_PROBE_PATH: String = "res://tests/unit/combat_probe.gd"
+const REWARD_PROBE_PATH: String = "res://tests/unit/reward_probe.gd"
 const THEME_PATH: String = "res://assets/ui/theme_main.tres"
 const PANEL_SCENE_PATH: String = "res://scenes/components/message_panel.tscn"
 const TITLE_BAR_SCENE_PATH: String = "res://scenes/components/panel_title_bar.tscn"
@@ -79,6 +80,8 @@ func _initialize() -> void:
 	await load(PREP_PROBE_PATH).new().run(self, _h, _theme)
 	# S1-08 的 COMBAT 战场 / 状态带取证同样拆成模块（本文件仍在 02 §4 的上限内）。
 	await load(COMBAT_PROBE_PATH).new().run(self, _h, _theme)
+	# S1-09 的 REWARD 三列 / 竖排选项卡与类型图标取证。
+	await load(REWARD_PROBE_PATH).new().run(self, _h, _theme)
 
 	print("")
 	print("PROBE 结论：通过 %d / 失败 %d" % [_h.passed, _h.failed])
