@@ -63,10 +63,16 @@ CONSTRAINT CHECK
 - OUTPUT：<交付物路径>
 - ALLOWED FILES：<允许新建/修改的具体文件>
 - FORBIDDEN：<本任务明确禁止触碰的文件/系统>
+- 被审/被改文件的版本行：<逐字抄录，例如 04_COLOR_SYSTEM.md 的「版本 **v0.1.3**」>
 - STORAGE CHECK：<见 01_STORAGE_RULES §7>
 - 验收条件：<见 10_ACCEPTANCE_STANDARD>
 - 测试方法：<见 09_TEST_STANDARD>
 ```
+
+> **版本行不是形式主义（2026-10-03 教训）**：Codex 第二轮视觉审查读取的是 `04` 的 **v0.1.1 快照**，
+> 而当时磁盘上已是 v0.1.2 —— 结果 5 项 blocking 里有 3 项是**已经修完的问题**，白耗一轮。
+> 从那以后：**任何审查/修改类任务，必须在 CONSTRAINT CHECK 里抄下被审文件的版本行**；
+> 若抄不出或与预期不符，先停下来确认磁盘版本，不要开审。
 
 **没有 CONSTRAINT CHECK 的实现一律不接受。**
 
