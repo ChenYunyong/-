@@ -33,6 +33,11 @@ const BAND_BOTTOM: int = 179
 ## 反向对照的位移量。
 const SHIFT: float = 4.0
 
+## 06 §8.1（v0.1.10，Codex 裁定）的 5 个只读读数块，按带内从左到右的顺序，节点名同 combat.tscn。
+const READOUT_BLOCKS: PackedStringArray = ["Wave", "Core", "Heat", "Energy", "Queue"]
+## 反向对照三：把读数行的行距撑到远大于格宽，排在后面的格会被挤出视口。
+const ROW_OVERFLOW_SEPARATION: int = 200
+
 var _h: RefCounted = null
 var _tree: SceneTree = null
 var _theme: Theme = null
@@ -58,6 +63,7 @@ func run(tree: SceneTree, harness: RefCounted, theme: Theme) -> void:
 	await _probe_band()
 	await _probe_shift()
 	await _probe_layers()
+	await _probe_readouts()
 
 
 ## 组 8：分界行、上沿厚度、带的四边与底色。
@@ -148,6 +154,184 @@ func _probe_layers() -> void:
 	_h.check(_h.count_row(control, BAND_TOP, 0, CANVAS.x, _band_edge) == CANVAS.x,
 		"反向对照：藏掉底色后上沿仍应是整条 %d px" % CANVAS.x)
 	fill.set(&"visible", true)
+
+
+## 组 9：06 §8.1（v0.1.10，Codex 裁定）的读数区 —— 5 个只读读数块**真的都被画到了屏幕上**。
+## 09 §4 明写「禁止用配置项等于某个值代替可见结果确实出现」，而「ReadoutsRow 有几个子节点」
+## 正是配置项：5 个块若被挤出视口、或被裁掉半格，节点数照样是 5。
+## 故这里量的是**每一格矩形内有没有文字墨迹**，以及它是否完整落在读数视口内。
+##
+## 判别力（09 §4：每条断言都要能被一次「故意改坏」打红）：
+##   反向对照一 —— 藏掉末格（队列）：那一格墨迹必须归零，且其余四格的矩形与墨迹逐一不变。
+##                 「藏一个不会有这种局部效果」说明五格是各自独立画出来的，不是同一格。
+##   反向对照二 —— 整条状态带移出画布：5 格墨迹必须全部归零（证明墨迹来自这条带）。
+##   反向对照三 —— 把行距撑到 200：完整落在视口内的格数必须少于 5、末格墨迹归零
+##                 （证明「5 格都画出来」这条不是恒真）。
+func _probe_readouts() -> void:
+	print("")
+	print("=== 组 9：COMBAT 读数区 5 格都画出来了（06 §8.1 像素取证）===")
+	_h.reset()
+	var image: Image = await _open_scene()
+	if image == null:
+		return
+	var viewport_rect: Rect2 = _readouts_rect()
+	var rects: Array = _block_rects()
+	if not _h.check(rects.size() == READOUT_BLOCKS.size(),
+			"读数区应有 %d 格（实际 %d）" % [READOUT_BLOCKS.size(), rects.size()]):
+		return
+	var inks: Array = []
+	for index: int in READOUT_BLOCKS.size():
+		inks.append(_ink(image, rects[index]))
+
+	for index: int in READOUT_BLOCKS.size():
+		_h.check(int(inks[index]) > 0,
+			"第 %d 格（%s）矩形内应真有文字墨迹 —— 它被画出来了（实际 %d px）" % [
+				index + 1, READOUT_BLOCKS[index], int(inks[index])])
+		_h.check(viewport_rect.encloses(rects[index]),
+			"第 %d 格（%s）应完整落在读数视口内，没有被裁掉" % [index + 1, READOUT_BLOCKS[index]])
+		if index + 1 < READOUT_BLOCKS.size():
+			_h.check(_is_blank(image, _gap_between(rects[index], rects[index + 1])),
+				"第 %d 格（%s）与第 %d 格（%s）之间应是一条空带 —— 它们是两格，不是同一格" % [
+					index + 1, READOUT_BLOCKS[index], index + 2, READOUT_BLOCKS[index + 1]])
+
+	await _probe_readout_blank_last(rects, inks)
+	await _probe_readout_band_shift()
+	await _probe_readout_row_overflow(viewport_rect)
+
+
+## 反向对照一：藏掉**末格**（队列 —— 它右边没有别的格，藏掉它不会移动任何格）。
+## 末格墨迹归零、其余四格的矩形与墨迹逐一不变 —— 这条同时钉住「墨迹计数读的确实是那一格」
+## 与「五格各自独立绘制」，若五格其实是同一格，藏一个不会有这种局部效果。
+func _probe_readout_blank_last(rects: Array, inks: Array) -> void:
+	var last_index: int = READOUT_BLOCKS.size() - 1
+	var last: Control = _block(READOUT_BLOCKS[last_index])
+	if not _h.check(last != null, "应有末格（%s）读数块" % READOUT_BLOCKS[last_index]):
+		return
+
+	last.visible = false
+	var image: Image = (await _h.settle())["image"]
+	var after: Array = _block_rects()
+	_h.check(_ink(image, rects[last_index]) == 0,
+		"反向对照：藏掉末格后那一格不得再有墨迹（实际 %d px）" % _ink(image, rects[last_index]))
+	var changed: int = 0
+	for index: int in last_index:
+		if after[index] != rects[index] or _ink(image, after[index]) != int(inks[index]):
+			changed += 1
+	_h.check(changed == 0,
+		"反向对照：藏掉末格不该移动或改变其余 %d 格（违例 %d 格）" % [last_index, changed])
+	last.visible = true
+	var restored: Image = (await _h.settle())["image"]
+	_h.check(_ink(restored, _block_rects()[last_index]) == int(inks[last_index]),
+		"还原末格后该格墨迹应回到藏之前的值（%d → %d）" % [
+			int(inks[last_index]), _ink(restored, _block_rects()[last_index])])
+
+
+## 反向对照二：整条状态带移出画布 → 5 格墨迹全部归零。
+func _probe_readout_band_shift() -> void:
+	if _scene == null:
+		return
+	var bar: Control = _scene.find_child("StatusBar", true, false) as Control
+	if not _h.check(bar != null, "场景应有 StatusBar 容器"):
+		return
+
+	var origin: Vector2 = bar.position
+	bar.position = Vector2(origin.x, float(CANVAS.y))
+	var moved: Image = (await _h.settle())["image"]
+	var rects: Array = _block_rects()
+	var leaked: int = 0
+	for index: int in rects.size():
+		leaked += _ink(moved, rects[index])
+	_h.check(leaked == 0,
+		"反向对照：整条带移出画布后 5 格墨迹应全部归零（实际 %d px）—— 它们确实画在这条带上" % leaked)
+	bar.position = origin
+
+
+## 反向对照三：把读数行的行距撑到 200，后面的格被挤出视口。
+## 这条直接打在「5 格都画出来」上：量不出这个变化，就说明那 5 条断言只是在数节点。
+func _probe_readout_row_overflow(viewport_rect: Rect2) -> void:
+	var row: Control = _scene.find_child("ReadoutsRow", true, false) as Control
+	if not _h.check(row != null, "场景应有读数行容器 ReadoutsRow"):
+		return
+
+	var origin: int = row.get_theme_constant(&"separation")
+	row.add_theme_constant_override(&"separation", ROW_OVERFLOW_SEPARATION)
+	var image: Image = (await _h.settle())["image"]
+	var rects: Array = _block_rects()
+	# 只看**横向**是否落在视口内：行距一撑开，横向装不下的格会被推到视口外。
+	# 纵向不参与这条 —— 撑开后横向滚动条会占掉一点高度，纵向的位移是那件事的副产品，
+	# 混进来会让这条断言看起来「连首格都没画」，读不出它真正要证的东西。
+	var across: int = 0
+	for index: int in rects.size():
+		if rects[index].position.x >= viewport_rect.position.x and rects[index].end.x <= viewport_rect.end.x:
+			across += 1
+	var last_index: int = rects.size() - 1
+	_h.check(across == 1,
+		"反向对照：行距撑到 %d 后，横向仍落在读数视口（x %.0f–%.0f）内的格数应从 %d 掉到 1（实际 %d）" % [
+			ROW_OVERFLOW_SEPARATION, viewport_rect.position.x, viewport_rect.end.x,
+			READOUT_BLOCKS.size(), across])
+	_h.check(not viewport_rect.encloses(rects[last_index]),
+		"反向对照：末格应被挤出读数视口（末格右缘 %.0f，视口右缘 %.0f）" % [
+			rects[last_index].end.x, viewport_rect.end.x])
+	_h.check(_ink(image, rects[last_index]) == 0,
+		"反向对照：被挤出视口的末格数不到墨迹（实际 %d px）" % _ink(image, rects[last_index]))
+	row.add_theme_constant_override(&"separation", origin)
+
+	var back: Image = (await _h.settle())["image"]
+	var restored: Array = _block_rects()
+	var again: int = 0
+	for index: int in restored.size():
+		if viewport_rect.encloses(restored[index]) and _ink(back, restored[index]) > 0:
+			again += 1
+	_h.check(again == READOUT_BLOCKS.size(),
+		"还原行距后 %d 格应重新全部完整画出来（实际 %d 格）" % [READOUT_BLOCKS.size(), again])
+
+
+## 相邻两格之间的那条竖直空带（行距）。
+func _gap_between(left: Rect2, right: Rect2) -> Rect2:
+	return Rect2(left.end.x, left.position.y, right.position.x - left.end.x, left.size.y)
+
+
+func _is_blank(image: Image, rect: Rect2) -> bool:
+	return rect.size.x > 0.0 and _ink(image, rect) == 0
+
+
+## 5 个读数块的全局矩形，顺序同 READOUT_BLOCKS。找不到的格以空矩形占位，
+## 于是「少了一格」会在数组长度上被本组第一条断言先抓住。
+func _block_rects() -> Array:
+	var rects: Array = []
+	for block_name: String in READOUT_BLOCKS:
+		var block: Control = _block(block_name)
+		rects.append(block.get_global_rect() if block != null else Rect2())
+	return rects
+
+
+func _block(block_name: String) -> Control:
+	if _scene == null:
+		return null
+	return _scene.find_child(block_name, true, false) as Control
+
+
+func _readouts_rect() -> Rect2:
+	if _scene == null:
+		return Rect2()
+	var readouts: Control = _scene.find_child("Readouts", true, false) as Control
+	return readouts.get_global_rect() if readouts != null else Rect2()
+
+
+## 一格内的「墨迹」：既不是状态带底色、也不是带上沿的像素 —— 即文字本身。
+## 不写死字体色，于是改主题配色不会把这条断言变成假绿。
+func _ink(image: Image, rect: Rect2) -> int:
+	var extent: Vector2i = image.get_size()
+	var from_x: int = clampi(int(rect.position.x), 0, extent.x)
+	var to_x: int = clampi(int(rect.end.x), 0, extent.x)
+	var from_y: int = clampi(int(rect.position.y), 0, extent.y)
+	var to_y: int = clampi(int(rect.end.y), 0, extent.y)
+	var ink: int = 0
+	for y: int in range(from_y, to_y):
+		for x: int in range(from_x, to_x):
+			if not _h.near(image.get_pixel(x, y), _band_fill):
+				ink += 1
+	return ink
 
 
 ## 「第 y 行整行都是 wanted」——分界行与反向对照后的新分界行共用同一条断言。
