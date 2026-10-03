@@ -16,6 +16,9 @@ extends SceneTree
 
 const CONTEXT_PATH: String = "res://tests/unit/test_context.gd"
 const MENU_SCENE_PATH: String = "res://scenes/menu/main_menu.tscn"
+## S1-07 起「开始」会真的路由到这里。刻意写死路径而不是问 GameFlow 要 ——
+## 本用例要证的就是「路由表登记的就是这个文件」，问了被测实现就成了同义反复。
+const PREP_SCENE_PATH: String = "res://scenes/preparation/preparation.tscn"
 const MENU_SCRIPT_PATH: String = "res://scripts/ui/main_menu.gd"
 const GAME_FLOW_PATH: String = "res://scripts/core/game_flow.gd"
 const THEME_SCRIPT_PATH: String = "res://scripts/data/palette_theme.gd"
@@ -40,10 +43,12 @@ func _initialize() -> void:
 	await process_frame
 	await _run_routed_entry_case()
 	_run_structure_case()
-	_run_start_case()
 	_run_continue_case()
 	_run_placeholder_case()
 	await _run_reentry_case()
+	# 「开始」会把当前场景换成 PREPARATION，故必须排在最后 —— 否则后面每个用例的
+	# `current_scene` 都已经不是主菜单，会连锁报一串与它们本身无关的失败。
+	await _run_start_case()
 	_finish()
 
 
@@ -132,9 +137,14 @@ func _check_notice_panel_fits(menu: Node) -> void:
 		"提示面板不得被最小尺寸撑出屏幕（实际 %s，视口 %s）" % [notice.get_global_rect(), viewport])
 
 
-## 「开始」：PREPARATION 尚未实现 → 必须停在主菜单 + 可读提示，不崩、不静默无效。
+## 「开始」：PREPARATION 已由 S1-07 落地，本用例改为断言**真的经 GameFlow 路由进入整备场景**。
+##
+## S1-06 交付时这里断言的是「停在主菜单 + 未实现提示」（因为当时 preparation.tscn 还不存在）。
+## 那条行为随 S1-07 落地而合法失效 —— 它不是被改坏了，而是它守的那个前提没了。
+## 「未实现 → 可读提示」这条路径本身没有失去覆盖：下面的设置 / 退出两条走的是同一套机制。
+## main_menu.gd 里那个路由就绪判断也仍然在，它现在守的是「场景文件缺失」这类真正的路由故障。
 func _run_start_case() -> void:
-	_ctx.begin_case("MAIN_MENU 冒烟 · 开始（PREPARATION 未实现）")
+	_ctx.begin_case("MAIN_MENU 冒烟 · 开始（经路由进入 PREPARATION）")
 	var menu: Node = _menu()
 	if not _ctx.check(menu != null, "应已进入 MAIN_MENU 场景"):
 		return
@@ -142,15 +152,24 @@ func _run_start_case() -> void:
 	if not _ctx.check(notice != null, "应有提示面板"):
 		return
 	_ctx.check(not notice.visible, "前置：提示面板初始不可见")
+	var flow: Node = _autoload("GameFlow")
+	_ctx.equal(String(flow.call(&"get_scene_path_for", _state("PREPARATION"))), PREP_SCENE_PATH,
+		"按钮将要走的正是路由表登记的那条路径")
 
 	_press(_find(menu, "ButtonStart") as Button)
-	_ctx.check(notice.visible, "请求『开始』后必须给出提示")
-	_check_notice_text(notice, String(_menu_script.NOTICE_PREPARATION), "『开始』的提示")
-	_ctx.equal(_state_of_flow(), _state("MAIN_MENU"), "PREPARATION 未实现时状态必须停在 MAIN_MENU")
-	_ctx.equal(current_scene, menu, "PREPARATION 未实现时不得换场景")
+	_ctx.equal(_state_of_flow(), _state("PREPARATION"), "请求『开始』后状态应为 PREPARATION")
+	_ctx.check(not notice.visible, "路由就绪时不得弹出『未实现』提示")
 
-	_dismiss(menu)
-	_ctx.check(not notice.visible, "点击后提示应可关闭（否则它挡住菜单就再也点不动了）")
+	# change_scene_to_file 是延迟落地的，等两帧再看当前场景。
+	await process_frame
+	await process_frame
+	var preparation: Node = current_scene
+	if not _ctx.check(preparation != null, "切换后应存在当前场景"):
+		return
+	_ctx.equal(preparation.scene_file_path, PREP_SCENE_PATH, "当前场景应是路由表登记的 PREPARATION 路径")
+	_ctx.equal(preparation.get_parent(), root, "当前场景应挂在 root 下")
+	_ctx.check(preparation.get_script() != null, "PREPARATION 场景应挂上自己的脚本")
+	_ctx.check(not is_instance_valid(menu), "切换后旧场景应被释放（不得两份菜单同时挂着）")
 
 
 ## 「继续」：无存档 → Disabled（06 §3），且不得挂任何处理器。
@@ -284,7 +303,7 @@ func _finish() -> void:
 	_lines.append("- 单元测试：见 unit_tests.log")
 	_lines.append("- 集成测试：见 unit_tests.log")
 	_lines.append("- 场景冒烟：%d/%d" % [_ctx.passed, _ctx.passed + _ctx.failed])
-	_lines.append("- 手动场景：MAIN_MENU 经路由进入 · 开始 · 继续(Disabled) · 设置 · 退出 · 重复进入")
+	_lines.append("- 手动场景：MAIN_MENU 经路由进入 · 开始(→PREPARATION) · 继续(Disabled) · 设置 · 退出 · 重复进入")
 	if _ctx.failures.is_empty():
 		_lines.append("- 失败项：无")
 	else:

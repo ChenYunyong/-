@@ -25,7 +25,7 @@ const TEXT_TITLE_BAR: String = "主菜单"
 ## 提示面板文案。
 const NOTICE_TITLE: String = "尚未实现"
 const NOTICE_DISMISS: String = "点击任意处关闭"
-const NOTICE_PREPARATION: String = "「开始」要进入整备场景（PREPARATION），该场景属 S1-07、尚未实现，本次留在主菜单。"
+const NOTICE_PREPARATION: String = "整备场景（PREPARATION）的路由未就绪，本次留在主菜单。"
 const NOTICE_SETTINGS: String = "设置界面属后续批次，尚未实现。"
 const NOTICE_EXIT: String = "退出逻辑属后续批次，尚未实现。"
 
@@ -51,12 +51,12 @@ func _ready() -> void:
 
 ## 「开始」：请求进入 PREPARATION（03 §1 状态图 MAIN_MENU → PREPARATION）。
 ##
-## PREPARATION 属 S1-07、尚未实现，验收要求此时**停在 MAIN_MENU 并给出可读提示**。
-## 这里先查路由是否就绪，而不是闭眼调用 change_state()：状态与场景由同一个提交点落地（03 §1.1 R3），
+## S1-07 落地后这条路由已经通了，正常情况直接放行。这里仍然先查路由是否就绪，
+## 而不是闭眼调用 change_state()：状态与场景由同一个提交点落地（03 §1.1 R3），
 ## GameFlow 对未实现的路由只打印一行、并不改变状态（见 game_flow.gd 的 _route_to_scene），
 ## 直接请求不会崩，但玩家那边看到的是「按了没反应」—— 那正是验收不接受的静默无效。
-## 查的是 GameFlow 自己登记的 SCENE_ROUTES（唯一路由来源），不在这里另抄一份路径；
-## 待 S1-07 落地、场景文件存在后，本判断自动放行，无需回头改这里。
+## 查的是 GameFlow 自己登记的 SCENE_ROUTES（唯一路由来源），不在这里另抄一份路径。
+## 它现在守的是真正的路由故障（场景文件缺失 / 路径写错），而不是「尚未实现」。
 func _on_start_pressed() -> void:
 	var target_path: String = GameFlow.get_scene_path_for(GameFlow.GameState.PREPARATION)
 	if target_path.is_empty() or not ResourceLoader.exists(target_path):
