@@ -17,6 +17,11 @@ const PANEL_CONTENT_MARGIN: int = 12
 const PANEL_SECONDARY_CONTENT_MARGIN: int = 8
 const BODY_FONT_SIZE: int = 8
 
+## 06 §2.2：面板标题栏高度 16px。数值放在 Theme 侧是因为标题栏尺寸属面板规格，
+## 由组件场景（scenes/components/panel_title_bar.tscn）在 _ready() 里取用，
+## 避免同一个 16 在 Theme 与场景里各写一份。
+const TITLE_BAR_HEIGHT: int = 16
+
 ## Theme 类型变体名。S1-06 起的场景用 theme_type_variation 引用它们。
 const TYPE_PANEL_FRAME: StringName = &"PanelFrame"
 const TYPE_PANEL_CORE: StringName = &"PanelCore"
@@ -26,6 +31,9 @@ const TYPE_PANEL_HIGHLIGHT: StringName = &"PanelHighlight"
 const TYPE_PANEL_SELECTED: StringName = &"PanelSelected"
 ## 06 §2.2 的硬阴影落点，机制说明见 _build_panel_shadow()。
 const TYPE_PANEL_SHADOW: StringName = &"PanelShadow"
+## 06 §2.2 的面板标题栏：底色 NAVY_700 + 底部 1px GOLD_600 分隔线。
+## S1-05 复核登记的待办 —— 该规格此前在 Theme 与 scenes/** 都没有落点，S1-06 补上。
+const TYPE_PANEL_TITLE_BAR: StringName = &"PanelTitleBar"
 const TYPE_BUTTON_SECONDARY: StringName = &"ButtonSecondary"
 const TYPE_LABEL_SECONDARY: StringName = &"LabelSecondary"
 const TYPE_LABEL_DANGER: StringName = &"LabelDanger"
@@ -47,6 +55,7 @@ func apply_palette() -> void:
 	_build_panels()
 	_build_panel_highlight()
 	_build_panel_shadow()
+	_build_panel_title_bar()
 	_build_labels()
 
 
@@ -147,6 +156,28 @@ func _build_panel_shadow() -> void:
 	box.anti_aliasing = false
 	box.shadow_size = 0
 	set_stylebox(&"panel", TYPE_PANEL_SHADOW, box)
+
+
+## 06 §2.2 面板标题栏的配色：底色 NAVY_700、**底边** 1px GOLD_600 分隔线、其余三边为 0。
+##
+## 分隔线画在 stylebox 的 border_bottom 上 —— Godot 的 stylebox 描边画在矩形**内侧**，
+## 于是「高度 16px 的标题栏」里第 16 行就是那条金线，而不是「16px 之外再加 1px」。
+## 规范只给了两个数值、没写两者的包含关系，本批按「总计 16px」实现，并在交付说明里报备复核。
+##
+## 内容边距清零：本变体只服务标题栏组件（一个 Panel + 手工定位的 Label），不需要容器语义；
+## 留着 _panel_box() 的 12px 默认值，将来一旦被塞进容器就会把最小尺寸凭空撑高。
+func _build_panel_title_bar() -> void:
+	set_type_variation(TYPE_PANEL_TITLE_BAR, BASE_TYPE_PANEL)
+	var box: StyleBoxFlat = _panel_box(Palette.Key.NAVY_700, Palette.Key.GOLD_600)
+	box.border_width_left = 0
+	box.border_width_top = 0
+	box.border_width_right = 0
+	box.border_width_bottom = BORDER_WIDTH
+	box.content_margin_left = 0.0
+	box.content_margin_top = 0.0
+	box.content_margin_right = 0.0
+	box.content_margin_bottom = 0.0
+	set_stylebox(&"panel", TYPE_PANEL_TITLE_BAR, box)
 
 
 ## 高光层的**整圈**基底盒：四边各 1px 描边，不填中心，颜色只来自 Palette。

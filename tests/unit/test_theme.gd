@@ -32,6 +32,7 @@ func run(ctx: RefCounted, _tree: SceneTree) -> void:
 	_run_panel_checks(ctx, theme, theme_script)
 	_run_highlight_checks(ctx, theme, theme_script)
 	_run_shadow_checks(ctx, theme, theme_script)
+	_run_title_bar_checks(ctx, theme, theme_script)
 	_run_label_checks(ctx, theme, theme_script)
 
 
@@ -130,6 +131,38 @@ func _run_shadow_checks(ctx: RefCounted, theme: Theme, theme_script: GDScript) -
 	ctx.check(not flat.draw_center, "阴影层应只画边、不填中心")
 	ctx.check(not flat.anti_aliasing, "不得开抗锯齿")
 	ctx.equal(flat.shadow_size, 0, "不得再叠 shadow_*（实测会引入 1px 羽化）")
+
+
+## 06 §2.2 的面板标题栏：高度 16px（规格常量）、底色 NAVY_700、**底部** 1px GOLD_600 分隔线。
+##
+## 复用不了 _check_box()：那个 helper 断言四边同宽，而本变体的定义就是「只有底边有边」——
+## 套用它会逼着实现改成四边整圈，等于让 helper 反过来改规格。
+func _run_title_bar_checks(ctx: RefCounted, theme: Theme, theme_script: GDScript) -> void:
+	ctx.begin_case("Theme · 面板标题栏（06 §2.2）")
+	ctx.equal(theme_script.TITLE_BAR_HEIGHT, 16, "标题栏高度（06 §2.2）")
+	ctx.check(theme.get_type_variation_list(&"Panel").has(theme_script.TYPE_PANEL_TITLE_BAR),
+		"应注册标题栏变体")
+
+	var box: StyleBox = theme.get_stylebox(&"panel", theme_script.TYPE_PANEL_TITLE_BAR)
+	if not ctx.check(box is StyleBoxFlat, "标题栏应为 StyleBoxFlat"):
+		return
+	var flat: StyleBoxFlat = box
+	ctx.equal(flat.bg_color, Palette.get_color(Palette.Key.NAVY_700), "标题栏底色")
+	ctx.equal(flat.border_color, Palette.get_color(Palette.Key.GOLD_600), "分隔线颜色")
+	ctx.equal(flat.border_width_bottom, EXPECTED_BORDER_WIDTH, "底部分隔线 1px")
+	ctx.equal(flat.border_width_left, 0, "左边不得有描边")
+	ctx.equal(flat.border_width_top, 0, "上边不得有描边")
+	ctx.equal(flat.border_width_right, 0, "右边不得有描边")
+	ctx.check(flat.draw_center, "标题栏应填底色（不是叠层描边）")
+	ctx.equal(flat.corner_radius_top_left, 0, "应为像素直角")
+	ctx.check(not flat.anti_aliasing, "不得开抗锯齿")
+	ctx.equal(flat.shadow_size, 0, "不得带 shadow_*")
+	# 内容边距清零：本变体紧贴「Panel + 手工定位的 Label」，一旦被塞进容器，
+	# 非零的默认边距会把最小高度凭空撑到 16px 以上（规格就守不住了）。
+	ctx.equal(flat.content_margin_top, 0.0, "内容边距应为 0")
+	ctx.equal(flat.content_margin_bottom, 0.0, "内容边距应为 0")
+	ctx.check(_theme_uses_token(theme, Palette.Key.NAVY_700), "Theme 必须实际引用 NAVY_700")
+	ctx.check(_theme_uses_token(theme, Palette.Key.GOLD_600), "Theme 必须实际引用 GOLD_600")
 
 
 ## `PanelHighlight`（GOLD_200，材质暖高光）：**仅上边 + 左边** 1px，右/下必须为 0。
