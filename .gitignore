@@ -1,0 +1,27 @@
+# ---- Godot ----
+.godot/
+.import/
+export.cfg
+export_presets.cfg
+*.translation
+
+# ---- Build / export output ----
+build/
+*.exe
+*.pck
+*.zip
+
+# ---- Temp / logs ----
+*.tmp
+*.log
+*.bak
+*~
+
+# ---- Editor / OS ----
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# ---- Generated review artifacts (per 07_ASSET_PIPELINE) ----
+assets/_review/**/_scratch/
