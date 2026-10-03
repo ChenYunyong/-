@@ -16,6 +16,7 @@ extends SceneTree
 const HARNESS_PATH: String = "res://tests/unit/render_probe_harness.gd"
 const THEME_PATH: String = "res://assets/ui/theme_main.tres"
 const PANEL_SCENE_PATH: String = "res://scenes/components/message_panel.tscn"
+const TITLE_BAR_SCENE_PATH: String = "res://scenes/components/panel_title_bar.tscn"
 const SIZE: Vector2i = Vector2i(48, 32)
 ## 单面板矩形：四周留白，使四条边与 1px 阴影都落在画布内。
 const BOX: Rect2 = Rect2(4, 4, 12, 12)
@@ -24,6 +25,11 @@ const BOX: Rect2 = Rect2(4, 4, 12, 12)
 ## 最小尺寸上抛，给的矩形一旦偏小，Frame 就会被自己的最小尺寸撑出矩形、把 Shadow 叠层整个盖住。
 const WIRED_BOX: Rect2 = Rect2(4, 4, 40, 72)
 const WIRED_SIZE: Vector2i = Vector2i(52, 84)
+## 标题栏探针：矩形高度就是这个探针要证的那个数（16）；宽度取 40 以便与高度区分
+## 行 / 列两个方向（40×16 的盒子把行列表现在写反了也会红）。
+const TITLE_BOX: Rect2 = Rect2(4, 4, 40, 16)
+## 画布高度留到 24：反向对照要把控件撑到 17px，撑开后底边仍要落在画布内。
+const TITLE_SIZE: Vector2i = Vector2i(48, 24)
 
 var _h: RefCounted = null
 var _theme: Theme = null
@@ -64,6 +70,7 @@ func _initialize() -> void:
 	await _probe_hard_edge()
 	await _probe_highlights()
 	await _probe_panel_shadow_wiring()
+	await _probe_title_bar()
 
 	print("")
 	print("PROBE 结论：通过 %d / 失败 %d" % [_h.passed, _h.failed])
@@ -180,6 +187,123 @@ func _probe_panel_shadow_wiring() -> void:
 		"负对照：藏掉 Shadow 叠层后阴影像素应为 0（实际 %d）—— 面板本体不携带阴影" % int(control["shadow"]))
 	_h.check(int(control["other"]) == 0,
 		"负对照：藏掉 Shadow 叠层后仍应零羽化（实际 %d）" % int(control["other"]))
+
+
+## 组 5：06 §2.2 的面板标题栏 —— 高 16px（分隔线算在这 16 里）、底色 NAVY_700、
+## 底边整条 1px GOLD_600。09 §4 v0.1.1 明确要求视觉结果必须有像素证据，
+## 所以这里量的是渲染出来的行，而不是「custom_minimum_size 等于 16」这种字段断言。
+##
+## 两条反向对照（09 §4 v0.1.2：探针必须能被一次「故意改坏」打红）：
+##   高度对照 —— 把控件撑到 17px，金线必须整体下移一行。量不到这个位移，
+##              就说明探针只是在「矩形最底下一行」找金色，证明不了高度是 16。
+##   变体对照 —— 换成 PanelCore，金色必须一像素不剩，证明金线来自标题栏变体本身。
+func _probe_title_bar() -> void:
+	print("")
+	print("=== 组 5：面板标题栏 16px + 底部 1px 分隔线（06 §2.2 像素取证）===")
+	_h.reset()
+	# 复用基建里「判据色」两个槽位：fill 记标题栏底色，shadow 记分隔线色，
+	# 于是 mark() 与 stats() 不必为这一组另开一套。
+	_h.fill = Palette.get_color(Palette.Key.NAVY_700)
+	_h.shadow = Palette.get_color(Palette.Key.GOLD_600)
+	print("  判据色：底=WHITE%s 标题栏底色=NAVY_700%s 分隔线=GOLD_600%s" % [
+		_h.color_text(_h.backdrop), _h.color_text(_h.fill), _h.color_text(_h.shadow),
+	])
+
+	var packed: PackedScene = load(TITLE_BAR_SCENE_PATH)
+	if not _h.check(packed != null, "panel_title_bar.tscn 应能加载"):
+		return
+	_h.set_canvas_size(TITLE_SIZE)
+	var bar: Control = packed.instantiate()
+	bar.position = TITLE_BOX.position
+	bar.size = TITLE_BOX.size
+	bar.theme = _theme
+	_h.adopt(bar)
+	_h.check(bar.custom_minimum_size.y == float(_script.TITLE_BAR_HEIGHT),
+		"组件高度应取自 PaletteTheme.TITLE_BAR_HEIGHT（%d）" % _script.TITLE_BAR_HEIGHT)
+
+	var stats: Dictionary = await _h.settle()
+	_dump_title_bar(stats["image"])
+	_assert_title_bar(stats["image"], int(TITLE_BOX.size.y) - 1, "标题栏 16px")
+	_h.check(int(stats["shadow"]) == int(TITLE_BOX.size.x),
+		"整幅画面上的金像素应恰好等于分隔线长度 %d（实际 %d）" % [int(TITLE_BOX.size.x), int(stats["shadow"])])
+	_h.check(int(stats["other"]) == 0,
+		"除底色与金线外不得有第三种像素 —— 零羽化、零抗锯齿（实际 %d）" % int(stats["other"]))
+
+	# 真实菜单里的标题栏是**带中文标题**的：文字必须被挡在分隔线之上，既不能把那 1px 金线打断，
+	# 也不能因为 Label 的最小行高超过 15px 而把标题栏顶高（顶高了 06 §2.2 的 16px 就守不住）。
+	bar.call(&"set_title_key", "主菜单")
+	stats = await _h.settle()
+	_h.check(int(stats["other"]) > 0,
+		"带中文标题时：标题栏内应确有这样的文字墨迹（实际非判据色像素 %d）—— 否则下一条是空断言" % int(stats["other"]))
+	_h.check(_h.count_row(stats["image"], int(TITLE_BOX.position.y + TITLE_BOX.size.y) - 1,
+			int(TITLE_BOX.position.x), int(TITLE_BOX.position.x + TITLE_BOX.size.x),
+			_h.shadow) == int(TITLE_BOX.size.x),
+		"带中文标题时：分隔线仍应是整条 %d px（文字不得压到金线上）" % int(TITLE_BOX.size.x))
+	_h.check(bar.size.y == TITLE_BOX.size.y, "带中文标题时：标题栏高度仍是 16px（不得被文字撑高）")
+	bar.call(&"set_title_key", "")
+
+	bar.size.y = TITLE_BOX.size.y + 1.0
+	stats = await _h.settle()
+	_assert_title_bar(stats["image"], int(TITLE_BOX.size.y), "反向对照：撑到 17px")
+
+	bar.size.y = TITLE_BOX.size.y
+	bar.theme_type_variation = _script.TYPE_PANEL_CORE
+	stats = await _h.settle()
+	_h.check(int(stats["shadow"]) == 0,
+		"反向对照：换成 PanelCore 后金像素应归零（实际 %d）—— 金线来自标题栏变体" % int(stats["shadow"]))
+
+
+## 标题栏几何契约：第 0..gold_row-1 行整行底色，第 gold_row 行整行金线（每列恰好 1 个金像素），
+## 再下一行不得有任何标题栏像素 —— 最后一条把「高度到此为止」也钉住。
+func _assert_title_bar(image: Image, gold_row: int, label: String) -> void:
+	if image == null:
+		return
+	var left: int = int(TITLE_BOX.position.x)
+	var top: int = int(TITLE_BOX.position.y)
+	var width: int = int(TITLE_BOX.size.x)
+	var bad_rows: int = 0
+	for offset: int in gold_row:
+		if _h.count_row(image, top + offset, left, left + width, _h.fill) != width:
+			bad_rows += 1
+		elif _h.count_row(image, top + offset, left, left + width, _h.shadow) != 0:
+			bad_rows += 1
+	_h.check(bad_rows == 0,
+		"%s：第 0~%d 行应整行是 NAVY_700 底色（违例 %d 行）" % [label, gold_row - 1, bad_rows])
+	_h.check(_h.count_row(image, top + gold_row, left, left + width, _h.shadow) == width,
+		"%s：第 %d 行应整行是 GOLD_600（%d px）" % [label, gold_row, width])
+	_h.check(_h.count_col(image, left + width / 2, top, top + gold_row + 1, _h.shadow) == 1,
+		"%s：任一列在标题栏内应恰好 1 个金像素（分隔线厚 1px）" % label)
+	var below: int = top + gold_row + 1
+	_h.check(_h.count_row(image, below, left, left + width, _h.fill) == 0
+			and _h.count_row(image, below, left, left + width, _h.shadow) == 0,
+		"%s：第 %d 行不得再有标题栏像素（高度到此为止）" % [label, gold_row + 1])
+
+
+## 只印标题栏及其上下各一行：整幅 ASCII 图的其余部分全是底色，没有信息量。
+## 不用基建的 dump() —— 它的图例写死了 S=NAVY_900 / #=NAVY_800，本组换过判据色，读图例会读错。
+func _dump_title_bar(image: Image) -> void:
+	if image == null:
+		return
+	print("  每字符一像素，横轴从 x=%d 起：# = NAVY_700（底色）  s = GOLD_600（分隔线）  . = WHITE（画布底）" % int(TITLE_BOX.position.x))
+	var from_y: int = int(TITLE_BOX.position.y) - 1
+	var to_y: int = int(TITLE_BOX.position.y + TITLE_BOX.size.y) + 1
+	var from_x: int = int(TITLE_BOX.position.x) - 1
+	var to_x: int = int(TITLE_BOX.position.x + TITLE_BOX.size.x) + 1
+	for y: int in range(from_y, to_y + 1):
+		var row: String = "%3d " % y
+		for x: int in range(from_x, to_x):
+			row += _title_mark(image.get_pixel(x, y))
+		print(row)
+
+
+func _title_mark(pixel: Color) -> String:
+	if _h.near(pixel, _h.fill):
+		return "#"
+	if _h.near(pixel, _h.shadow):
+		return "s"
+	if _h.near(pixel, _h.backdrop):
+		return "."
+	return "?"
 
 
 ## 硬阴影契约：矩形右边与下边各外扩 1px 精确判据色，上 / 左没有，且画面零羽化。
