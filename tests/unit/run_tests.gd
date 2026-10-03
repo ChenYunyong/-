@@ -22,6 +22,7 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 	{"path": "res://tests/unit/test_combat.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_reward.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_result.gd", "layer": "unit"},
+	{"path": "res://tests/unit/test_input.gd", "layer": "unit"},
 	{"path": "res://tests/integration/test_state_loop.gd", "layer": "integration"},
 ]
 
