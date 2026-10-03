@@ -66,7 +66,10 @@ func list_ids(category: StringName) -> Array[StringName]:
 	var bucket: Dictionary = _index[category]
 	for id: Variant in bucket.keys():
 		ids.append(id as StringName)
-	ids.sort()
+	# 不能直接用 Array[StringName].sort()：StringName 的 `<` 比的是**驻留指针**而不是文本
+	# （实测 &"beta" < &"alpha" 在同一进程内为 true），结果随驻留顺序漂移，
+	# 与上面「按字典序」的承诺不符。故显式转 String 再比。
+	ids.sort_custom(func(a: StringName, b: StringName) -> bool: return String(a) < String(b))
 	return ids
 
 

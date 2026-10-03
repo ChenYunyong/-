@@ -29,15 +29,25 @@ const LOG_PATH: String = "res://tests/output/unit_tests.log"
 ## R1 用例靠 --fixed-fps 把 600 秒模拟时间压进毫秒级；漏加该参数时的兜底上限。
 const WALL_CLOCK_BUDGET_MS: int = 120_000
 
+## 09 §6 报告的「任务」一行由运行期传入 —— 写死任务号会在下一批过期
+## （S1-05 时表头还写着 S1-A）。缺省值只是兜底，正式取证必须显式传：
+##   --script res://tests/unit/run_tests.gd -- --task "S1-05（PET-39）BOOT 场景 + 数据校验"
+const DEFAULT_TASK_LABEL: String = "未指定（请用 -- --task \"<任务号> <标题>\" 传入）"
+## 本入口不跑场景（场景冒烟要独立进程，见 TEST_SCRIPTS 上方的说明），
+## 故这一行只做指路，不写任何「本批产出什么」的说法 —— 那种说法同样会过期。
+const MANUAL_SCENE_NOTE: String = "见 tests/output/scene_smoke.log（由 tests/integration/boot_scene_smoke.gd 独立进程产出）"
+
 var clock: Node = null
 
 var _context: RefCounted = null
 var _lines: Array[String] = []
+var _task_label: String = DEFAULT_TASK_LABEL
 ## layer -> {"passed": int, "failed": int}
 var _layer_stats: Dictionary = {}
 
 
 func _initialize() -> void:
+	_parse_args()
 	_context = load("res://tests/unit/test_context.gd").new()
 	clock = Node.new()
 	clock.set_script(load("res://tests/unit/test_clock.gd"))
@@ -47,6 +57,18 @@ func _initialize() -> void:
 	for entry: Dictionary in TEST_SCRIPTS:
 		await _run_case_script(String(entry["path"]), String(entry["layer"]))
 	_finish()
+
+
+## 只认 `--` 之后的用户参数；引擎自身的参数（--headless / --fixed-fps）不参与解析。
+func _parse_args() -> void:
+	var args: PackedStringArray = OS.get_cmdline_user_args()
+	var index: int = 0
+	while index < args.size():
+		if args[index] == "--task" and index + 1 < args.size():
+			_task_label = args[index + 1]
+			index += 2
+			continue
+		index += 1
 
 
 ## R1 用例通过它决定「最多可以再跑多久真实时间」。
@@ -101,11 +123,11 @@ func _emit_report() -> void:
 	var version: Dictionary = Engine.get_version_info()
 	var window: Vector2i = DisplayServer.window_get_size()
 	_lines.append("TEST REPORT")
-	_lines.append("- 任务：S1-A（PET-38）project.godot + Autoload + 六状态机 + Palette/Theme")
+	_lines.append("- 任务：%s" % _task_label)
 	_lines.append("- 环境：Godot %s / Windows / 窗口 %dx%d" % [version["string"], window.x, window.y])
 	_lines.append("- 单元测试：%s" % _format_layer("unit"))
 	_lines.append("- 集成测试：%s" % _format_layer("integration"))
-	_lines.append("- 手动场景：无（本批不产出 scenes/**，场景冒烟属 S1-05 起）")
+	_lines.append("- 手动场景：%s" % MANUAL_SCENE_NOTE)
 	if _context.failures.is_empty():
 		_lines.append("- 失败项：无")
 	else:

@@ -124,7 +124,7 @@ func _build_panel_highlight() -> void:
 
 ## 06 §2.2 的「右下 1px NAVY_900 硬阴影（不模糊）」落点。
 ##
-## 为什么不用 StyleBoxFlat.shadow_*（实测证据见 tests/unit/render_shadow_probe.gd，
+## 为什么不用 StyleBoxFlat.shadow_*（实测证据见 tests/unit/run_render_probes.gd 组 1，
 ## gl_compatibility / forward_plus / mobile 三个后端结果一致）：
 ##   shadow_size = 0             → 一个阴影像素都不画，且与 shadow_offset 无关；
 ##   shadow_size = 1, offset(1,1) → 紧贴右下确有 1px 纯 NAVY_900，但其外仍多出 1px 50% 透明的羽化带。
