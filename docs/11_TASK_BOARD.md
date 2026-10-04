@@ -1,6 +1,7 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.3.7**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.3.9**｜维护者 DSH
+> （v0.3.8 的板头漏改已在此版补上 —— `12_CHANGELOG` 的 v0.3.8 条目当时只写了更新说明、未回改本行。）
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -212,14 +213,15 @@
 | PET-67 | **I18N-MIN** UI 中英可切换：Godot CSV 翻译表（中文原文 = key → en）+ 最小语言开关 + 持久化 | Claude | `ACCEPTED`（DSH 独立复核通过，提交 `f26db75`，已推送；证据见本节末注 —— 含「PET-70 拆弹未被重新装上」的独立探针核验） |
 | PET-68 | **VB-01b** 三张 UI Kit 补英文标签版 + 中英版式容纳结论 | Codex | `REVIEW`（复核：英文版与原图逐字节相同，容纳结论不成立） |
 | PET-69 | **VB-02** UI Kit 组件化制作 + 批准附带小改（含 COMBAT 越框修正） | Codex | `DONE`（用户 2026-10-04 批准组件方向） |
-| PET-71 | **VB-03** 正式组件切图 + `_approved/` 流程（基础组件语言 v1，含 `13 §10` 三修） | Codex | `REVIEW`（已交付；DSH 过程复核通过；**`_approved/` 与 HUD Block 集成未随 PET-70 落地** —— 切片尺寸装不进 `06 §8.1` 五格横排，见待办 R3） |
+| PET-71 | **VB-03** 正式组件切图 + `_approved/` 流程（基础组件语言 v1，含 `13 §10` 三修） | Codex | `ACCEPTED`（**资产侧**；2026-10-04 由 **PET-73 / VB-04** 收口 —— 24 张切片 + `.import` 已落 `assets/_approved/vb03_component_language/` 并由 DSH 逐张复核通过，见 §4.1 末注；**仅剩** HUD Block 运行时集成，即待办 **R3**；issue 卡仍 `in_review`，`done` 属用户） |
 | PET-70 | **UI-KIT 接入**（MAIN_MENU + COMBAT 结构）：按批准 Kit 建场景结构，placeholder 资源 | Claude | `ACCEPTED`（DSH 独立复核通过，提交 `1af0c42`，已推送；证据见本节末注 —— 开卡前置 `weapon_kind` 同批落地） |
 | PET-72 | **S4-07 最小版 · 奖励真的生效**：清空一波后的三选一，选中的那一项**真的落到玩家蓝图**（正确的 `function_kind` / `weapon_kind`、画布内第一个空闲格、立即落盘）；跨场景传递走既有载体，不新造全局单例。**不做**掉落池 / 稀有度 / 权重。**顺带结清** R1（`full_loop_smoke` 补 `weapon_kind`）与 R5（仓库槽位名走 `tr()`）—— 三者都落在同一批文件 | Claude | `TODO`（2026-10-04 DSH 自 `BACKLOG` 提升 —— 承接 `PET-37` 交用户亲测时登记的「三选一目前只是『选给你看』」；已挂条件唤醒 `status = in_review`） |
+| PET-73 | **VB-04** VB-03 组件切片收口：Godot 导入设置（`.png.import` 九宫格落点 = `StyleBoxTexture`）+ `_approved/` 流程走完 + 可用清单 | Codex | `ACCEPTED`（2026-10-04 DSH **逐张**复核通过并已推送 `main`，见 §4.1 末注；**未新开 gameplay 方向** —— 下一个玩法里程碑等 `PET-37` 的用户试玩反馈定向） |
 
 | — | 退出期资源清点：`palette.gd` / `palette.tres` 未释放（已复核、非阻塞；随下一张触碰该文件的卡一并修） | Claude | `BACKLOG` |
 | R1 | `tests/integration/full_loop_smoke.gd` 仍按老写法建武器节点（无 `weapon_kind`）→ 每次跑出 5 条 `WeaponData.resolve` 降级 `push_error`，且该用例的武器全部落到 Needle。**一条参数即可消除**（`09 §5` 的 ERROR 零增量） | Claude | `BACKLOG` |
 | R2 | COMBAT HUD 正式分层收口：`06 §8.1` 五格冻结 vs `13 §5` 的二级 `GOLD` / `NEXT`（**不在**五格内），以及与 Machine 面板「左下」（`13 §5`）的冲突 —— 需同时改 `06 §8.1`、`13 §5` 落点与 `signal_flow_smoke` 的整宽机器区断言 | Claude | `BACKLOG` |
-| R3 | VB-03 HUD 分级切片（`ui_hud_block_primary_72x24` / `secondary_48x20`，`assets/ui/vb03_component_language/`）装不进 `06 §8.1` 五格横排（3×72 + 2×48 = 312 > 272 可用宽）→ 未接运行时；`asset_manifest.json` 的 `status` 仍 `pending_dsh_review`。与 R2 同批 | Codex | `BACKLOG` |
+| R3 | VB-03 HUD 分级切片（`ui_hud_block_primary_72x24` / `secondary_48x20`，`assets/ui/vb03_component_language/`）装不进 `06 §8.1` 五格横排（3×72 + 2×48 = 312 > 272 可用宽）→ 未接运行时； | Codex | `BACKLOG`（**半条已结**：`assets/ui/vb03_component_language/asset_manifest.json` 的 `status` 已由 `PET-73` 随批准流程改为 `user_approved`，不再是 `pending_dsh_review`；**尺寸半条仍开** —— 切片装不进五格、未接运行时，与 R2 同批） |
 | R4 | 主按钮切片 64×20 与主菜单四按钮 90×20（`tests/unit/test_input.gd` 命中区表）不一致 —— 是否按切片尺寸重排待定 | Claude | `BACKLOG` |
 | R5 | `blueprint_workspace._draw_warehouse()` 的 7 个仓库槽位名走 `draw_string(String(entry["name"]))`，**不经 `tr()`** ⇒ 英文态下这 7 个标签仍是中文（DSH 独立取帧逐像素实测：底部仓库墨迹带在 zh / en 两帧完全相同）。`06 §11` 的旧缺口、**不在 PET-67 的 ALLOWED FILES** 内，故不判 PET-67 未达 DoD；**不静默豁免**，并入 `PET-72`（同一文件，单一写手） | Claude | `BACKLOG` |
 
@@ -314,6 +316,18 @@
 > - **未上 L3**：全量 unit + 全部场景冒烟 + Web Export + 像素探针未跑，本卡不产生 L3 结论。
 > - **环境说明（非本卡缺陷）**：本 run 沙箱 `workspace-write`，写工作区外 `.repos`（git 索引锁）与工作区外 Godot `editor_data` 被拒；复核在工作区内独立副本上完成，`APPDATA` / `LOCALAPPDATA` 重定向进工作区，并先 `--headless --import`（`09 §4` v0.1.4）。
 > - **下一步**：`PET-72`（S4-07 最小版：奖励真的生效）已 `BACKLOG` → `TODO` 并挂同款条件唤醒（`status = in_review`），**R1 / R5 并入其中**；`R2 / R3 / R4` 仍 `BACKLOG`（UI Kit 口径，按 `13 §9` 不为它们阻塞玩法）。
+
+> **2026-10-04 PET-73（VB-04）验收（`ACCEPTED`，DSH 已推送 `main`）** —— VB-03 组件切片的**收口卡**（`13 §10.1` 三修之后的正式产出 + Godot 导入设置 + `_approved/` 流程）。DSH 按卡面验收口径**逐张**复核（不是抽样），不采信自报。
+>
+> - **`_approved/` 内容与批准面**：`assets/_approved/vb03_component_language/` 下只有 `asset_manifest.json` + `slices/` 的 **24 PNG + 24 `.png.import`**；`_approved/` 全树**零**预览图、零 `visual_batch_01` 旧批次、零 `placeholder_`。`assets/ui/vb03_component_language/` 同样只有 24 PNG + 24 `.import` + `styleboxes/` 15 个 + manifest（**预览图不在正式接入路径上**）。
+> - **导入参数与九宫格逐张对齐（24/24）**：全部切片 `importer=texture` / `type=CompressedTexture2D` / `compress/mode=0`（无损）/ `mipmaps/generate=false`；像素过滤由 `project.godot` 的 `textures/canvas_textures/default_texture_filter=0`（Nearest）保证（`07 §4`）。**15 张**带 `nine_patch` 的切片各配一个 `StyleBoxTexture`，其 `texture_margin_left/top/right/bottom` 与 manifest 的 `nine_patch` **逐张相同**（含 `panel_frame_main 3,16,3,3` 与 `overlay_focus 8,8,8,8` 两处非对称/宽边距）；**9 张**固定尺寸切片（节点卡 / 槽位）manifest 无 `nine_patch`，正确地**没有** StyleBox 旁挂。尺寸与文件名声明、manifest `size` 三者一致（`24x24` / `64x20` / `72x24` / `48x20` / `96x12` / `96x64` / `120x64` / `32x32` / `64x40`）。
+> - **`.import` 是真引擎产物，不是手写**：24 个 `dest_files` 指向的 `.godot/imported/*.ctex` **全部实际存在**（三个副本各 24 个，四个目录共 **107 个 ctex**，时间戳同一批），说明确实跑过一次编辑器导入。`source_file` 逐张指回各自副本的真实 `res://` 路径（4 个副本的 `uid` / ctex 哈希各自独立、**零碰撞**）。
+> - **`13 §10.1` 三修逐条对上（DSH 自量像素，非读注释）**：① **`Focus` / `Selected` 不混** —— `Focus` 一律 `BLUE_300` 细框或角标（按钮：1px 蓝框 + 四角角标 190px；槽位：整圈细蓝框 84px；节点卡：四角蓝角标 27px + 类型标记；overlay：100% `BLUE_300`），`Selected` 一律 `GOLD_500`/`GOLD_200` 主强调且**不含任何蓝**（槽位金框 84 + 金角 16；节点卡金双框 92+84；overlay 纯粹金），键盘焦点与实际选择**在切片上就是两种颜色**；② **类型色只做小面积** —— `CORE`/`FUNCTION`/`WEAPON` 卡身**同为 `NAVY_700` 407px（70.7%）**，类型标记恒为 `(2,2)` 的 4×4 = 16px（`GOLD_400` / `BLUE_400` / `ORANGE_500`），**无整圈高饱和边框**（武器最"热"也只用 16px `ORANGE_500`）；③ **未堆 Panel 装饰** —— 本批像素与已入库的 VB-03 切片**逐字节相同**（DSH 对 24 张跨 4 个副本做 SHA256 比对，全等），即**没有为了"更精致"重画/加装饰**，panel / tooltip / frame 仍是单层边框 + 一道 `GOLD_200` 高光。
+> - **改动面**：只在 `assets/**`；`project.godot` **零 diff**（`09 §4` v0.1.6 的编辑器改写风险已排除）；`scripts/**` · `scenes/**` · `docs/**`（除本板与 `12`）未触碰。**未 push**（按卡），由 DSH 提交 `main`。
+> - **口径变更（需记住）**：本卡是**第一次把 `.import` 入库**。此前 `PET-63` 关记录里的「本仓库不追踪任何 `.import` 文件」**自本卡起作废**（卡面明确要求 `09 §4` 的 `*.import` 入库，`.gitignore` 只忽略 `.import/` 目录、不忽略 `*.import` 文件）。后续新素材一律随切片提交 `.import`，保证不含 `.godot/` 的干净检出也能直接拿到正确的导入参数。
+> - **清单（唯一要读的表）**：24 行「组件名 → 切片文件 → 尺寸 → 九宫格 margin → 用到的 Token → 建议控件」已贴在 `PET-73` 卡评论里。可缩放控件读 `assets/ui/vb03_component_language/styleboxes/*.stylebox.tres`；固定 24×24 的节点卡与槽位按 `Texture2D` 直接贴图。
+> - **未做（刻意的）**：**没有**新开 gameplay 方向。按 `13 §9` 的 `FIRST PLAYABLE Gameplay > UI Kit 继续打磨`，下一个玩法里程碑等 **`PET-37`** 的用户试玩反馈定向；在那之前只清**登记在册**的项（本次清掉的仅是 R3 的 `status` 半条）。
+> - **环境说明（非本卡缺陷）**：交付 run 的编辑器导入日志里有两条**与本批无关**的环境噪声（根证书库读取失败、便携版 `editor_data` 不可写）；`--import` 退出码 0、VB-03 的 `.ctex` 全部落盘，判定为环境噪声而非导入失败。本复核 run 的沙箱无本地 Godot（`tools/godot/` 被 gitignore），故 DSH 用**结构 + 产物 + 像素**三方取证代替重跑编辑器。
 
 
 ## 5. STAGE 3 — CORE / FUNCTION / WEAPON（未开始）

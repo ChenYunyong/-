@@ -1,10 +1,10 @@
 {
   "batch": "vb03_component_language",
-  "status": "user_approved",
+  "status": "final_dsh_review_passed",
   "source_palette": "assets/palette.tres",
   "pipeline": "pending -> final -> user approval -> approved -> integration",
   "output_paths": [
-    "assets/_approved/vb03_component_language/slices",
+    "assets/_review/pending/vb03_component_language/slices",
     "assets/ui/vb03_component_language"
   ],
   "constraints": {

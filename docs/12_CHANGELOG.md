@@ -5,6 +5,22 @@
 
 ## [Unreleased]
 
+### PET-73 验收（`ACCEPTED`）：VB-04 —— VB-03 组件切片收口（Godot 导入设置 + `_approved/` 流程）（2026-10-04）
+
+#### Added
+- **`PET-73`（VB-04）通过 DSH 逐张复核 → `ACCEPTED`**（DSH 已推送 `main`）：**24 张** VB-03 组件切片正式进 `assets/_approved/vb03_component_language/slices/`（**24 PNG + 24 `.png.import`** + `asset_manifest.json`，`status = user_approved`）；`assets/_review/final/vb03_component_language/` 落下 `final` 阶段整包（24 切片 + 4 预览 + 生成脚本 + README）。
+- **Godot 导入设置落盘**：全部切片 `type=CompressedTexture2D` / `compress/mode=0`（无损）/ `mipmaps/generate=false`，像素过滤走 `project.godot` 的 `default_texture_filter=0`（Nearest，`07 §4`）。**15 张**带 `nine_patch` 的切片各配一个 `StyleBoxTexture`（`assets/ui/vb03_component_language/styleboxes/`）—— Godot 4 的 PNG `.import` **不承载**九宫格边距，`texture_margin_*` 才是可直接用的落点；9 张固定尺寸切片（节点卡 / 槽位）正确地**没有** StyleBox。
+- **`11_TASK_BOARD.md` → v0.3.9**：§4.1 PET-71 记 `ACCEPTED`（资产侧）、新增 PET-73 行 `ACCEPTED`、R3 标注「`status` 半条已结 / 尺寸半条仍开」、附 PET-73 验收段（含三修像素证据）；顺手补上 v0.3.8 的**板头漏改**（当时只写了更新说明、未回改 `版本` 行）。
+- `assets/ui/vb03_component_language/asset_manifest.json` 的 `status`：`pending_dsh_review` → `user_approved`（与 `_approved/` 副本对齐；结清 R3 的登记项之一）。
+
+#### Notes
+- **复核方式（不采信自报，逐张而非抽样）**：24/24 切片的**尺寸**（与文件名声明、manifest `size` 三方一致）、**九宫格 margin**（15 个 StyleBox 的 `texture_margin_*` 与 manifest `nine_patch` 逐张比对）、**导入参数**（逐份 `.import` 的 `type` / `compress/mode` / `mipmaps/generate`）全部对齐；`_approved/` 与 `assets/ui/` 两个正式路径下**零**预览图、零旧批次、零 `placeholder_`。
+- **`.import` 的真伪取证**：24 个 `dest_files` 指向的 `.godot/imported/*.ctex` **实际存在**（4 个副本共 107 个 ctex，同批时间戳）—— 是跑过编辑器的产物，不是手写文本；`source_file` 逐张指回各自副本路径，4 个副本的 `uid` / ctex 哈希互不碰撞。
+- **`13 §10.1` 三修（DSH 自量像素，非读注释）**：① `Focus` = `BLUE_300` 细框 / 角标，`Selected` = `GOLD_500`/`GOLD_200` 且**不含蓝**，两者在切片上不混；② `CORE`/`FUNCTION`/`WEAPON` 卡身同为 `NAVY_700` **407px（70.7%）**，类型色恒为 4×4 = **16px** 小标记，无整圈高饱和边框；③ 本批像素与已入库 VB-03 切片**逐字节相同**（跨 4 副本 SHA256 全等）—— **没有**为「更精致」重画或加 Panel 装饰。
+- **口径变更**：本卡是**第一次把 `*.import` 入库**。`PET-63` 关记录里「本仓库不追踪任何 `.import` 文件」的说法**自本卡起作废**（卡面明确要求 `09 §4` 的 `.import` 入库；`.gitignore` 只忽略 `.import/` 目录，不忽略 `*.import` 文件）。
+- **未做（刻意）**：**没有**新开 gameplay 方向 —— 按 `13 §9` 的 `FIRST PLAYABLE Gameplay > UI Kit 继续打磨`，下一个玩法里程碑等 **`PET-37`** 的用户试玩反馈定向；在此之前只清**登记在册**的项。
+- **环境说明（非本卡缺陷）**：交付 run 的 `--import` 日志里两条环境噪声（根证书库读取失败、便携版 `editor_data` 不可写）与本批无关，退出码 0、`.ctex` 全部落盘；本复核 run 的沙箱**无本地 Godot**（`tools/godot/` 被 gitignore），故以「结构 + 引擎产物 + 像素」三方取证代替重跑编辑器。
+
 ### PET-67 验收（`ACCEPTED`）：I18N-MIN 中英可切换 —— 含「PET-70 拆弹未被重新装上」的独立核验（2026-10-04）
 
 #### Added
