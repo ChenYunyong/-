@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.2.8**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.2.9**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -190,8 +190,8 @@
 | 卡 | 内容 | 负责人 | 状态 |
 |---|---|---|---|
 | PET-61 | **ENGINE-4.7.2**：Godot 4.7.1 → 4.7.2 + 新基线（前置） | Claude | `ACCEPTED` |
-| PET-63 | **FP 1/4** 蓝图可编辑：节点拖放 + 连线（CORE→FUNCTION→WEAPON） | Claude | `REVIEW`（已交付并自报 L1 全绿；待 DSH 独立复核） |
-| PET-64 | **FP 2/4** 机器运行：CORE 信号 + Split/Amplify/Delay + Needle/Bomb/Saw 开火 + 基础 Heat | Claude | `BACKLOG` |
+| PET-63 | **FP 1/4** 蓝图可编辑：节点拖放 + 连线（CORE→FUNCTION→WEAPON） | Claude | `ACCEPTED`（DSH 独立复核通过，提交 `e40629c`，已推送；证据见本节末注） |
+| PET-64 | **FP 2/4** 机器运行：CORE 信号 + Split/Amplify/Delay + Needle/Bomb/Saw 开火 + 基础 Heat | Claude | `TODO`（2026-10-04 DSH 自 `BACKLOG` 提升） |
 | PET-65 | **FP 3/4** COMBAT 真实：Slime/Runner 生成推进 + 三武器伤害结算 + 死亡 | Claude | `BACKLOG` |
 | PET-66 | **FP 4/4** 循环闭合：3 波 + REWARD 三选一 + 回 PREPARATION + Overheat | Claude | `BACKLOG` |
 | PET-62 | **Visual Batch 01**（并行）：MAIN MENU / PREPARATION / COMBAT UI Kit | Codex | `APPROVED`（有条件批准，见 `13`） |
@@ -216,6 +216,17 @@
 > **2026-10-04 更新**：**PET-61 已验收 —— Godot 4.7.2 成为新基线**（4.7.2 引擎 + 完整导出模板已落 D:/E:，4.7.1 原样保留可回滚；L3 十项全绿、ERROR/WARNING 零增量、Web Debug 导出通过、像素缩放 4× 整数）。**PET-60 转为「已通过引擎升级规避 / 等待长期观察」**：保持 OPEN、崩溃记录不删、不再主动投入。**PET-63 已开工**。
 
 > **2026-10-04 三张 UI Kit 正式裁定**：**有条件批准（APPROVED WITH MINOR REVISIONS）** —— 完整硬约束见 **`13_VISUAL_RULING.md`**（新建）。PREPARATION **通过**（优先；PET-63 已交付待复核）；MAIN_MENU **小改后接入**（PET-70）；COMBAT **先整理信息层级再接入**（PET-70）。Codex 转**组件化**（PET-69 → VB-02）。**硬约束：不得擅自增加 主角 / 吉祥物 / 陪伴系统 / 剧情角色**（`13 §2`）。优先级：`FIRST PLAYABLE > UI 细节打磨 > 大量正式美术`。
+
+> **2026-10-04 PET-63 验收（`ACCEPTED`，提交 `e40629c`，DSH 已推送）** —— DSH **不采信自报**，在**干净树**上重跑 L1：工作区 `3c0a6fd` 全新 checkout，只把 ALLOWED FILES 里的改动放进去（未改动文件与 `main` 逐字节相同）。
+>
+> - **L1 结果（四处全部 `exit=0` / 失败项 0）**：unit + integration **1625/1625 · 356/356**；PREPARATION 场景冒烟 **86/86**；蓝图场景冒烟 **79/79**（**非 headless**，`--resolution 320x180`）。
+> - **取证独立复现**：DSH 自己跑出的 `tests/output/blueprint_first_playable.png` 与交付方附件 **SHA256 完全相同**（`B2915662…4815E`），320×180、534 色、以 `NAVY` 为底 —— 是真实渲染帧，不是重画。
+> - **负向对照**：把 `blueprint_workspace.gd` 的 `_connect()` 改成恒返回 `false` → 恰好 **12 条**按名转红（1628/1640，全部落在「连线 / 落节点 / 存读往返」），恢复后文件哈希复原、重跑回绿。测试不是恒真断言。
+> - **改动面核对**：仅 `scripts/ui/blueprint_workspace.gd`（新）· `scripts/ui/preparation_screen.gd` · `scenes/preparation/preparation.tscn` · `tests/unit/test_blueprint_workspace.gd`（新）· `tests/integration/blueprint_smoke.gd`（新）· `tests/unit/run_tests.gd`（**+1 登记行**）＋ 3 个 `.gd.uid` 引擎旁挂文件。`scripts/data/**` 未改（S2-02 数据类直接复用）；`docs/**` · `project.godot` · 其它场景 · `assets/**` **未触碰**。卡上点名的 `tests/integration/run_integration.gd` 在仓库中不存在，未新建 —— 集成层本就并入 `run_tests.gd`，判断正确。
+> - `13 §4` 核对：蓝图区（CENTER `128×124`）仍是**面积最大的分区**（仓库 `294×48`）；节点类型只用「图标 / 边框 / 小分类色」区分，颜色**全部经 `Palette`**，无裸色值、无彩虹配色；PREPARATION **未引入任何人物 / 吉祥物**。
+> - **环境说明（非本卡缺陷）**：本卡在 DSH 沙箱内首次复跑时 `user://` 不可写（`%APPDATA%\Godot\app_userdata\PixelFusion` 被沙箱拒绝，`ERR_FILE_CANT_WRITE`），导致 7 条与本卡无关的假红（含 S2-02 的 4 条）；把 `APPDATA` 重定向到工作区内即复现交付方的 1625/1625。**`09 §4` 的「先 `--headless --import` 刷类缓存」同样是必需前置**，否则 `Palette` 等一系列假红。
+> - **遗留（转 Codex，非阻塞）**：`assets/_review/pending/visual_batch_01/` 下 3 个 `*.png.import` 是 `--headless --import` 的**引擎产物**（DSH 已在自己的干净树复现其成因）；本仓库**不追踪任何 `.import` 文件**（已入库 `*.png` 亦无旁挂），故不入库、不删、随下次导入自然重建。
+> - **视觉偏离登记（接受，理由成立）**：不使用引擎原生 drag-and-drop 之外的输入分支（`03 §8` 未被破坏，`scripts/input/**` 也不在授权范围）；`RegionCenter/Title` 占位标题隐藏、底条仓库由占位 Label 换成真实槽位 —— 均在 `preparation.tscn` 授权范围内。
 
 ## 5. STAGE 3 — CORE / FUNCTION / WEAPON（未开始）
 

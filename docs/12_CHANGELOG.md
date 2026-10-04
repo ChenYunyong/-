@@ -5,6 +5,21 @@
 
 ## [Unreleased]
 
+### PET-63 验收（`ACCEPTED`）：FIRST PLAYABLE 1/4 蓝图可编辑（2026-10-04）
+
+#### Added
+- **PET-63（FP 1/4）通过 DSH 独立复核 → `ACCEPTED`**（提交 `e40629c`，已推送）：
+  PREPARATION 中栏成为**可真实操作**的蓝图工作区 —— 底条仓库 7 个图章（1 `CORE` / 3 `FUNCTION` Split·Amplify·Delay / 3 `WEAPON` Needle·Bomb·Saw）拖到画布即 **24px 网格吸附**并夹回画布内；按住卡片拖到另一张卡片上松手生成一条 `ConnectionData`（**输出 → 输入**，自环与重复边挡掉）；每次改动**立即落盘** `user://blueprints/blueprint_01.tres`，重进场景即载回。鼠标与触摸走同一条路径。
+- **PET-64（FP 2/4）自 `BACKLOG` 提升为 `TODO`**：CORE 信号 + Split/Amplify/Delay + 三把武器开火 + 基础 Heat。
+- `11_TASK_BOARD.md` → **v0.2.9**：§4.1 记入 PET-63 `ACCEPTED` 与验收证据、PET-64 `TODO`。
+
+#### Notes
+- **复核方式（不采信自报）**：干净树重跑 L1（`09 §1.1`，不上 L3）—— unit + integration **1625/1625 · 356/356**、PREPARATION 冒烟 **86/86**、蓝图冒烟 **79/79**（非 headless，`320×180`），四处 `exit=0` / 失败项 0。
+- **取证独立复现**：DSH 自己跑出的交付截图与交付方附件 **SHA256 完全相同**；**负向对照** —— 令 `_connect()` 恒返回 `false`，恰好 **12 条**按名转红，恢复后哈希复原重跑回绿。
+- **改动面**：只落在 ALLOWED FILES（`blueprint_workspace.gd` 新建 · `preparation_screen.gd` · `preparation.tscn` · 两个新测试文件 · `run_tests.gd` 的 +1 登记行）＋引擎 `.gd.uid` 旁挂文件；`scripts/data/**` 复用未改；`docs/**` / `project.godot` / 其它场景 / `assets/**` 未触碰。
+- 与 `13_VISUAL_RULING.md` §4 一致：蓝图区仍为**面积最大分区**、颜色全走 `Palette` 无裸色值、**未引入任何人物 / 吉祥物 / 剧情元素**。
+- 遗留（非阻塞，转 Codex）：`assets/_review/pending/visual_batch_01/` 下 3 个 `*.png.import` 是 `--headless --import` 的引擎产物；本仓库**不追踪任何 `.import`**，不入库、不删、随下次导入重建。
+
 ### 三张 UI Kit 正式裁定：有条件批准 + `13` 号视觉裁定落盘（2026-10-04）
 
 #### Added
