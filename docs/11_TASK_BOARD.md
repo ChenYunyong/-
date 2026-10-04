@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.3.2**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.3.3**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -133,34 +133,48 @@
 > （分别红 2 / 文案类无断言可红 / 恰 10 / 恰 3 条），且 DSH 在正式树里独立复跑确认：
 > 修复后连导两次 pck **Δ0**，清空 `exclude_filter` 后 pck 由 95,712 涨到 **3,659,192**。
 >
-> # ⛔ 开发暂停（用户指令 2026-10-03）
+> # ⛔ 开发暂停（用户指令 2026-10-03）· 已由用户 2026-10-04 后续指令（PLAYABLE-FIRST）实际解除
 >
 > 用户报告 **Godot 原生崩溃**（WER：`Exception code 0xc0000005`，faulting module = **Godot 本体**，
 > fault offset `0x3e15854`）并要求：**暂停继续开发并建立 Crash Investigation**。
-> **在根因定位之前：不派发任何 Stage 1 收尾/新功能开发；`S1-14` 不得置 `DONE`；Stage 1 与后续 Stage 一律不得标为稳定。**
-> 调查卡：`S1-14C`（PET-60）。用户原始指令全文见 `12_CHANGELOG.md` 同日条目。
-> **Crash Investigation 结论（PET-60，2026-10-03）**：**未能复现**。用户那次 `0xc0000005` 在 16 种配置、
-> 6000 次压力迭代下零再现。**最有价值的负面证据**：从 WER 的 `Faulting application start time` 解出进程
-> 存活 **< 0.55 秒**，且那一刻**没有产生任何 Godot 日志** → 崩溃发生在**引擎早期初始化**，
-> **项目的任何 GDScript 都还没执行** → **项目代码不可能参与这次崩溃**。
-> 因此即使暂停解除，**"Stage 1 稳定"这个标记仍然不能给**（根因未知）。
+> 调查卡：`S1-14C`（PET-60，`ACCEPTED`）。用户原始指令全文见 `12_CHANGELOG.md` 同日条目。
 >
-> **待办 A（代码卫生，等恢复开发再做）**：`game_flow.gd:_route_to_scene()` 在 BOOT 的 `_ready()` 链里
-> **同步**调用 `change_scene_to_file()`，每次启动必刷 `remove_child() can't be called at this time`。
-> 已证否它与崩溃的因果（6000 次误用零崩溃，引擎自愈），但仍是真实 API 误用 →
-> 建议改 `change_scene_to_file.call_deferred(path)`。
+> **Crash Investigation 最终结论（结论已由「未能复现」更正为「已复现·触发条件明确」）：**
+> 根因 = **引擎自身的日志打开路径**。`OS::ensure_user_data_dir()` 建不出 `user://logs`（或目标不可写）时，
+> `RotatedFileLogger::rotate_file()` 里 `FileAccess::open()` 返回 null **未检查**即 `detach_from_objectdb()`，
+> 空 this 读 `[rcx+0x58]` —— **精确命中用户弹窗的「引用了 `0x0000000000000058`」**，fault offset `0x3e15854`。
+> **独立复现 3/3**，且**换空工程（无 autoload / 无主场景 / 无任何 GDScript）同帧同址崩溃**
+> ⇒ **与本项目代码无关**（`0xc0000005` 的因果**至此已证**，不再是假设）。
+> 上游 **#122437** 已知（affected `4.7.1.stable` / commit `a13da4f` = 我方构建），
+> **修复 PR #121926 / commit `2906aa0` 随 Godot 4.7.2 发布**。
+> **处置：引擎已升级至 4.7.2（PET-61 `ACCEPTED`，含完整导出模板），4.7.1 原样保留可回滚 —— 即「由引擎版本升级规避」。**
+>
+> **⚠ 仍然生效、与根因是否定位无关的两条用户红线**：
+> `S1-14`（GATE 9）**不得置 `DONE`** —— L4 只属于用户；**Stage 1 与后续 Stage 一律不得标为「稳定」**。
+>
+> **待办 A（代码卫生）— 已落地 ✅**：`game_flow.gd` 现走 `_apply_scene_change.call_deferred(path)`
+> （`game_flow.gd:159`，附「为何不让 `_route_to_scene()` 直接 `call_deferred`」的就地说明），
+> 启动期不再刷 `remove_child() can't be called at this time`。
+> 其与崩溃的因果关系此前已被证否（6000 次误用零崩溃，引擎自愈），**仅作代码卫生修正**。
 >
 > **待办 B（独立缺陷，等恢复开发再做）**：`palette_theme.gd` 是 `@tool`，`_init()` 里即 `apply_palette()`，
 > 而 `Palette` 此时是**占位实例** → 每次编辑器扫描稳定刷 **32 条** `SCRIPT ERROR`（冷热缓存都一样，
 > DSH 此前说"热缓存为 0"是**错的**）。属独立缺陷，与本次崩溃无关。
 >
-> **待办 C（需用户批准）**：装 **WER LocalDumps**（写 `HKCU`、dump 落 D 盘、完全可逆）——
-> 这是唯一能真正符号化 `fault offset 0x3e15854`、拿到根因的手段。
+> **待办 C（曾拟装 WER LocalDumps）— 已作废，无需用户批准 ✅**：PET-60 实测 **`HKCU` 下的 LocalDumps 静默无效**
+> （该功能只读 `HKLM`，启用需管理员；写好 `HKCU` 子键后连造 5 次真崩溃，`D:\Temp\PixelFusion\crash_dumps\`
+> 始终 **0 个文件**），两个 `HKCU` 子键已按 DSH 裁定删除、`HKLM` 提权方案放弃。
+> 且根因**并未依赖 dump 就已定位**（字节级反汇编 + 空工程对照 + `--log-file` 单变量 A/B：默认日志路径崩溃、
+> 指定可写日志路径 exit 0），故**不再向用户申请任何提权 / LocalDumps**；自研 `MiniDumpWriteDump` launcher
+> 亦按 `08 §11.5`（已有成熟方案不得重复造轮子）一并砍掉。
 > **GATE 9 强制项（用户 2026-10-03 裁定）**：**重新安装完整的 Godot 4.7.1 Stable Export Templates**。
 > 用户选定 **B：当前继续开发，不因导出模板中断项目推进** —— 同时明确要求把该条**登记为 GATE 9 前的必须完成项**，
 > 并在**进入正式 Web Release、Windows 打包或 Release Candidate 阶段之前**执行**完整模板重装 + 导出验证**。
-> 现状：`S0-21 = PARTIAL`，只有从截断的 `templates.tpz` 抢救出的 `web_debug.zip` 可用，
-> 因此 **release Web 导出与桌面导出当前不可用**。这**不阻塞** Stage 1 的后续开发，也不阻塞 PET-58。
+> **2026-10-04 现状更新（PET-61 验收后）**：基线已迁至 **Godot 4.7.2**，其**完整 Export Templates 已落
+> `tools/godot`（D:）与 `editor_data`（E:）**，该条的**实质要求已在新基线上满足**（Web Debug 导出实测通过、
+> 像素缩放 4× 整数）。**残留条件**：**4.7.1 回滚路径仍不具备 release / 桌面导出能力**（旧 `templates.tpz` 仍是截断的）
+> —— 若将来必须回滚到 4.7.1，本强制项**立即复活**。
+> **是否就此结清 `S0-21` 属用户的 GATE 9 裁定，DSH 不代判。**
 
 **Stage 1 绝对禁止**：真实战斗、真实伤害、蓝图编辑逻辑、敌人 AI。
 

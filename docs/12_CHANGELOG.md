@@ -5,6 +5,47 @@
 
 ## [Unreleased]
 
+### 用户第二轮裁定（2026-10-04 05:24 UTC，崩溃线程）：认可第一轮方向、**不接受**「SceneTree 误用 = 崩溃根因」、维持暂停 + 指定下一轮只做调查性实验（DSH 回执）
+
+用户原文要点：
+
+> 「第一轮调查方向认可，但**暂不接受**『`game_flow.gd:159` 已是崩溃根因』的结论。」
+> 「`BOOT._ready()` 链内同步触发 `change_scene_to_file()`，并稳定出现 `Parent node is busy adding/removing children`，
+> 视为**已确认缺陷**」；「它列为当前 **H1 / 最高优先级根因假设**」；
+> 「但原始 `0xc0000005` 目前只发生过一次，且尚未由该路径稳定复现，所以**不得把『确认缺陷』等同于『确认崩溃根因』**。」
+> 「DSH 的 `0xc0000409` 继续独立调查，**不得合并**。」
+> 下一轮「**只允许进行调查性实验，不恢复功能开发**」：① 建 A/B 对照（A = 保留当前同步切换；B = 只把 BOOT 期切换
+> 延到 deferred / 下一帧，**除这一点外不得顺手重构 GameFlow**）；② 同机 / 同启动方式 / 同 renderer 重复运行 A/B，
+> 记录 `Parent node is busy…` 是否在 B 中**完全消失**、是否出现新的 SceneTree 错误、是否能触发 native crash，
+> 每轮启动路径 / 退出方式 / stderr **必须留档**；③ 覆盖 `gl_compatibility` 与 `forward_plus`，
+> **不要再把项目默认与显式 `gl_compatibility` 当成两个 renderer**；④ 即使 B 能稳定消除该错误，
+> 也只能证明「该调用方式存在缺陷、deferred 是有效修正」，**仍不能仅凭这一点宣布 `0xc0000005` 根因已证明**；
+> ⑤ 若再次出现 `0xc0000005`，**优先获取 Windows crash dump / native call stack**（不要只记 Event Viewer 的
+> exception code 与 fault offset），dump 要与对应 stderr、renderer、启动方式、时间戳**绑定**；
+> ⑥ PET-60 最终报告必须明确区分 **Confirmed defect / Root-cause hypothesis / Reproduction evidence /
+> Crash causality proven 或 unproven**，允许结论写「Confirmed lifecycle defect; likely crash contributor;
+> original 0xc0000005 root cause remains unproven.」
+> 「**Stage 1 继续保持暂停**，不因为消除了这条 stderr 就自动解除稳定性闸门。」
+
+#### Notes（DSH 逐条回执；结论部分已被后续证据取代，故一并记明）
+- **①②④（H1 与 A/B）**：用户对 H1 的保留**被最终证据完全支持** —— 真因**不在项目代码里**：引擎
+  `RotatedFileLogger::rotate_file()` 在 `user://logs` 打不开时**未检查 `FileAccess::open()` 的 null** 即
+  `detach_from_objectdb()`，空 this 读 `[rcx+0x58]`（**与用户弹窗的 `0x…58` 逐字对上**）；
+  且**空工程（零 GDScript）同帧同址崩溃** ⇒ H1 **正式从崩溃根因候选中划掉**（仍作代码卫生缺陷保留，**且已修**：
+  `game_flow.gd` 改 `call_deferred`）。A/B 因此不再承担「证明崩溃因果」的角色；用户 ④ 的措辞边界**照办**。
+- **③（两种 renderer）**：PET-60 已按此重做对照 —— 默认与显式 `gl_compatibility` 视为**同一条**路径，
+  真正的 Vulkan 支线单独跑（`forward_plus` / `--rendering-driver vulkan`），**两条都不崩**。
+- **⑤（dump 优先）**：**该要求在本机不可执行**，已实测留档 —— WER LocalDumps **只读 `HKLM` 且启用需管理员**，
+  写 `HKCU` **静默无效**（连造 5 次真崩溃、目标目录 0 文件）；两个 `HKCU` 子键已删。
+  **根因不依赖 dump 即已定位**（字节级反汇编 + 空工程对照 + `--log-file` 单变量 A/B：默认路径 exit 139 →
+  指定可写日志路径 exit 0）。故**不再向用户申请批准 LocalDumps**。
+- **⑥（四类区分）**：`S1-14C` 结论已按此重写并 `ACCEPTED`：**Crash causality = proven（机制级）**，
+  但「**用户那一次具体为何满足该触发条件**」仍**悬置**（父进程归属 / 环境块不可得），
+  **不得读成「已解决」**；引擎侧缺陷本身已由 4.7.2 修复。
+- **暂停与技术债**：用户 2026-10-04 后续指令（PLAYABLE-FIRST）已**实际解除暂停**；待办 A **已落地**；
+  待办 C **已作废**（见上）；待办 B（`palette_theme.gd` 的 `@tool` 占位实例，编辑器扫描刷 32 条 `SCRIPT ERROR`）**仍开着**。
+- **不变的两条红线**：`S1-14`（GATE 9）**不得置 `DONE`**（L4 属用户）；**Stage 1 / 后续 Stage 一律不得标「稳定」**。
+
 ### PET-64 验收（`ACCEPTED`）：FIRST PLAYABLE 2/4 机器运行（2026-10-04）
 
 #### Added
@@ -179,6 +220,10 @@
   该误用仍作为代码卫生待办 A 保留。
 - **`0xc0000005` 的根因仍未定位**。在拿到 dump 之前任何"根因"都只是猜测 —— PET-60 明确拒绝编造。
   唯一可执行的手段是待办 C（WER LocalDumps，`HKCU`、落 D 盘、可逆），**待用户批准**。
+  > **2026-10-04 更正（勿再据此向用户索要批准）**：本条已被推翻 —— 根因**不需 dump** 即已定位
+  > （引擎日志路径空指针：`RotatedFileLogger::rotate_file()`；上游 #122437，修复随 4.7.2 / PR #121926）；
+  > 且 `HKCU` LocalDumps 实测**静默无效**（只读 `HKLM`、启用需管理员），`HKLM` 提权方案已放弃。
+  > 详见本文件顶部「用户第二轮裁定」条与 `11_TASK_BOARD.md` 的 `S1-14C` / 待办 C。
 
 
 ### ⛔ 用户报告 Godot 原生崩溃 → 开发暂停 + 建立 Crash Investigation（2026-10-03）
