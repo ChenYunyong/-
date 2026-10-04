@@ -20,6 +20,20 @@
 - 与 `13_VISUAL_RULING.md` §4 一致：蓝图区仍为**面积最大分区**、颜色全走 `Palette` 无裸色值、**未引入任何人物 / 吉祥物 / 剧情元素**。
 - 遗留（非阻塞，转 Codex）：`assets/_review/pending/visual_batch_01/` 下 3 个 `*.png.import` 是 `--headless --import` 的引擎产物；本仓库**不追踪任何 `.import`**，不入库、不删、随下次导入重建。
 
+### VB-02 组件 Kit 批准：基础 UI Component Language v1（2026-10-04）
+
+#### Changed
+- **VB-02 组件 Kit 批准**，定义为 PixelFusion 的**正式基础 UI Component Language**（**不是最终视觉完成度**）；允许 Codex **进入正式切图**并推进 `_approved/`，**不重做大稿、不阻塞 Gameplay**。
+- `13_VISUAL_RULING.md` → **v3**：新增 **§10**（批准范围 + **正式产出前 3 个小修** + 排期）。
+- `11_TASK_BOARD.md` → **v0.3.1**：PET-69 转 `DONE`（用户批准）；新增 **PET-71（VB-03 正式切图）**。
+
+#### Added
+- **PET-71 VB-03**（Codex）：先做 `13 §10` 三修，再批量产正式组件切片并走 `_approved/`；同时把 MAIN MENU 四项与 COMBAT 层级落到三屏视觉。
+
+#### Notes
+- 3 个小修：① `Focus` 用浅蓝 / 亮色细框或角标，`Selected` 保留金色主强调（避免键盘焦点与真实选择混淆）；② 类型色只做**小面积辅助识别**，**不得**用整圈高饱和边框，**深蓝卡身不变**；③ 精致感靠正式 **Icon / Weapon / Enemy / FX / Background** 补充，**不得**为「更精致」堆 Panel 装饰。
+- 排期：`PET-70`（UI-KIT 接入）仍等 `PET-64`；**UI 不得再打断 FIRST PLAYABLE**。
+
 ### 追加裁定：UI Kit 定位为 FIRST PLAYABLE 结构基线，优先级切到 Gameplay（2026-10-04）
 
 #### Changed

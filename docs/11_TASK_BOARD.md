@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.3.0**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.3.1**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -197,7 +197,8 @@
 | PET-62 | **Visual Batch 01**（并行）：MAIN MENU / PREPARATION / COMBAT UI Kit | Codex | `APPROVED`（有条件批准，见 `13`） |
 | PET-67 | **I18N-MIN** UI 中英可切换：Godot CSV 翻译表（中文原文 = key → en）+ 最小语言开关 + 持久化 | Claude | `BACKLOG`（排 PET-63 之后） |
 | PET-68 | **VB-01b** 三张 UI Kit 补英文标签版 + 中英版式容纳结论 | Codex | `REVIEW`（复核：英文版与原图逐字节相同，容纳结论不成立） |
-| PET-69 | **VB-02** UI Kit 组件化制作 + 批准附带小改（含 COMBAT 越框修正） | Codex | `IN_PROGRESS` |
+| PET-69 | **VB-02** UI Kit 组件化制作 + 批准附带小改（含 COMBAT 越框修正） | Codex | `DONE`（用户 2026-10-04 批准组件方向） |
+| PET-71 | **VB-03** 正式组件切图 + `_approved/` 流程（基础组件语言 v1，含 `13 §10` 三修） | Codex | `TODO` |
 | PET-70 | **UI-KIT 接入**（MAIN_MENU + COMBAT 结构）：按批准 Kit 建场景结构，placeholder 资源 | Claude | `BACKLOG` |
 
 | — | 退出期资源清点：`palette.gd` / `palette.tres` 未释放（已复核、非阻塞；随下一张触碰该文件的卡一并修） | Claude | `BACKLOG` |
@@ -229,6 +230,8 @@
 > - **视觉偏离登记（接受，理由成立）**：不使用引擎原生 drag-and-drop 之外的输入分支（`03 §8` 未被破坏，`scripts/input/**` 也不在授权范围）；`RegionCenter/Title` 占位标题隐藏、底条仓库由占位 Label 换成真实槽位 —— 均在 `preparation.tscn` 授权范围内。
 
 > **2026-10-04 追加裁定**：三张 Kit 批准为 **FIRST PLAYABLE 正式结构基线**（结构 / 组件基线 + 开发期视觉资源，**不是最终美术**）。**不再因 UI Kit 阻塞 Gameplay**。优先级切换为 **`FIRST PLAYABLE Gameplay > UI Kit 继续打磨`**。**下一批主交付目标 = 一个实际可玩的 Godot Build**（PREPARATION → 拖放 → 连线 → 战斗 → 敌人推进 → 武器攻击 → 死亡 → REWARD 三选一 → 返回）。细则见 `13 §9`。
+
+> **2026-10-04 VB-02 组件 Kit 批准**：定义为 PixelFusion **正式基础 UI Component Language v1**（**非最终视觉完成度**）。`Panel` / `Button` 五态 / `Inventory Slot` / `HUD 分级` / `Tooltip` / `Progress Bar` / `Frame` / `Disabled` **全部通过**；**正式产出前 3 个小修**（`Focus` 与 `Selected` 语义区分 · 类型色小面积辅助识别、深蓝卡身不变 · 不得为「更精致」堆 Panel 装饰）见 `13 §10`。可**批量产正式资源**并推进 `_approved/`（PET-71）。**PET-70 仍等 PET-64；UI 不得再打断 FIRST PLAYABLE。**
 
 ## 5. STAGE 3 — CORE / FUNCTION / WEAPON（未开始）
 
