@@ -1,9 +1,11 @@
 ## machine_driver.gd
-## 职责：把**渲染帧的真实间隔**换成固定节拍，喂给 MachineRuntime（03 §2 的固定步长累加器）。
+## 职责：把**渲染帧的真实间隔**换成固定节拍，喂给被驱动的那台仿真（03 §2 的固定步长累加器）。
+##       可驱动的对象有两种：光有机器的 MachineRuntime（PET-64），
+##       以及把机器与敌人 / 伤害拼在一起的 CombatSimulation（PET-65）。
 ## 所属系统：gameplay
-## 依赖：MachineRuntime
+## 依赖：MachineRuntime / CombatSimulation
 ## 禁止：本文件不得触碰 UI / Palette / 存档 / 输入；
-##       不得自己实现玩法 —— 它只回答「什么时候推进」，「推进成什么样」全在 MachineRuntime；
+##       不得自己实现玩法 —— 它只回答「什么时候推进」，「推进成什么样」全在被驱动的对象里；
 ##       不得用 Timer / create_timer 代替累加器（03 §2）：定时器的节拍会跟着帧率漂，
 ##       而固定步长累加器不论 60fps 还是 30fps 都推进同样的拍数，仿真结果才可复现。
 ##
@@ -24,28 +26,54 @@ const MAX_CATCH_UP_TICKS: int = 5
 
 ## 受本驱动的机器。为 null 时 _process 什么都不做 ——
 ## 「本局没有机器」是正常情况（还没拖过 CORE），不该在这里报错。
+##
+## 它与 combat **互斥**：两者都非空时以 combat 为准（见 _advance_one_tick）。
+## 保留两个字段而不是一个「可驱动」接口，是因为 runtime 是 PET-64 的既有契约：
+## 多个用例正按名字读 driver.runtime，改成接口会让那些断言失去对象。
 var runtime: MachineRuntime = null
+
+## 受本驱动的整场战斗（机器 + 敌人 + 伤害结算）。
+var combat: CombatSimulation = null
 
 var _accumulator: float = 0.0
 
 
 ## 换一台机器跑（传 null 表示停下）。累加器一并归零 ——
 ## 换了机器还留着上一台的余量，新机器的第一拍会在换的瞬间立刻蹦出来。
+## 同时清掉 combat：两种驱动对象互斥，留着上一场的战斗会让本函数变成「绑了机器但跑的是战斗」。
 func bind(machine: MachineRuntime) -> void:
 	runtime = machine
+	combat = null
+	_accumulator = 0.0
+
+
+## 换一场战斗跑（传 null 表示停下）。语义与 bind() 对称。
+func bind_combat(simulation: CombatSimulation) -> void:
+	combat = simulation
+	runtime = null
 	_accumulator = 0.0
 
 
 ## 每渲染帧累加一次，攒够一拍才推进。COMBAT 之外本节点不参与任何状态
-## （运行时为 null），故离开战斗场景不需要额外的启停开关。
+## （两个驱动对象都为 null），故离开战斗场景不需要额外的启停开关。
 func _process(delta: float) -> void:
-	if runtime == null:
+	if runtime == null and combat == null:
 		return
 	_accumulator += delta
 	var budget: int = 0
 	while _accumulator >= TICK_SECONDS and budget < MAX_CATCH_UP_TICKS:
 		_accumulator -= TICK_SECONDS
-		runtime.tick()
+		_advance_one_tick()
 		budget += 1
 	if budget >= MAX_CATCH_UP_TICKS:
 		_accumulator = 0.0
+
+
+## 推进一步。「先战斗后机器」不是优先级，是互斥前提下的确定选择：
+## CombatSimulation 内部已经持有并推进同一个 MachineRuntime，若这里再直接推它一次，
+## 一场战斗每帧会跑两拍，而症状只是「敌人走得比设计快一倍」。
+func _advance_one_tick() -> void:
+	if combat != null:
+		combat.tick()
+	elif runtime != null:
+		runtime.tick()

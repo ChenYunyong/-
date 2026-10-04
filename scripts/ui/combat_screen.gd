@@ -1,19 +1,23 @@
 ## combat_screen.gd
-## 职责：COMBAT 场景 —— 06 §8 的战场（机器示意区）+ 底部状态带（状态 / 预览的只读展示），
+## 职责：COMBAT 场景 —— 06 §8 的战场（敌人推进区 + 机器示意区）+ 底部状态带（状态 / 预览的只读展示），
 ##       以及通往 REWARD / RESULT 的两个触发入口。
-##       本批（FIRST PLAYABLE 2/4）把蓝图机器**真的跑起来**：载入蓝图 → 建 MachineRuntime →
-##       交给 MachineDriver 按固定节拍推进 → 把 Heat 写进状态带读数。
+##       本批（FIRST PLAYABLE 3/4）把战斗**真的打起来**：载入蓝图 → 建 CombatSimulation
+##       （机器 + 一波敌人 + 伤害结算）→ 交给 MachineDriver 按固定节拍推进 →
+##       把敌人画进战场、把 CORE 血量写进状态带读数。
 ## 所属系统：ui
-## 依赖：Palette、Theme、GameFlow、CombatLayout、InputScreen、MachineRuntime、MachineDriver、BlueprintWorkspace
+## 依赖：Palette、Theme、GameFlow、CombatLayout、InputScreen、MachineRuntime、MachineDriver、
+##       CombatSimulation、EnemyState、EnemyData、BlueprintWorkspace
 ## 禁止：本文件不得调用 change_scene_to_file() —— 场景路由只能由 GameFlow 落地（03 §1.1 R3）；
-##       不得写任何字面色值（06 §10.7）；
+##       不得写任何字面色值（06 §10.7）—— 全部经 Palette；
 ##       不得判断任何原始输入事件类型（InputEventMouseButton 等）—— 输入一律经 InputScreen
 ##       归一后的语义事件（03 §8）；
 ##       不得自己持有节拍 / 累加器 / 计时构造 —— 时间模型属玩法（03 §2），归 MachineDriver；
-##       本文件只负责「把谁交给它」与「把结果写到哪个 Label 上」；
+##       本文件只负责「把谁交给它」「把结果写到哪个 Label 上」「把敌人画在哪」；
+##       不得自己结算伤害 / 生成敌人 / 判死亡 —— 那些全在 CombatSimulation，
+##       本文件只按它给的 progress / hp_ratio 换算屏幕位置，一个数值都不改；
 ##       不得出现任何需要玩家长按 / 连点的动作控件（00 §5 第 3 条交互硬规则、06 §8）——
 ##       这条带是状态与预览，COMBAT 阶段玩家不直接操控任何单位；
-##       不得结算伤害 / 生成敌人 / 判死亡 / 处理 Overheat（PET-65 / PET-66）。
+##       不得处理 Overheat（PET-66）。
 
 extends InputScreen
 
@@ -29,11 +33,35 @@ const NOTICE_NO_MACHINE: String = "本局还没有机器：先在整备界面拖
 const NOTICE_NO_CORE: String = "这台机器里没有 CORE（信号源），不会有信号流动 —— 补一个 CORE 再开战。"
 
 ## 机器示意区的高度：24px 网格上的 2 行，贴战场下沿。上方的空档留给占位弹丸上升，
-## 也留给后续卡片（PET-65）的敌人生成区。
+## 也留给敌人生成与推进区（PET-65）。
 const MACHINE_VIEW_HEIGHT: float = 48.0
+
+## 敌人推进区的绘制参数。**全部是表现层的事** —— 玩法侧的推进用归一化 progress
+## （见 EnemyState），改这里的数不会改变任何一局的胜负。
+##
+## 坐标以**战场局部坐标**为准：敌人层铺满战场且原点与战场重合（_place_machine_view 保证），
+## 于是「第几个像素」可以直接读，像素取证不必再换算一次。
+const ENEMY_BAND_TOP: float = 32.0
+## 一条道占的高度：标签 10px + 身体最长 8px。两条道 = 48px。
+const ENEMY_ROW_HEIGHT: float = 24.0
+## 标签基线在一条道内的偏移，身体顶边在道内的偏移。
+const ENEMY_LABEL_BASELINE: float = 8.0
+const ENEMY_BODY_TOP: float = 10.0
+const ENEMY_LABEL_FONT_SIZE: int = 8
+## 敌人层与机器示意区之间留的缝：贴太近会让最后一条道看起来像压在机器上。
+const ENEMY_BAND_GAP: float = 6.0
+## 两种敌人的身体边长。Slime 大（慢、血多），Runner 小（快、血少）——
+## 用尺寸区分而不是再加一组颜色，是因为 04 §3.7 已把红色定成「危险」语义色，
+## 在同一个语义里再拆两种红只会让人以为是两种危险等级。
+const ENEMY_SLIME_SIZE: float = 8.0
+const ENEMY_RUNNER_SIZE: float = 6.0
+## HP 条的厚度与它离身体顶边的缝（条画在身体**上方**，落在战场底色上而不是压在身上）。
+const ENEMY_HP_HEIGHT: float = 2.0
+const ENEMY_HP_GAP: float = 3.0
 
 @onready var _backdrop: ColorRect = %Backdrop
 @onready var _battlefield: Control = %Battlefield
+@onready var _enemy_layer: Control = %EnemyLayer
 @onready var _machine_view: BlueprintWorkspace = %MachineView
 @onready var _driver: MachineDriver = %MachineDriver
 @onready var _status_bar: Control = %StatusBar
@@ -46,9 +74,22 @@ const MACHINE_VIEW_HEIGHT: float = 48.0
 ## 而各用例正是按名字 `Value` 逐块找它的。故唯一名挂在读数块（`Heat`）上，再往下走一级。
 @onready var _heat_value: Label = %Heat.get_node(^"Value") as Label
 
+## 06 §8.1 的 `CORE` 读数格。同 `_heat_value` 的理由：唯一名挂在读数块（`Core`）上，再往下走一级。
+@onready var _core_value: Label = %Core.get_node(^"Value") as Label
+
 ## 两块区域容器，下标即 CombatLayout.Region。顺序必须与场景里的节点顺序一致。
 var _regions: Array[Control] = []
 var _is_narrow: bool = false
+
+## 本局正在跑的仿真。没有机器时为 null —— 此时战场上什么都不画（敌人生成也归它管）。
+var _simulation: CombatSimulation = null
+
+## 绘制用的判据色。在 _ready() 里从 Palette 取一次（06 §10.7：色值只有一个来源）。
+var _slime_color: Color = Color.BLACK
+var _runner_color: Color = Color.BLACK
+var _hp_missing: Color = Color.BLACK
+var _hp_fill: Color = Color.BLACK
+var _enemy_label_color: Color = Color.BLACK
 
 
 func _ready() -> void:
@@ -59,6 +100,17 @@ func _ready() -> void:
 	_backdrop.color = Palette.get_color(Palette.Key.NAVY_900)
 	_status_fill.color = Palette.get_color(Palette.Key.NAVY_800)
 	_status_edge.color = Palette.get_color(Palette.Key.NAVY_600)
+	# 敌人用 04 §3.7 的「危险」红：Slime 取暗调（大面积底色）、Runner 取亮调（图标级）。
+	# HP 条按同一条规则拆两段：缺失段 RED_600、已损段 RED_500。小号名字用 GREY_300（正文色），
+	# 战场底是全屏的 NAVY_900，对比度足够，不必再加描边层。
+	_slime_color = Palette.get_color(Palette.Key.RED_600)
+	_runner_color = Palette.get_color(Palette.Key.RED_500)
+	_hp_missing = Palette.get_color(Palette.Key.RED_600)
+	_hp_fill = Palette.get_color(Palette.Key.RED_500)
+	_enemy_label_color = Palette.get_color(Palette.Key.GREY_300)
+	# 敌人的重绘挂在敌人层的 draw 信号上：绘制命令必须落在**这一层**上，
+	# 落在本节点上会被 Backdrop 与机器视图盖住（父节点先于子节点绘制）。
+	_enemy_layer.draw.connect(_draw_enemies)
 	_regions = [_battlefield, _status_bar]
 	_notice_label.visible = false
 	# 折叠由可用区尺寸驱动，不用计时器、也不轮询（03 §2）。
@@ -75,19 +127,32 @@ func _ready() -> void:
 func reload_machine() -> void:
 	_machine_view.reload()
 	_driver.bind(null)
+	_simulation = null
 	_notice_label.visible = false
 	_show_heat(0.0)
+	_show_core_hp(CombatSimulation.CORE_MAX_HP)
+	# 读数归零之后必须重画一次敌人层：上一局的尸体否则会留在屏幕上，
+	# 直到本局第一次 tick 才被擦掉 —— 那一段空白里玩家会以为新一局「有敌人但不动」。
+	_enemy_layer.queue_redraw()
 	var blueprint: BlueprintData = _machine_view.blueprint()
 	if blueprint == null or blueprint.nodes.is_empty():
 		_show_notice(NOTICE_NO_MACHINE)
 		return
-	# 图由工作区持有并绘制（06 §8 / 03 §4.3：蓝图在 COMBAT 是只读的），运行时只借用它建索引。
-	var machine := MachineRuntime.new(blueprint)
+	# 图由工作区持有并绘制（06 §8 / 03 §4.3：蓝图在 COMBAT 是只读的），仿真只借用它建索引。
+	var simulation := CombatSimulation.new(blueprint)
+	_simulation = simulation
+	var machine: MachineRuntime = simulation.machine()
 	_machine_view.runtime = machine
 	machine.heat_changed.connect(_show_heat)
 	# 重绘挂在本拍推进之后，而不是每帧无条件重画：机器不动时画面就一个像素都不重画。
 	machine.ticked.connect(_machine_view.queue_redraw)
-	_driver.bind(machine)
+	simulation.ticked.connect(_enemy_layer.queue_redraw)
+	simulation.core_hp_changed.connect(_show_core_hp)
+	# 胜负由仿真判定，出口仍走本场景既有的两个语义入口（03 §1.1 R2 只认这两条边）。
+	# 这样 REWARD / RESULT 的路由前置条件（场景是否就绪）依然只在这一处判断。
+	simulation.wave_cleared.connect(on_wave_cleared)
+	simulation.run_failed.connect(on_core_destroyed)
+	_driver.bind_combat(simulation)
 	if not machine.has_core():
 		_show_notice(NOTICE_NO_CORE)
 
@@ -95,6 +160,12 @@ func reload_machine() -> void:
 ## 06 §8.1 的 `热量` 读数。取整数百分比 —— 读数格只有三位宽（`100%`），小数会被挤掉。
 func _show_heat(heat: float) -> void:
 	_heat_value.text = "%d%%" % roundi(heat)
+
+
+## 06 §8.1 的 `CORE` 读数。同样是整数百分比（§8.1 硬规则 2：CORE 用百分比，不用自然语言状态词）。
+## CORE_MAX_HP 取 100，故血量本身就是百分比，这里不做第二次换算。
+func _show_core_hp(core_hp: float) -> void:
+	_core_value.text = "%d%%" % roundi(core_hp)
 
 
 ## 当前是否处于 06 §7.1 的折叠布局。
@@ -122,6 +193,9 @@ func _place_machine_view(battlefield: Rect2) -> void:
 	var height: float = minf(MACHINE_VIEW_HEIGHT, battlefield.size.y)
 	_place(_machine_view, Rect2(battlefield.position.x, battlefield.end.y - height,
 		battlefield.size.x, height))
+	# 敌人层铺满战场、原点与战场重合 —— 绘制坐标于是与战场坐标是同一套，
+	# 「第几像素」可以直接读（像素取证的判据依赖这一点）。
+	_place(_enemy_layer, Rect2(Vector2.ZERO, battlefield.size))
 
 
 func _on_resized() -> void:
@@ -181,6 +255,72 @@ func _is_route_ready(state: int) -> bool:
 func _show_notice(message_key: String) -> void:
 	_notice_label.text = tr(message_key)
 	_notice_label.visible = true
+
+
+## 把这一拍的敌人画到战场上。挂在 EnemyLayer 的 draw 信号上 —— 绘制命令必须落在**那一层**，
+## 落在本节点上会被 Backdrop 与机器视图盖住（父节点先于子节点绘制）。
+##
+## 不读真实时间、不读帧数：位置只由 progress 与 tick 决定，于是同一拍画出来逐像素相同
+## （像素取证要求取样可复现）。
+func _draw_enemies() -> void:
+	if _simulation == null:
+		return
+	var band_bottom: float = _machine_view.position.y - ENEMY_BAND_GAP
+	if band_bottom - ENEMY_BAND_TOP < ENEMY_ROW_HEIGHT * float(CombatSimulation.LANES):
+		# 战场被压得太矮（06 §7.1 折叠到极端尺寸）：宁可这一档不画，也不要把两条道糊成一团 ——
+		# 糊在一起时「敌人在哪条道上」反而看不出，比空着更糟。
+		return
+	var tick: int = _simulation.tick_index()
+	for enemy: EnemyState in _simulation.enemies():
+		_draw_enemy(enemy, tick)
+
+
+func _draw_enemy(enemy: EnemyState, tick: int) -> void:
+	var data: EnemyData = enemy.data
+	if data == null:
+		return
+	var is_slime: bool = data.kind == EnemyData.Kind.SLIME
+	var body: float = ENEMY_SLIME_SIZE if is_slime else ENEMY_RUNNER_SIZE
+	var color: Color = _slime_color if is_slime else _runner_color
+	var row_top: float = ENEMY_BAND_TOP + float(enemy.lane) * ENEMY_ROW_HEIGHT
+	# 右 → 左：progress 0 在战场右缘，1 在左缘（CORE 那一侧）。
+	var left: float = lerpf(_enemy_layer.size.x - body, 0.0, enemy.progress)
+	var top: float = row_top + ENEMY_BODY_TOP
+	var age: int = enemy.death_age(tick)
+	if age >= 0:
+		_draw_vanishing(left, top, body, age, color)
+		return
+	_enemy_layer.draw_rect(Rect2(left, top, body, body), color)
+	_draw_health(enemy, left, top, body)
+	_draw_name(data.display_name, left, body, row_top)
+
+
+## 死亡后的占位消失动画：绕中心收缩到 1px，VANISH_TICKS 拍后被仿真移除。
+## 用**收缩**而不是淡出 —— 320×180 的像素画里半透明只会得到一团糊块，
+## 而「缩掉了」在一张静止的截图里也读得出是在消失。
+func _draw_vanishing(left: float, top: float, body: float, age: int, color: Color) -> void:
+	var side: float = maxf(body * (1.0 - float(age) / float(CombatSimulation.VANISH_TICKS)), 1.0)
+	var center := Vector2(left + body * 0.5, top + body * 0.5)
+	_enemy_layer.draw_rect(Rect2(center - Vector2(side, side) * 0.5, Vector2(side, side)), color)
+
+
+## HP 条：画在身体**上方**那条缝里，落在战场底色上而不是压在身上（压在深红身体上分不出深浅）。
+## 两段色取 04 §3.7 对 HP 条的规定：缺失段 RED_600、已损段 RED_500。
+func _draw_health(enemy: EnemyState, left: float, body_top: float, body: float) -> void:
+	var top: float = body_top - ENEMY_HP_GAP - ENEMY_HP_HEIGHT
+	_enemy_layer.draw_rect(Rect2(left, top, body, ENEMY_HP_HEIGHT), _hp_missing)
+	_enemy_layer.draw_rect(Rect2(left, top, body * enemy.hp_ratio(), ENEMY_HP_HEIGHT), _hp_fill)
+
+
+## 名字标签。以身体中心对齐后再**夹进战场**：敌人刚出场时贴着右缘，
+## 不夹的话名字有一截在画外 —— 而那正是玩家第一次需要认出它是 Slime 还是 Runner 的时刻。
+func _draw_name(text: String, left: float, body: float, row_top: float) -> void:
+	var font: Font = get_theme_default_font()
+	var width: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1.0,
+		ENEMY_LABEL_FONT_SIZE).x
+	var label_x: float = clampf(left + body * 0.5 - width * 0.5, 0.0, _enemy_layer.size.x - width)
+	_enemy_layer.draw_string(font, Vector2(label_x, row_top + ENEMY_LABEL_BASELINE), text,
+		HORIZONTAL_ALIGNMENT_LEFT, -1.0, ENEMY_LABEL_FONT_SIZE, _enemy_label_color)
 
 
 ## 把区域贴到矩形上。区域都是场景根下的普通 Control（非容器），故直接给位置与尺寸。

@@ -42,9 +42,16 @@ offset_right = -8.0
 offset_bottom = 28.0
 grow_horizontal = 2
 mouse_filter = 2
-text = "战场占位 · 敌人生成与推进 / 伤害结算 属下一批（PET-65）；机器运行见下方示意区"
+text = "占位战场：Slime / Runner 自右向左推进，抵达左端即扣 CORE 血量"
 horizontal_alignment = 1
 autowrap_mode = 3
+
+[node name="EnemyLayer" type="Control" parent="Battlefield"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_right = 320.0
+offset_bottom = 135.0
+mouse_filter = 2
 
 [node name="MachineView" type="Control" parent="Battlefield"]
 unique_name_in_owner = true
@@ -139,6 +146,7 @@ mouse_filter = 2
 text = "1/1"
 
 [node name="Core" type="VBoxContainer" parent="StatusBar/Readouts/ReadoutsRow"]
+unique_name_in_owner = true
 layout_mode = 2
 custom_minimum_size = Vector2(54, 0)
 
