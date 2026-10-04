@@ -29,6 +29,9 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 	{"path": "res://tests/unit/test_reward.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_result.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_input.gd", "layer": "unit"},
+	# 中英切换（PET-67）。**排在单元层最后**：它会真的实例化 MAIN_MENU 入树、也会真的写一次
+	# user://settings.cfg（用完还原），尽量离前面那些只看静态装配的用例远一点。
+	{"path": "res://tests/unit/test_i18n.gd", "layer": "unit"},
 	{"path": "res://tests/integration/test_state_loop.gd", "layer": "integration"},
 	# 一局完整循环（3 波 → 奖励 → 整备 → 下一波 → 结算 → 重开）。**必须排在最后**：
 	# 它会把真实场景一路换过去，前面每个用例的场景断言都不能在它之后跑。

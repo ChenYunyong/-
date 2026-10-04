@@ -20,6 +20,14 @@ DataRegistry="*res://scripts/core/data_registry.gd"
 RunState="*res://scripts/core/run_state.gd"
 Settings="*res://scripts/core/settings_service.gd"
 
+[internationalization]
+
+; PET-67：中英切换的翻译表。源文件是 assets/i18n/ui.csv（key = 中文原文，06 §11），
+; 这里登记的是它**导入产物**（csv_translation 导入器把每个语言列导成一个 Translation 资源）；
+; 登记 .csv 本身在运行期加载不了（实测 `Failed loading resource`）。
+; *.translation 被 .gitignore 排除，属导入产物 —— 新克隆上先跑一次 `--import` 重新生成（09 §4）。
+locale/translations=PackedStringArray("res://assets/i18n/ui.zh_CN.translation", "res://assets/i18n/ui.en.translation")
+
 [display]
 
 ; 06 §1：基准分辨率 320×180（16:9），整数倍缩放。窗口默认 4×（1280×720），

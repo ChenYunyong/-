@@ -1,9 +1,11 @@
 ## settings_service.gd
 ## 职责：分辨率 / 音量 / 语言的运行时设置服务（03_ARCHITECTURE.md §3 的 Settings）。
 ## 所属系统：core
-## 依赖：ProjectSettings（只读，用于取引擎侧默认值）
-## 禁止：本文件不得含玩法逻辑，也不得自行持久化 ——
-##       磁盘存档属 SaveService（03 §3），本批未实现，故此处只做进程内设置。
+## 依赖：ProjectSettings（只读，用于取引擎侧默认值）、ConfigFile（语言偏好的落盘）
+## 禁止：本文件不得含玩法逻辑；不得碰存档 ——
+##       磁盘存档（局内进度 / 蓝图）属 SaveService（03 §3），本批未实现。
+##       语言偏好是**设置**不是存档：PET-67 起单独落在 user://settings.cfg，
+##       不并进将来的存档槽（存档按槽位删，语言不该跟着槽位一起没）。
 
 extends Node
 
@@ -13,6 +15,17 @@ signal setting_changed(key: StringName)
 const KEY_RESOLUTION: StringName = &"resolution"
 const KEY_MASTER_VOLUME: StringName = &"master_volume"
 const KEY_LOCALE: StringName = &"locale"
+
+## 已支持的语言。取值就是 Godot 的 locale 名，与 assets/i18n/ui.csv 的语言列一一对应
+## （project.godot 的 internationalization/locale/translations 登记它们的导入产物）。
+const LOCALE_ZH_CN: String = "zh_CN"
+const LOCALE_EN: String = "en"
+const SUPPORTED_LOCALES: PackedStringArray = [LOCALE_ZH_CN, LOCALE_EN]
+
+## 语言偏好的落盘位置。本文件只装设置，不装存档（见文件头）。
+const SETTINGS_PATH: String = "user://settings.cfg"
+const SETTINGS_SECTION: String = "settings"
+const FIELD_LOCALE: String = "locale"
 
 const AUDIO_BUS_MASTER: StringName = &"Master"
 ## 音量域的闭区间。1.0 = 无衰减，0.0 = 静音（映射到 VOLUME_DB_SILENT）。
@@ -33,9 +46,12 @@ var _locale: String = ""
 ## 可能早于工程设置就绪，因此初始化放在 _ready()。
 func _ready() -> void:
 	reset_to_defaults()
+	# 上次选择的语言覆盖引擎默认值（首次运行没有这份文件，保持系统语言）。
+	_load_locale()
 
 
-## 恢复为引擎侧默认值。
+## 恢复为引擎侧默认值。**不含**上次选择的语言 —— 那份偏好只在 _load_locale() 里应用，
+## 这样「恢复默认」与「读回玩家选择」是两件事，各自只有一个入口。
 func reset_to_defaults() -> void:
 	_resolution = _read_default_resolution()
 	_master_volume = VOLUME_LINEAR_MAX
@@ -81,7 +97,11 @@ func get_locale() -> String:
 
 
 ## 设置语言 key。空串会被拒绝并保持原值。
-func set_locale(value: String) -> void:
+##
+## persist = false（默认）只改进程内设置，**不落盘**：单测会在独立实例上反复调本函数做校验
+## （tests/unit/test_settings.gd 明令「不得改动用户的显示/音频设置」），默认落盘等于让测试
+## 把语言选择写进玩家偏好，还会连带影响同机上后跑的进程。玩家显式切换走 toggle_locale()。
+func set_locale(value: String, persist: bool = false) -> void:
 	if value.is_empty():
 		push_error("Settings: 语言 key 不得为空，已忽略。")
 		return
@@ -89,7 +109,18 @@ func set_locale(value: String) -> void:
 		return
 	_locale = value
 	_apply_locale()
+	if persist:
+		_save_locale()
 	_emit_changed(KEY_LOCALE)
+
+
+## 在已支持的语言之间切换并落盘，返回切换后的 locale。
+##
+## **语言判断只在这里做**：场景层不得出现「当前是哪种语言」的分支（06 §11「文本必须走 key」），
+## MAIN_MENU 的语言开关只调这一个入口。
+func toggle_locale() -> String:
+	set_locale(LOCALE_EN if _locale != LOCALE_EN else LOCALE_ZH_CN, true)
+	return _locale
 
 
 func _read_default_resolution() -> Vector2i:
@@ -109,6 +140,37 @@ func _apply_volume() -> void:
 
 func _apply_locale() -> void:
 	TranslationServer.set_locale(_locale)
+
+
+## 读回上次选择的语言。文件不存在 = 首次运行，不是错误（02 §9：先分清「没有」与「坏了」）。
+func _load_locale() -> void:
+	var config: ConfigFile = ConfigFile.new()
+	var error: Error = config.load(SETTINGS_PATH)
+	if error == ERR_FILE_NOT_FOUND:
+		return
+	if error != OK:
+		push_error("Settings: 无法读取 %s（错误码 %d），本次沿用系统语言。" % [SETTINGS_PATH, error])
+		return
+	# 磁盘是外部输入，取值必须校验（02 §9）：设置文件可能被手改、或语言被下架。
+	var saved: String = String(config.get_value(SETTINGS_SECTION, FIELD_LOCALE, ""))
+	if saved.is_empty():
+		return
+	if not SUPPORTED_LOCALES.has(saved):
+		push_error("Settings: 设置文件里的语言 '%s' 不在支持列表内，已忽略。" % saved)
+		return
+	if saved == _locale:
+		return
+	_locale = saved
+	_apply_locale()
+
+
+## 存盘失败不中断游戏（设置服务不该因为磁盘问题让游戏起不来）：报错，内存值保持不变。
+func _save_locale() -> void:
+	var config: ConfigFile = ConfigFile.new()
+	config.set_value(SETTINGS_SECTION, FIELD_LOCALE, _locale)
+	var error: Error = config.save(SETTINGS_PATH)
+	if error != OK:
+		push_error("Settings: 无法写入 %s（错误码 %d），本次选择重启后不保留。" % [SETTINGS_PATH, error])
 
 
 func _emit_changed(key: StringName) -> void:

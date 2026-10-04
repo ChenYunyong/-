@@ -56,6 +56,8 @@ const HIT_TABLE: Dictionary = {
 			["MenuPanel/Body/ButtonContinue", Vector2(90.0, 20.0), Vector2(90.0, 24.0)],
 			["MenuPanel/Body/ButtonSettings", Vector2(90.0, 20.0), Vector2(90.0, 24.0)],
 			["MenuPanel/Body/ButtonExit", Vector2(90.0, 20.0), Vector2(90.0, 24.0)],
+			# PET-67：主菜单的语言开关。92×24 已高于 24 逻辑像素下限，命中区 = 自身矩形。
+			["ButtonLang", Vector2(92.0, 24.0), Vector2(92.0, 24.0)],
 		],
 	},
 	PREP_SCENE: {

@@ -184,6 +184,16 @@ text = "VER. 0.1 · SAVE --"
 horizontal_alignment = 2
 vertical_alignment = 1
 
+[node name="ButtonLang" type="Button" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 220.0
+offset_top = 132.0
+offset_right = 312.0
+offset_bottom = 156.0
+theme_type_variation = &"ButtonSecondary"
+text = "中 / EN"
+
 [node name="NoticePanel" parent="." instance=ExtResource("4_notice")]
 unique_name_in_owner = true
 visible = false
