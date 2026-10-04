@@ -5,6 +5,17 @@
 
 ## [Unreleased]
 
+### UI 中英可切换（用户追加）+ 建卡（2026-10-04）
+
+#### Added
+- **PET-67 I18N-MIN**：UI 中英可切换。地基已在 —— `00_PROJECT_CHARTER` 要求文本走 key、`03_ARCHITECTURE` 的 `Settings` 已保留语言 key、全部 UI 文案已走 `tr()` 且「**中文原文即 key**」（`06 §11`）、`settings_service.gd` 已有 `get_locale()` / `set_locale()` + `TranslationServer` ⇒ 只差 **翻译表 + 最小开关 + 接线**。**不做**完整设置菜单、不做第三种语言。
+- **PET-68 VB-01b**（Codex 并行）：三张 UI Kit 补**英文标签版**，并给出「中英两串是否都放得下」的版式结论与中英长度对照表。
+- `11_TASK_BOARD.md` → **v0.2.6**：§4.1 增加 PET-67 / PET-68。
+
+#### Notes
+- 本项原在 FIRST PLAYABLE 暂缓清单（用户指令 §十三「多语言」）；本次按用户追加要求**只做最小中英切换**，不扩为完整 i18n 工程。
+- 排期：PET-67 排在 **PET-63 之后**（避免两批同时改同一批 UI 文件）；PET-68 与玩法**并行**。
+
 ### ENGINE-4.7.2 通过：Godot 4.7.2 成为新基线（2026-10-04）
 
 #### Changed
