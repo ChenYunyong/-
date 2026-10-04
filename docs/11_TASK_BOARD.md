@@ -209,17 +209,19 @@
 | PET-65 | **FP 3/4** COMBAT 真实：Slime/Runner 生成推进 + 三武器伤害结算 + 死亡 | Claude | `ACCEPTED`（DSH 独立复核通过，提交 `d122d3d`，已推送；证据见本节末注） |
 | PET-66 | **FP 4/4** 循环闭合：3 波 + REWARD 三选一 + 回 PREPARATION + Overheat | Claude | `ACCEPTED`（DSH 独立复核通过，提交 `84d18e9`，已推送；**FIRST PLAYABLE 完成**，证据见本节末注） |
 | PET-62 | **Visual Batch 01**（并行）：MAIN MENU / PREPARATION / COMBAT UI Kit | Codex | `APPROVED`（有条件批准，见 `13`） |
-| PET-67 | **I18N-MIN** UI 中英可切换：Godot CSV 翻译表（中文原文 = key → en）+ 最小语言开关 + 持久化 | Claude | `TODO`（2026-10-04 DSH 自 `BACKLOG` 提升 —— `PET-70` 的开卡前置 `NodeData.weapon_kind` 已落地，I18N 的定时炸弹已拆；已挂条件唤醒 `status = in_review`） |
+| PET-67 | **I18N-MIN** UI 中英可切换：Godot CSV 翻译表（中文原文 = key → en）+ 最小语言开关 + 持久化 | Claude | `ACCEPTED`（DSH 独立复核通过，提交 `f26db75`，已推送；证据见本节末注 —— 含「PET-70 拆弹未被重新装上」的独立探针核验） |
 | PET-68 | **VB-01b** 三张 UI Kit 补英文标签版 + 中英版式容纳结论 | Codex | `REVIEW`（复核：英文版与原图逐字节相同，容纳结论不成立） |
 | PET-69 | **VB-02** UI Kit 组件化制作 + 批准附带小改（含 COMBAT 越框修正） | Codex | `DONE`（用户 2026-10-04 批准组件方向） |
 | PET-71 | **VB-03** 正式组件切图 + `_approved/` 流程（基础组件语言 v1，含 `13 §10` 三修） | Codex | `REVIEW`（已交付；DSH 过程复核通过；**`_approved/` 与 HUD Block 集成未随 PET-70 落地** —— 切片尺寸装不进 `06 §8.1` 五格横排，见待办 R3） |
 | PET-70 | **UI-KIT 接入**（MAIN_MENU + COMBAT 结构）：按批准 Kit 建场景结构，placeholder 资源 | Claude | `ACCEPTED`（DSH 独立复核通过，提交 `1af0c42`，已推送；证据见本节末注 —— 开卡前置 `weapon_kind` 同批落地） |
+| PET-72 | **S4-07 最小版 · 奖励真的生效**：清空一波后的三选一，选中的那一项**真的落到玩家蓝图**（正确的 `function_kind` / `weapon_kind`、画布内第一个空闲格、立即落盘）；跨场景传递走既有载体，不新造全局单例。**不做**掉落池 / 稀有度 / 权重。**顺带结清** R1（`full_loop_smoke` 补 `weapon_kind`）与 R5（仓库槽位名走 `tr()`）—— 三者都落在同一批文件 | Claude | `TODO`（2026-10-04 DSH 自 `BACKLOG` 提升 —— 承接 `PET-37` 交用户亲测时登记的「三选一目前只是『选给你看』」；已挂条件唤醒 `status = in_review`） |
 
 | — | 退出期资源清点：`palette.gd` / `palette.tres` 未释放（已复核、非阻塞；随下一张触碰该文件的卡一并修） | Claude | `BACKLOG` |
 | R1 | `tests/integration/full_loop_smoke.gd` 仍按老写法建武器节点（无 `weapon_kind`）→ 每次跑出 5 条 `WeaponData.resolve` 降级 `push_error`，且该用例的武器全部落到 Needle。**一条参数即可消除**（`09 §5` 的 ERROR 零增量） | Claude | `BACKLOG` |
 | R2 | COMBAT HUD 正式分层收口：`06 §8.1` 五格冻结 vs `13 §5` 的二级 `GOLD` / `NEXT`（**不在**五格内），以及与 Machine 面板「左下」（`13 §5`）的冲突 —— 需同时改 `06 §8.1`、`13 §5` 落点与 `signal_flow_smoke` 的整宽机器区断言 | Claude | `BACKLOG` |
 | R3 | VB-03 HUD 分级切片（`ui_hud_block_primary_72x24` / `secondary_48x20`，`assets/ui/vb03_component_language/`）装不进 `06 §8.1` 五格横排（3×72 + 2×48 = 312 > 272 可用宽）→ 未接运行时；`asset_manifest.json` 的 `status` 仍 `pending_dsh_review`。与 R2 同批 | Codex | `BACKLOG` |
 | R4 | 主按钮切片 64×20 与主菜单四按钮 90×20（`tests/unit/test_input.gd` 命中区表）不一致 —— 是否按切片尺寸重排待定 | Claude | `BACKLOG` |
+| R5 | `blueprint_workspace._draw_warehouse()` 的 7 个仓库槽位名走 `draw_string(String(entry["name"]))`，**不经 `tr()`** ⇒ 英文态下这 7 个标签仍是中文（DSH 独立取帧逐像素实测：底部仓库墨迹带在 zh / en 两帧完全相同）。`06 §11` 的旧缺口、**不在 PET-67 的 ALLOWED FILES** 内，故不判 PET-67 未达 DoD；**不静默豁免**，并入 `PET-72`（同一文件，单一写手） | Claude | `BACKLOG` |
 
 **执行纪律（用户 2026-10-04）**：
 
@@ -300,6 +302,18 @@
 > - **视觉「够不够分明」的主观判断仍属 Codex / 用户**（DSH 给出的是可量测证据：字号 10 vs 8、墨迹 8px vs 6–7px、对比度 11.75:1 vs 9.37:1）。`13 §5` 的原文口径是「二级**视觉可稍弱**」，本批落在这一档。
 > - **报告口径待补（非阻塞）**：交付方 `TEST REPORT` 未按 `09 §5` v0.1.7 单列「退出期资源清点」—— 实测与基线一致（3 / 2），已在册缺陷（`palette.gd` / `palette.tres`），仅记口径。
 > - **环境说明（非本卡缺陷）**：本复核 run 把 `APPDATA` 重定向进工作区并先 `--headless --import` 刷类缓存（`09 §4` v0.1.4）；未做这两步时会看到 9 条 `user://` 落盘假红与 `Could not find type "Palette"` 全线假红。**本复核 run 的沙箱禁止写工作区外的 `.repos`**（`git` 索引锁被拒），交付提交由**授权的提权重试**完成。
+
+> **2026-10-04 PET-67 验收（`ACCEPTED`，提交 `f26db75`，DSH 已推送）** —— DSH **不采信自报**，按卡上写明的 **L1**（`09 §1.1`，**未擅自上 L3**）在交付树的**独立副本**上复跑，并**另写两份自己的探针**（不复用交付方用例）。
+>
+> - **L1 结果**：unit + integration **2385/2386 · 426/426**（`--fixed-fps 600`，headless）；MAIN_MENU 场景冒烟 **67/67**、`exit=0`（非 headless，`--resolution 320x180`，真实 GL：RTX 4060 / OpenGL 3.3）。
+> - **基线对照（本批最重要的一条结论）**：未改动的 `913d57f` 同一命令、同一环境 **2037/2038 · 426/426**，失败项**逐字相同**（`BlueprintWorkspace · 落节点写入 weapon_kind :: 应落出 5 个节点（期望 5，实际 8）`）⇒ **该失败在 PET-67 之前就存在、与环境相关（`user://` 重定向下 `_cleanup()` 未生效），不是 PET-67 的回归**；本批 unit **净 +348 条全绿**。交付方自报的 `2391/2391` 在本环境不可复现，差异全部落在这条既有失败上。
+> - **重点核验「PET-70 拆掉的定时炸弹没被重新装上」—— 结论：没装上，证据三条**：① 静态：`BY_DISPLAY_NAME` **零命中**，`resolve()` 只读 `NodeData.weapon_kind`，拖放载荷**直接带 `weapon_kind`**，全仓无一处把显示名回流到解析；② **DSH 自写探针（24 项 / 0 失败）**：在翻译表生效、`locale=en` 下，把武器节点 `display_name` 换成**英文译文**（`tr("锯")="Saw"`）乃至**完全不相干**的名字，解析结果仍由 `weapon_kind` 决定（`NEEDLE/BOMB/SAW` 各归各位）；③ 把真实落盘 `.tres` **删掉 `weapon_kind = ` 那一行**再载回 → **仍能载入**、节点数不变、解析按 `02 §9` 降级到 **Needle（不是 `null`）**，`CORE` / `null` 仍返回 `null`。
+> - **`tr()` key 覆盖（DSH 自写扫描器）**：`scripts/**/*.gd` 含 CJK 字面量 —— **玩家可见 51 条 / 缺表 0 条**，另 **34 条**是 `push_error` / `push_warning` / `print` / `printerr` 的开发者日志（不译）；`scenes/**` 20 条中 17 条在表内，未进表的 3 条全是**有意占位**（`result.tscn` 的两条在 `_ready()` 必被 `tr(格式串) % n` 覆盖；`中 / EN` 是开关自身）。**一个不漏。**
+> - **独立取帧核对「界面文案整体变英文」**：DSH 自写取帧脚本把 **PREPARATION** 在 `zh_CN` / `en` 下各渲一帧后**逐像素比对** —— 只有两处文字带变化（面板标题 `关卡信息→LEVEL INFO` y66–74、CTA `开始战斗→START BATTLE` y148–156）；**底部仓库 7 个槽位名的墨迹带两帧完全相同** ⇒ 英文态下这 7 个名字仍是中文。成因是 `_draw_warehouse()` 把 `entry["name"]` 原文直喂 `draw_string`、**不经 `tr()`**。**裁定：不阻塞本卡**（该缺口在 `blueprint_workspace.gd`，**不在本卡 ALLOWED FILES**；卡面覆盖率口径写明是「全部现有 `tr()` key」，此文案根本不经 `tr()`），但**登记 R5 并并入 PET-72**，不静默豁免。
+> - **卡外改动（3 处，交付方逐条主动声明）→ 裁定：接受**：① `scenes/menu/main_menu.tscn`（+10 行，只加 `ButtonLang` 一个节点）—— 卡面建议的 `中 / EN` 按钮**必须**落成场景节点，而卡面 ALLOWED FILES 漏了它（**卡面自身缺陷**，先例同 PET-70 的路径笔误）；② `tests/unit/test_input.gd`（+1 行实测命中表）—— 该表自带「不得有漏网或多余」断言，多一个按钮必然多一行；③ `tests/unit/run_tests.gd`（+2 行排序说明注释，与同文件既有写法一致）。`docs/**` · `assets/_review/**` · 其它场景**未触碰**；**未 push**（按卡）。
+> - **未上 L3**：全量 unit + 全部场景冒烟 + Web Export + 像素探针未跑，本卡不产生 L3 结论。
+> - **环境说明（非本卡缺陷）**：本 run 沙箱 `workspace-write`，写工作区外 `.repos`（git 索引锁）与工作区外 Godot `editor_data` 被拒；复核在工作区内独立副本上完成，`APPDATA` / `LOCALAPPDATA` 重定向进工作区，并先 `--headless --import`（`09 §4` v0.1.4）。
+> - **下一步**：`PET-72`（S4-07 最小版：奖励真的生效）已 `BACKLOG` → `TODO` 并挂同款条件唤醒（`status = in_review`），**R1 / R5 并入其中**；`R2 / R3 / R4` 仍 `BACKLOG`（UI Kit 口径，按 `13 §9` 不为它们阻塞玩法）。
 
 
 ## 5. STAGE 3 — CORE / FUNCTION / WEAPON（未开始）

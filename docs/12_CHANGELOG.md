@@ -5,6 +5,25 @@
 
 ## [Unreleased]
 
+### PET-67 验收（`ACCEPTED`）：I18N-MIN 中英可切换 —— 含「PET-70 拆弹未被重新装上」的独立核验（2026-10-04）
+
+#### Added
+- **PET-67（I18N-MIN）通过 DSH 独立复核 → `ACCEPTED`**（提交 `f26db75`）：`assets/i18n/ui.csv`（**58 条 key**，表头 `keys,zh_CN,en`，key = 中文原文，`06 §11`）→ `project.godot` 只加 `[internationalization]` 段（登记的是 `csv_translation` 导入产物的两个 `.translation`，登记 `.csv` 本身运行期加载不了）；`Settings` 新增 `toggle_locale()`（**语言判断只在此处**）与 `user://settings.cfg` 落盘（`set_locale(v, persist)` 默认**不落盘**，只有玩家显式切换才写盘，磁盘取值按 `02 §9` 校验）；`MAIN_MENU` 右下角一个 `中 / EN` 按钮 + `setting_changed` 重刷**脚本赋值**的文案（Logo / 标题栏），场景静态文案交给引擎自动翻译。**切换即时生效、跨进程保留**。
+- **`PET-72`（S4-07 最小版：奖励真的生效）自 `BACKLOG` 提升为 `TODO`**（单写手），并挂**同款条件唤醒**（`status = in_review`）—— 取自 `PET-37` 交用户亲测时登记的已知问题第 2 条（「三选一目前只是『选给你看』」），并按 `13 §9` 的 `FIRST PLAYABLE Gameplay > UI Kit 继续打磨` 优先级排在最前。
+- 新登记待办 **R5**：`blueprint_workspace._draw_warehouse()` 的 7 个仓库槽位名走 `draw_string(String(entry["name"]))`，**不经 `tr()`**，故英文态下这 7 个标签仍是中文（实测见下）；同 `full_loop_smoke.gd` 的 5 条降级报错（R1）一并并入 `PET-72`（同一批文件，避免两个写手）。
+- `11_TASK_BOARD.md` → **v0.3.8**：§4.1 记入 PET-67 `ACCEPTED`、`PET-72` `TODO`、待办 `R5`。
+
+#### Notes
+- **复核方式（不采信自报）**：按卡上写明的 **L1**（`09 §1.1`，**未擅自上 L3**）在交付树的**独立副本**上复跑 —— unit + integration **2385/2386 · 426/426**（`--fixed-fps 600`，headless），MAIN_MENU 场景冒烟 **67/67**、`exit=0`（非 headless，`--resolution 320x180`，真实 GL：RTX 4060 / OpenGL 3.3）。唯一 1 条失败**不是本批引入**（见下）。
+- **基线对照（判定「是否回归」的关键）**：未改动的 `913d57f` 同一命令、同一环境 **2037/2038 · 426/426**，失败项**逐字相同** —— `BlueprintWorkspace · 落节点写入 weapon_kind :: 应落出 5 个节点（期望 5，实际 8）`。即该失败**在 PET-67 之前就存在**，属**环境相关**（`_cleanup()` 删 `user://test_blueprints/_workspace_01.tres` 在本 run 的 `user://` 重定向下未生效，前后两条用例的节点数叠加），**非 PET-67 回归**；本批 unit 净 **+348** 条断言，全部转绿。交付方自报的 `2391/2391` 在本环境**不可复现**，差异全部落在这一条既有失败上。
+- **「PET-70 拆掉的定时炸弹没被重新装上」—— 独立核验（本次复核重点，证据可复核）**：① 静态：`grep BY_DISPLAY_NAME` **零命中**；`WeaponData.resolve()` 只 `match node.weapon_kind`；`blueprint_workspace._get_drag_data()` 的载荷**直接带 `weapon_kind`**（`WAREHOUSE` 第 5 列，不按显示名反查）；全仓 `display_name` 的读取点只有「画到屏幕上」这一类，无一处回流解析。② **自写探针（不复用交付方用例，24 项 / 0 失败）**：在**翻译表生效、`locale=en`** 下，把三个武器节点的 `display_name` 换成英文译文（`tr("锯")="Saw"`）以及换成**完全不相干**的名字，`resolve()` 仍按 `weapon_kind` 各解出 `NEEDLE/BOMB/SAW`；`CORE` 与 `null` 仍返回 `null`；把真实落盘的 `.tres` **删掉 `weapon_kind = ` 那一行**再载回 → 仍能载入、节点数不变、解析降级到 **Needle（不是 `null`）**。
+- **`tr()` key 覆盖复核（自写扫描器，不采信交付方扫描）**：`scripts/**/*.gd` 里含 CJK 的字符串字面量 —— **玩家可见 51 条，缺表 0 条**；**34 条**落在 `push_error` / `push_warning` / `print` / `printerr`（开发者日志，`09` 口径不译）；`scenes/**` 20 条中 **17 条**在表内，未进表的 3 条全部是**有意留的占位**（`result.tscn` 的 `坚持到第 1 波` / `随机种子 0` 在 `_ready()` 必被 `tr(格式串) % n` 覆盖；`中 / EN` 是语言开关自身，两种语言下都要能认）。**结论：一个不漏。**
+- **`旧存档仍能载入` 复核**：`NodeData.weapon_kind` 为 `@export`，旧 `.tres` 无该字段 → 载回 `NONE` → `02 §9` 降级 Needle（探针第 ② 条正面验证）；`blueprint_data.load_from()` **无任何按名字重建**的路径；语言偏好落的是 `user://settings.cfg`，与蓝图存档**互不相干**（`set_locale` 默认不落盘，故单测不会污染玩家偏好）。
+- **改动面核对**：9 个文件 —— `assets/i18n/ui.csv`（新）· `project.godot`（**仅** `[internationalization]` 8 行）· `scripts/core/settings_service.gd` · `scripts/ui/main_menu.gd` · `scenes/menu/main_menu.tscn`（**+10 行**，只加 `ButtonLang` 一个节点）· `tests/unit/test_i18n.gd`（新）· `tests/unit/run_tests.gd`（+1 登记行 + 2 行排序说明）· `tests/unit/test_input.gd`（+1 行实测命中表）· 1 个 `.uid`。**三处超出卡面逐字 ALLOWED FILES 的改动，交付方逐条主动声明，裁定一律「接受」**（同 `PET-66` / `PET-70` 先例）：① 卡面建议的 `中 / EN` 按钮**必须**落成场景节点，而卡面 ALLOWED FILES 漏了 `main_menu.tscn`（**卡面自身缺陷**）；② `test_input.gd` 的 `HIT_TABLE` 是**实测表**且自带「不得有漏网或多余」断言，多一个按钮就必然多一行；③ `run_tests.gd` 的 2 行注释与同文件既有写法一致。`docs/**` · `assets/_review/**` · 其它场景**未触碰**；**未 push**（按卡）。
+- **独立取帧核对「界面文案整体变英文」（未采信交付方的两张 MAIN_MENU 截图）**：DSH 自写取帧脚本，把 **PREPARATION** 在 `zh_CN` / `en` 下各渲染一帧（320×180，真实 GL）后**逐像素比对** —— 只有两处文字带变化：面板标题（`关卡信息` → `LEVEL INFO`，y 66–74）与 CTA（`开始战斗` → `START BATTLE`，y 148–156）。**底部仓库那一带（7 个槽位名，`Palette.WHITE` 墨迹 212 px、x 21–199、y≈162–176）两帧逐像素完全相同** ⇒ 英文态下**这 7 个槽位名仍是中文**。成因是代码事实（`_draw_warehouse()` 把 `entry["name"]` 原文直接喂 `draw_string`，不经 `tr()`，见 **R5**）。**裁定：不阻塞本卡**（`06 §11` 的这条旧缺口在 `blueprint_workspace.gd`，**不在本卡 ALLOWED FILES**；卡面 MUST-DELIVER 的覆盖率口径写明是「**全部现有 `tr()` key**」，该文案根本不经 `tr()`，故不属本卡范围）—— **但不静默豁免**，登记 R5 并并入 `PET-72`。
+- **未上 L3**（按卡面 L1 与 `09 §1.1`）：全量 unit + 全部场景冒烟 + Web Export + 像素探针**未跑**，本卡不产生 L3 结论。
+- **环境说明（非本卡缺陷）**：本 run 的沙箱为 `workspace-write`，写工作区外的 `.repos`（git 索引锁）与工作区外的 Godot `editor_data` 被拒；复核在**工作区内的独立副本**上用 `D:\GameDev\PixelFusion\tools\godot\Godot_v4.7.1-stable_win64_console.exe` 完成，`APPDATA` / `LOCALAPPDATA` 重定向进工作区，并先 `--headless --import` 刷类缓存（`09 §4` v0.1.4）。
+
 ### PET-70 验收（`ACCEPTED`）：UI-KIT 接入（MAIN_MENU + COMBAT 结构）+ 开卡前置 `weapon_kind` 落地（2026-10-04）
 
 #### Added
