@@ -1,7 +1,7 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.4.0**｜维护者 DSH
-> （v0.4.0：`PET-74` 复核 `ACCEPTED` 并落 `main`；**用户试玩反馈已进板** —— 新增 `PET-75` / `PET-76` 两行。）
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.4.1**｜维护者 DSH
+> （v0.4.1：`PET-75` 复核 `ACCEPTED` 并落 `main`；`PET-76` 自 `BACKLOG` 提升为 `TODO`（单写手让位）；新增待办 `R6`。v0.4.0：`PET-74` 复核 `ACCEPTED` 并落 `main`；**用户试玩反馈已进板** —— 新增 `PET-75` / `PET-76` 两行。）
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -218,8 +218,8 @@
 | PET-72 | **S4-07 最小版 · 奖励真的生效**：清空一波后的三选一，选中的那一项**真的落到玩家蓝图**（正确的 `function_kind` / `weapon_kind`、画布内第一个空闲格、立即落盘）；跨场景传递走既有载体，不新造全局单例。**不做**掉落池 / 稀有度 / 权重。**顺带结清** R1（`full_loop_smoke` 补 `weapon_kind`）与 R5（仓库槽位名走 `tr()`）—— 三者都落在同一批文件 | Claude | `TODO`（2026-10-04 DSH 自 `BACKLOG` 提升 —— 承接 `PET-37` 交用户亲测时登记的「三选一目前只是『选给你看』」；已挂条件唤醒 `status = in_review`） |
 | PET-73 | **VB-04** VB-03 组件切片收口：Godot 导入设置（`.png.import` 九宫格落点 = `StyleBoxTexture`）+ `_approved/` 流程走完 + 可用清单 | Codex | `ACCEPTED`（2026-10-04 DSH **逐张**复核通过并已推送 `main`，见 §4.1 末注；**未新开 gameplay 方向** —— 下一个玩法里程碑等 `PET-37` 的用户试玩反馈定向） |
 | PET-74 | **BUILD-WIN** 双击可玩的 Windows 调试包：`export_presets.cfg` **仅新增** `Windows Desktop` 段（debug）→ `build\windows\PixelFusion.exe`（产物不入库） | Claude | `ACCEPTED`（2026-10-04 DSH 复核通过并已推送 `main`，见 §4.1 末注；**窗口尺寸实测 1280×720 = 4× 整数放大**） |
-| PET-75 | **PLAY-01 · 用户试玩反馈 #2** 蓝图节点删不掉：删除 / 撤销（`Ctrl+Z`）/ 清空（S2-05 补课） | Claude | `TODO`（2026-10-04 DSH 自 `BACKLOG` 提升 —— 用户亲测反馈；已挂**同款条件唤醒** `status = in_review`） |
-| PET-76 | **PLAY-02 · 用户试玩反馈 #3** 战斗看不懂：武器 / 命中 / 结果 的可读反馈（依 `13 §18` 克制原则） | Claude | `BACKLOG`（**故意压后**：单写手，等 `PET-75` 完成再提 —— `13 §9` / 用户规则） |
+| PET-75 | **PLAY-01 · 用户试玩反馈 #2** 蓝图节点删不掉：删除 / 撤销（`Ctrl+Z`）/ 清空（S2-05 补课） | Claude | `ACCEPTED`（2026-10-04 DSH 独立复核通过并已推送 `main`，见 §4.1 末注；**唯一红项 I18N 由 DSH 集成补齐**） |
+| PET-76 | **PLAY-02 · 用户试玩反馈 #3** 战斗看不懂：武器 / 命中 / 结果 的可读反馈（依 `13 §18` 克制原则） | Claude | `TODO`（2026-10-04 DSH 自 `BACKLOG` 提升 —— **单写手让位**：`PET-75` 已完成，本卡为该批唯一在跑的 Claude 卡；已挂**同款条件唤醒** `status = in_review`） |
 
 | — | 退出期资源清点：`palette.gd` / `palette.tres` 未释放（已复核、非阻塞；随下一张触碰该文件的卡一并修） | Claude | `BACKLOG` |
 | R1 | `tests/integration/full_loop_smoke.gd` 仍按老写法建武器节点（无 `weapon_kind`）→ 每次跑出 5 条 `WeaponData.resolve` 降级 `push_error`，且该用例的武器全部落到 Needle。**一条参数即可消除**（`09 §5` 的 ERROR 零增量） | Claude | `BACKLOG` |
@@ -227,6 +227,7 @@
 | R3 | VB-03 HUD 分级切片（`ui_hud_block_primary_72x24` / `secondary_48x20`，`assets/ui/vb03_component_language/`）装不进 `06 §8.1` 五格横排（3×72 + 2×48 = 312 > 272 可用宽）→ 未接运行时； | Codex | `BACKLOG`（**半条已结**：`assets/ui/vb03_component_language/asset_manifest.json` 的 `status` 已由 `PET-73` 随批准流程改为 `user_approved`，不再是 `pending_dsh_review`；**尺寸半条仍开** —— 切片装不进五格、未接运行时，与 R2 同批） |
 | R4 | 主按钮切片 64×20 与主菜单四按钮 90×20（`tests/unit/test_input.gd` 命中区表）不一致 —— 是否按切片尺寸重排待定 | Claude | `BACKLOG` |
 | R5 | `blueprint_workspace._draw_warehouse()` 的 7 个仓库槽位名走 `draw_string(String(entry["name"]))`，**不经 `tr()`** ⇒ 英文态下这 7 个标签仍是中文（DSH 独立取帧逐像素实测：底部仓库墨迹带在 zh / en 两帧完全相同）。`06 §11` 的旧缺口、**不在 PET-67 的 ALLOWED FILES** 内，故不判 PET-67 未达 DoD；**不静默豁免**，并入 `PET-72`（同一文件，单一写手） | Claude | `BACKLOG` |
+| R6 | `tests/integration/test_state_loop.gd` 的 `S1-12 · R1`「COMBAT 停 10 分钟不动」按**墙钟预算**推进模拟时间（`line 372-373`：`elapsed < 600s` **且** `Time.get_ticks_msec() < deadline`）—— 机器一忙就跑不满 600 秒，该用例稳定输出 **4 条按名转红**（状态 3→5、场景换到 `result.tscn`、切换数 +1、清空入口）。DSH 在**未改动的 `1a6f874`（HEAD）**上用同一命令复现出**逐字相同**的 4 条 ⇒ **非 PET-75 回归**，属测试自身的时序脆弱性。修法（下一张触碰该文件的卡一并做）：把 10 分钟压进模拟时钟（`--fixed-fps` 之外改由 `TestClock` 直接推进）或把 deadline 抬到模拟跑满为止 | Claude | `BACKLOG`（**非阻塞**：`09 §1.1` 的 L1 只要求本模块不退化，且 HEAD 同结果） |
 
 **执行纪律（用户 2026-10-04）**：
 
@@ -341,6 +342,18 @@
 > - **未上 L3 / 不改玩法**：本卡 L1 只要求「双击 → 主菜单 → 开始整备 → PREPARATION」；`scripts/**` · `scenes/**` · `assets/**` · `project.godot` **零改动**（项目里那份窗口设置是上一版既有内容，本卡没碰）。产物 `build/**` 按卡不入库。
 > - **「分辨率太低」的裁定**：**窗口放大没有丢**（见上）。若用户指的是**画面本身颗粒粗**（基础画布 `320×180`），那是**换规格**（抬到 640×360 之类，布局常量要整体重导），属**用户的 GATE 方向决定**，DSH 不代判 —— 已在 `PET-37` 向用户点明这一分支。
 > - **用户试玩反馈已进板**：`PET-75`（PLAY-01 · 删除 / 撤销 / 清空）自 `BACKLOG` 提升为 **`TODO`**，并挂**同款条件唤醒**（`status = in_review`）；`PET-76`（PLAY-02 · 战斗可读性）**保持 `BACKLOG`**，等 `PET-75` 完成后由 DSH 再提 —— **单写手，不并行开第二张 Claude 卡**（用户规则）。依据 `13 §18`（战斗可读性）与 `13 §9`（`FIRST PLAYABLE Gameplay > UI Kit 继续打磨`）。
+
+> **2026-10-04 PET-75 验收（`ACCEPTED`，DSH 已推送 `main`）—— 用户反馈「模块装上就摘不下来」已修好** —— DSH **不采信自报**，按卡面写明的 **L1**（`09 §1.1`，**未擅自上 L3**）在交付树的**独立副本**上复跑；交付的 8 个文件**与本机副本 SHA256 逐字节相同**（DSH 先比对再跑）。
+>
+> - **L1 结果（本模块全绿；`--fixed-fps 600`，headless）**：unit + integration **2742/2742 · 426/426**、**失败项 0**（前提：DSH 把该卡新增 4 条文案的翻译表行补齐，见下）。**基线对照**：未改动的 `1a6f874`（HEAD）同一命令 **2534/2534 · 426/426**、失败项 0 ⇒ 本卡 unit **净 +208 条全绿**。场景冒烟：**蓝图 132/132**（非 headless，`--resolution 320x180`，真实 GL；HEAD 为 82/82，净 +50 条）、**PREPARATION 86/86**（`--fixed-fps 60`，失败项 0）。
+> - **五个必交付点逐条独立核实的证据（不引用交付方断言）**：① **删节点连带连线** —— 代码路径 `delete_node()` **两端都查**（`from_node_id` / `to_node_id`）后重建两个数组再 `_boxes.erase()`；单测「删中间节点 → 节点 2 / 连线 **2→0**」与冒烟「触摸点删除 → 3 节点 / **0 连线**」两处独立咬住；② **`Ctrl+Z`** —— 撤销为**有界快照栈**（`HISTORY_MAX = 20`，压栈点在全部回绝之后），冒烟发的是**真实 `InputEventKey`（ctrl + KEY_Z）**而非直接调函数，撤「删除」必须把**被连带删掉的两条线一起还原**（4 节点 / 2 连线）；单测另覆盖撤「放置 / 连线 / 删除 / 清空」并一路撤到空图；③ **清空二次确认 + 权重** —— 界面侧第一下只改文案、第二下才清（`preparation_screen._on_clear_pressed`），且清空本身也进撤销栈；**视觉权重按像素判据**：DSH 自量 320×180 原生帧，三个动作按钮区域 **gold 像素 = 0**，`开始战斗` 区域 **gold = 1158 px**，全帧 gold 总数在**修前 / 修后两帧完全相等（1741 = 1741）** ⇒ 本卡**没有新增任何金色主强调块**（`13 §4` / `06 §3`）；三个按钮均挂 `ButtonSecondary`（`test_preparation` 另加「辅助按钮必须挂变体」的反向断言）；④ **触摸可达 + 命中区** —— DSH 自写探针量活体控件：宽屏 `删除 / 撤销 / 清空` 均 **69×24 逻辑像素**（命中区 = 自身矩形）⇒ 2× 下 **138×48 设备像素 ≥ 44×44**（`06 §1`）；窄屏收起时三者 `visible=false`（`test_input` 的窄屏实测表据此不含它们，且该表自带「不得有漏网或多余」断言），点既有 §7.1 信息条展开后**三者回来且仍是 69×24 / 在 73×124 覆盖层内**；键盘入口落在 `.tscn` 的 `Button.shortcut`（`Delete` / `Backspace` / `Ctrl+Z`），**脚本里零键码**（`03 §8` 未被破坏），「清空」**刻意不挂快捷键**以免绕过二次确认；⑤ **即时落盘** —— 全部写盘点收敛到 `_after_change()`（落盘 + 重画 + 广播），DSH 逐行核对 6 处数组/字段改动**无一漏配**；冒烟真的**重实例化一份 PREPARATION**（`_ready()` 全跑）后 4 节点 / 2 连线 / 4 个落格一致，并另有 `load_from()` 直读存档复核。
+> - **截图取证独立复现（修前 / 修后都在）**：DSH 在**自己的 HEAD 副本**上重跑蓝图冒烟，产出的 `blueprint_first_playable.png`（**修前**：4 节点 + 2 连线、左栏**没有任何删除入口**）与交付附件的 `blueprint_before_fix.png` **SHA256 完全相同**（`B2915662…`）；在**修后独立副本**上重跑，4 张截图（`blueprint_edit_selected` / `_deleted` / `_clear_armed` / `first_playable`）与交付附件**逐张 SHA256 完全相同**；交付的 4 张 4× 放大图经 DSH 纯 Python 解码后与**本机重跑帧的最近邻 4× 放大逐像素一致**（57600 像素中 **0 处不同**）⇒ 是真实渲染帧，不是重画或事后美化。
+> - **唯一红项（本卡引入）→ 由 DSH 集成补齐，补前/补后都留档**：交付树 unit 为 **2721/2722**，唯一红项是 `I18N · 翻译表覆盖全部 UI 文案`：本卡新增 4 条玩家可见文案（`删除` / `撤销` / `清空蓝图` / `确认清空？`）的表行在 `assets/i18n/ui.csv`，而该文件**不在本卡 ALLOWED FILES**（卡面把 `assets/**` 划给 Codex）—— **属卡面自身缺陷 + 排期缺口，不是实现缺陷**（交付方已如实报告并给出 4 行原文）。`i18n` 表是**数据表非美术资源**，且由 `PET-67` 的 Claude 卡建立，故 DSH **随本次集成直接补齐 4 行并另起一个提交**（不与交付混在一起）。补后：unit **2721/2722 → 2742/2742**（+20 条来自该表「逐行 5 条格式断言」× 4 行），`TranslationServer.translate` 在 `en` 下实测得 `Delete` / `Undo` / `Clear blueprint` / `Confirm clear?`。
+> - **`S1-12 · R1` 4 条集成红项：非本卡引入** —— DSH 在**未改动的 HEAD** 上用同一命令复现出**逐字相同**的 4 条（状态 3→5、场景换到 `result.tscn`、切换数 81→82、清空入口），成因是该用例按**墙钟预算**推进模拟时间（`test_state_loop.gd:372-373`）；同一命令在改后树上**也出现过一回全绿 426/426** ⇒ 时序脆弱，**登记为 `R6`**，不静默豁免。
+> - **改动面核对**：交付的 8 个文件全部落在卡面 ALLOWED FILES 内（含交付方主动声明的 3 处 `tests/**` 断言收窄 —— `HIT_TABLE` 是实测表、`CTA 唯一性` 判据收窄到「无主题变体的 Button」，并补了「辅助按钮必须挂 `ButtonSecondary`」的反向断言，判别力未降）；`docs/**` 由 DSH 改，`project.godot` **零 diff**（`--import` 后已核）。DSH 额外动的**只有** `assets/i18n/ui.csv` +4 行（见上）。
+> - **未上 L3**（按卡面 L1）：全量基线 / 全部场景冒烟 / Web 导出 / 像素探针未跑，本卡不产生 L3 结论。**未跑渲染探针**：本卡未改 Theme / StyleBox / 视觉 Token（三个按钮复用既有 `ButtonSecondary`），按 `09 §4` v0.1.2 的触发条件不适用；视觉权重改以**像素直方图**取证（见上）。
+> - **环境说明（非本卡缺陷）**：复核在**工作区内的独立副本**上完成（`APPDATA` / `LOCALAPPDATA` / `TEMP` 重定向进工作区，先 `--headless --import` 刷类缓存）；期间观察到 **1 次**退出期 `0xC0000005`（报告已完整写出、失败项 0，同一命令随后 4 次运行不复现），与 `PET-60` 已结案的引擎级退出缺陷同类、**不可确定性复现**，不归因本卡。
+> - **下一步**：`PET-76`（PLAY-02 · 战斗可读性）自 `BACKLOG` **提升为 `TODO`** 并挂**同款条件唤醒**（`status = in_review`）—— **单写手**：`PET-76` 完成前**不开第二张 Claude 卡**。依据 `13 §18` 与 `13 §9`（`FIRST PLAYABLE Gameplay > UI Kit 继续打磨`）。
 
 ## 5. STAGE 3 — CORE / FUNCTION / WEAPON（未开始）
 
