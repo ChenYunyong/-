@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.3.3**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.3.4**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -206,8 +206,8 @@
 | PET-61 | **ENGINE-4.7.2**：Godot 4.7.1 → 4.7.2 + 新基线（前置） | Claude | `ACCEPTED` |
 | PET-63 | **FP 1/4** 蓝图可编辑：节点拖放 + 连线（CORE→FUNCTION→WEAPON） | Claude | `ACCEPTED`（DSH 独立复核通过，提交 `e40629c`，已推送；证据见本节末注） |
 | PET-64 | **FP 2/4** 机器运行：CORE 信号 + Split/Amplify/Delay + Needle/Bomb/Saw 开火 + 基础 Heat | Claude | `ACCEPTED`（DSH 独立复核通过，提交 `c6e085f`，已推送；证据见本节末注） |
-| PET-65 | **FP 3/4** COMBAT 真实：Slime/Runner 生成推进 + 三武器伤害结算 + 死亡 | Claude | `TODO`（2026-10-04 DSH 自 `BACKLOG` 提升） |
-| PET-66 | **FP 4/4** 循环闭合：3 波 + REWARD 三选一 + 回 PREPARATION + Overheat | Claude | `BACKLOG` |
+| PET-65 | **FP 3/4** COMBAT 真实：Slime/Runner 生成推进 + 三武器伤害结算 + 死亡 | Claude | `ACCEPTED`（DSH 独立复核通过，提交 `d122d3d`，已推送；证据见本节末注） |
+| PET-66 | **FP 4/4** 循环闭合：3 波 + REWARD 三选一 + 回 PREPARATION + Overheat | Claude | `TODO`（2026-10-04 DSH 自 `BACKLOG` 提升） |
 | PET-62 | **Visual Batch 01**（并行）：MAIN MENU / PREPARATION / COMBAT UI Kit | Codex | `APPROVED`（有条件批准，见 `13`） |
 | PET-67 | **I18N-MIN** UI 中英可切换：Godot CSV 翻译表（中文原文 = key → en）+ 最小语言开关 + 持久化 | Claude | `BACKLOG`（排 PET-63 之后） |
 | PET-68 | **VB-01b** 三张 UI Kit 补英文标签版 + 中英版式容纳结论 | Codex | `REVIEW`（复核：英文版与原图逐字节相同，容纳结论不成立） |
@@ -256,6 +256,17 @@
 > - **改动面核对**：全部落在 ALLOWED FILES —— `scripts/gameplay/**`（新）· `scripts/data/node_data.gd` · `scripts/ui/blueprint_workspace.gd` · `scripts/ui/combat_screen.gd` · `scenes/combat/combat.tscn` · 两个新测试文件 · `tests/unit/run_tests.gd`（**+1 登记行**）＋引擎 `.gd.uid` 旁挂；`docs/**` · `assets/**` · `preparation.tscn` **未触碰**。
 > - **交付方三点待复核的裁定**：① `scripts/gameplay/` **保留**（`02 §4` 的目录清单是拆分指引而非闭集；`nodes/` 是单节点行为、`combat/` 是伤害与 Heat 结算，本卡是「整机固定节拍仿真 + 时间模型」，新目录职责更清晰）—— DSH 随后把该目录补进 `02 §4`；② 两个新测试文件超 `02 §4` 的 300 行（净 `503` / `316`）**接受**（卡上只允许新建这两个文件，仓库既有测试已有同量级先例）；③ VIEWER 描边在示意区上沿外溢 1px —— **接受，不改**（不影响可读性与判据）。
 > - **环境说明**：本复核 run 的沙箱为 `workspace-write`，`D:\` 与工作区 `.repos` 的写入、`git push` 首先被拒；经**授权的提权重试**后，把交付提交 `061869e` **cherry-pick** 到 `main` 得 **`c6e085f`** 并推送（内容与 `061869e` 逐字节一致），另把交付分支 `agent/claude-lead-developer/7dfe06153c7f` 推至 origin 留档。
+
+> **2026-10-04 PET-65 验收（`ACCEPTED`，提交 `d122d3d`，DSH 已推送）** —— DSH **不采信自报**，按卡上写明的 **L1**（`09 §1.1`，未擅自上 L3）在交付树的一份独立副本上逐项复跑，并**另写一份自己的探针**（不复用交付方用例）从零搭「只有 CORE」与「CORE→分流→针×2」两台机器逐拍驱动 `CombatSimulation`。
+>
+> - **L1 结果（全部 `exit=0` / 失败项 0）**：unit + integration **1904/1904 · 356/356**（基线 `affe14d` = **1773/1773 · 356/356**，净 +131 全在新增单测）；COMBAT 闭环冒烟 **74/74**、既有 COMBAT 冒烟 **103/103**（**非 headless**，`--resolution 320x180`，真实 GL 渲染）。
+> - **像素取证独立复现**：第 0 拍两泳道判据色 **0 px**（负对照）→ 第 20 拍道 0 `RED_600 = 68 px` → 第 74 拍道 0 归零、道 1 `RED_500 = 40 px` → 第 82 拍全清 **0 px** —— 与交付方自报逐位一致；**交付的 8 张截图与本机重跑产物 SHA256 全部相同**（真实渲染帧，不是重画）。
+> - **独立探针（DSH 自写，39/39）**：出场拍号 **10 / 30 / 50 / 70**、种类 `Slime/Runner/Slime/Runner`、泳道 `0/1/0/1`；实测推进速率 **0.008 / 0.02**（Slime 慢而肉、Runner 快而脆）；无武器机器漏怪拍号 **80 / 120 / 135 / 175**、`CORE` 100→75→50→25→0、第 **175** 拍 `run_failed`；`CORE→分流→针×2` 击杀拍号 **28 / 38 / 68 / 78**（四只全部血量归零）、第 **82** 拍 `wave_cleared`、`CORE` 满血 —— 与交付方自报一致。
+> - **负向对照（DSH 自选，非交付方那三条）**：把 `CombatSimulation._strike()` 改成不结算伤害 → 自写探针 **27/39 转红**、交付方 L1 **1887/1904 · 17 条按名转红**（针/炸弹/锯的命中与击杀、清空、终局空转）；恢复后文件 SHA256 复原、重跑回绿。断言不是恒真。
+> - **改动面核对**：16 个文件全部落在 ALLOWED FILES —— `scripts/data/{enemy_data,weapon_data}.gd`（新）· `scripts/gameplay/{enemy_state,combat_simulation}.gd`（新）· `scripts/gameplay/machine_driver.gd` · `scripts/ui/combat_screen.gd` · `scenes/combat/combat.tscn`（新增 `EnemyLayer`）· 两个新测试文件 · `tests/unit/run_tests.gd`（**恰好 +1 登记行**）＋ 3 个 `.gd.uid`；`docs/**` · `assets/**` · 其它场景**未触碰**；`scripts/**` 里**零字面色值**（`13 §6`）、**零 `randi()`/`randf()`**（`03 §6`）。
+> - **`13` 号裁定核对**：敌人在**战场**上（`EnemyLayer` 挂在 `Battlefield` 下），底栏仍只有状态读数（`13 §5` 未被破坏）；两种敌人共用「危险」红、靠 8px / 6px 尺寸与行为区分（不在同一语义里造伪危险等级）；`13 §9.5` 相关的开发期占位文案 `占位战场：…` **保留**（PET-63 的既有用例要求该节点存在），**随正式美术落地时一并清掉**。
+> - **交付方两点待裁定的裁定**：① `NodeData` 缺武器种类字段、`WeaponData.resolve()` 按**显示名**反查 —— **接受**（`02 §9` 允许的降级路径；本卡 ALLOWED FILES 不含 `blueprint_workspace.gd`），但这是 **I18N 的定时炸弹**（PET-67 一改翻译名就会全量落到降级分支），**必须**在 `PET-70` / `PET-67` 开卡时先给 `NodeData` 补 `weapon_kind`、由仓库槽位直接写入；② `combat_loop_smoke.gd` 不登记进 `run_tests.gd` —— **接受**（`tests/integration/` 下 12 个冒烟无一登记，`run_tests.gd` 头注已写明「场景冒烟必须独立进程」）。
+> - **已知非阻塞项**：退出期 `3 ObjectDB / 2 resources` 与基线（`affe14d`）**逐字相同**，非本卡增量。
 
 ## 5. STAGE 3 — CORE / FUNCTION / WEAPON（未开始）
 
