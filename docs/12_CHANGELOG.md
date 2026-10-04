@@ -5,6 +5,20 @@
 
 ## [Unreleased]
 
+### PLAYABLE-FIRST 模式切换 + S2-02 验收 + ENGINE-4.7.2 / FIRST PLAYABLE 开工（2026-10-04）
+
+#### Changed
+- **项目模式转为 PLAYABLE-FIRST**（用户 2026-10-04 指令）：优先级 = 可玩性 > 核心玩法 > 界面与操作 > 稳定性 > 工程完美度。停止过度基础设施投入；每个 Gameplay Milestone 必须交**可运行试玩版本** + 试玩重点 + 已知问题。
+- `09_TEST_STANDARD.md` → **v0.1.7**：新增 §1.1 **分级执行（L1/L2/L3）**（禁止每卡跑全量）；§5 新增「**退出期资源清点**」判定规则。
+- `11_TASK_BOARD.md` → **v0.2.4**：新增 §4.1 **FIRST PLAYABLE VERTICAL SLICE**（PET-61~66）；S2-01 / S2-02 标 `ACCEPTED`。
+
+#### Added
+- **PET-61 ENGINE-4.7.2**：Godot 4.7.1 → 4.7.2 迁移 + 新基线（引擎侧规避 `0xc0000005`；上游 #122437 已由 PR #121926 / `2906aa0` 在 4.7.2 修复）。
+- **PET-62 Visual Batch 01**（Codex 并行）：MAIN MENU / PREPARATION / COMBAT UI Kit，先给用户预览再进正式资源。
+- **PET-63 / 64 / 65 / 66 FIRST PLAYABLE 1/4 ~ 4/4**：蓝图可编辑 → 机器运行 → COMBAT 真实 → 循环闭合。
+- **S2-02（`73cc2cb`）已验收**：`BlueprintData` 落盘 / 重载往返（`CACHE_MODE_IGNORE`）。DSH 独立复跑 unit **1402/1402** · integration **356/356**，失败 0。退出期 +1 ERROR / +1 WARNING 经 `--verbose` 复核归因到 `palette.gd` / `palette.tres`（不在本卡 ALLOWED FILES 内），按 `09 §5` 不判本卡未达 DoD，登记为非阻塞缺陷。
+- **PET-60 处置**：崩溃已复现 / 已定位 / 与项目代码无关 / 官方已在 4.7.2 修复 ⇒ 不再投入 4.7.1 引擎内部追因；改由 ENGINE-4.7.2 规避，PET-60 待升级通过后转「已规避 / 长期观察」。
+
 ### Stage 2 开工 · S2-01 蓝图数据模型交付并验收（2026-10-04）
 
 #### Added

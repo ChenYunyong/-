@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.2.3**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.2.4**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -164,7 +164,7 @@
 
 **Stage 1 绝对禁止**：真实战斗、真实伤害、蓝图编辑逻辑、敌人 AI。
 
-## 4. STAGE 2 — BLUEPRINT BASE（进行中：S2-01 已验收，S2-02 起未开始）
+## 4. STAGE 2 — BLUEPRINT BASE（S2-01 / S2-02 已验收；后续按 PLAYABLE-FIRST 重排为 §4.1）
 
 | ID | 任务 | 负责人 |
 |---|---|---|
@@ -177,7 +177,36 @@
 | S2-07 | 蓝图单元测试（空蓝图、删除引用、环路、重载） | Claude |
 | S2-08 | Stage 2 用户验收 | 用户 |
 
-> **进度（2026-10-04）**：**S2-01 `NodeData` / `ConnectionData` 已验收（`ACCEPTED`，L2/L3）** —— Claude 提交 `c769120`（7 files / +132，DSH 已推送）；DSH 独立复跑：基线 `c9421c0` = unit **1338/1338** · integration **356/356**，本提交 = unit **1370/1370**（+32） · integration **356/356**，失败项 0，ERROR 35→35 / WARNING 18→18 **零增量**；负向对照（`kind` 缺省改 `CORE`、`from_port` 缺省改 `"out"`）恰好 **4 条**按名转红（1366/1370）。S2-02 起未开始。
+> **进度（2026-10-04）**：**S2-01 `NodeData` / `ConnectionData` 已验收（`ACCEPTED`，L2/L3）** —— Claude 提交 `c769120`（7 files / +132，DSH 已推送）；DSH 独立复跑：基线 `c9421c0` = unit **1338/1338** · integration **356/356**，本提交 = unit **1370/1370**（+32） · integration **356/356**，失败项 0，ERROR 35→35 / WARNING 18→18 **零增量**；负向对照（`kind` 缺省改 `CORE`、`from_port` 缺省改 `"out"`）恰好 **4 条**按名转红（1366/1370）。
+>
+> **S2-02（`73cc2cb`）已验收（`ACCEPTED`）**：unit **1402/1402** · integration **356/356**，失败 0。退出期 +1 ERROR / +1 WARNING，经 DSH 用 `--verbose` 独立复核，泄漏对象是 `res://scripts/data/palette.gd` 与 `res://assets/palette.tres` —— **不在本卡 ALLOWED FILES 内**，按 `09 §5`（v0.1.7）「退出期资源清点」条**不判本卡未达 DoD**，登记为非阻塞缺陷（见 §4.1）。
+
+## 4.1 FIRST PLAYABLE VERTICAL SLICE（2026-10-04 起，最高优先级）
+
+用户 2026-10-04 指令：项目进入 **PLAYABLE-FIRST / 可玩成果优先模式**。目标 = **尽快形成真实、可玩的纵向切片**；不再追求「先把所有基础设施做到非常完整」。
+
+优先级：**可玩性 > 核心玩法 > 界面与操作 > 稳定性 > 工程完美度**。
+
+| 卡 | 内容 | 负责人 | 状态 |
+|---|---|---|---|
+| PET-61 | **ENGINE-4.7.2**：Godot 4.7.1 → 4.7.2 + 新基线（前置） | Claude | `IN_PROGRESS` |
+| PET-63 | **FP 1/4** 蓝图可编辑：节点拖放 + 连线（CORE→FUNCTION→WEAPON） | Claude | `BACKLOG` |
+| PET-64 | **FP 2/4** 机器运行：CORE 信号 + Split/Amplify/Delay + Needle/Bomb/Saw 开火 + 基础 Heat | Claude | `BACKLOG` |
+| PET-65 | **FP 3/4** COMBAT 真实：Slime/Runner 生成推进 + 三武器伤害结算 + 死亡 | Claude | `BACKLOG` |
+| PET-66 | **FP 4/4** 循环闭合：3 波 + REWARD 三选一 + 回 PREPARATION + Overheat | Claude | `BACKLOG` |
+| PET-62 | **Visual Batch 01**（并行）：MAIN MENU / PREPARATION / COMBAT UI Kit，先给用户预览 | Codex | `IN_PROGRESS` |
+| — | 退出期资源清点：`palette.gd` / `palette.tres` 未释放（已复核、非阻塞；随下一张触碰该文件的卡一并修） | Claude | `BACKLOG` |
+
+**执行纪律（用户 2026-10-04）**：
+
+- 短批次（2–4 小时），**每批必须产出肉眼可见的玩法进展**；
+- 测试按 `09 §1.1` **分级执行**：普通卡 L1，功能块 L2，只有里程碑 / 引擎升级 / 核心架构改动 / RC / 用户验收前才上 L3；
+- 无依赖关系的任务**并行**（Claude 玩法 ‖ Codex 美术 ‖ 既有模块回归）；
+- **不做**与当前玩法无关的工具建设、过度测试覆盖、非阻塞引擎调查、自研调试工具；
+- FIRST PLAYABLE 完成前**暂缓**：Boss、大量武器/敌人、天赋树、Meta 成长、商店、剧情、存档、成就、多语言、音乐系统、正式发布包、大量特效、完整 Balance Lab；
+- 允许占位美术（程序占位 / 像素块 / 临时图标），**正式美术不得阻塞玩法**。
+
+**FIRST PLAYABLE 验收（用户亲测）**：开始 → 蓝图拖节点 → 连线 → 开始战斗 → 敌人推进 → 机器运行 → 武器攻击 → 杀敌 → 三选一 → 回蓝图 → 改机器 → 再打一波。任一步是假界面即不算完成。
 
 ## 5. STAGE 3 — CORE / FUNCTION / WEAPON（未开始）
 
