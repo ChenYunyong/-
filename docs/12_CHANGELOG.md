@@ -5,6 +5,17 @@
 
 ## [Unreleased]
 
+### ENGINE-4.7.2 通过：Godot 4.7.2 成为新基线（2026-10-04）
+
+#### Changed
+- **新基线 = Godot 4.7.2-stable**（PET-61 验收通过）：4.7.2 引擎与**完整 Export Templates** 已落 `tools/godot`（D:）与 `editor_data`（E:），旧 4.7.1 原样保留可回滚；`project.godot` 未改一个字节。GATE 9 的「模板强制项」就 4.7.2 而言已具备执行条件。
+- `11_TASK_BOARD.md` → **v0.2.5**：§4.1 更新 PET-61 `ACCEPTED`、PET-63 开工、PET-62 预览待批。
+
+#### Notes
+- **DSH 独立复跑（4.7.2）**：`4.7.2.stable.official.ed1daf0bf` · unit **1402/1402** · integration **356/356** · 失败项无 · 退出码 0。
+- **PET-60 处置**：崩溃已由引擎升级规避 ⇒ 转为「**已通过引擎升级规避 / 等待长期观察**」，保持 OPEN、原生崩溃记录一条未删，不再主动投入。
+- **PET-62 Visual Batch 01**：三张 UI Kit 预览（MAIN MENU / PREPARATION / COMBAT）已入库 `assets/_review/pending/visual_batch_01/`，**等用户批准**后才进正式资源。
+
 ### PLAYABLE-FIRST 模式切换 + S2-02 验收 + ENGINE-4.7.2 / FIRST PLAYABLE 开工（2026-10-04）
 
 #### Changed
