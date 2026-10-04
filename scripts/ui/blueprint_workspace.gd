@@ -1,28 +1,37 @@
 ## blueprint_workspace.gd
-## 职责：整备界面的蓝图工作区（FIRST PLAYABLE 1/4）—— 节点仓库拖出、画布网格吸附与连线、存 / 读。
+## 职责：整备界面的蓝图工作区（FIRST PLAYABLE 1/4）—— 节点仓库拖出、画布网格吸附与连线、存 / 读；
+##       外加战斗界面的**只读机器视图**（FIRST PLAYABLE 2/4）—— 把机器画出来、把运行时状态画成可见反馈。
 ## 所属系统：ui
-## 依赖：Palette、BlueprintData / NodeData / ConnectionData
+## 依赖：Palette、BlueprintData / NodeData / ConnectionData、SignalPulse、MachineRuntime（只读，仅 VIEWER 角色）
 ## 禁止：不得判断任何原始输入事件类型 —— 拖放一律交给 Godot 原生 drag-and-drop
 ##       （_get_drag_data / _can_drop_data / _drop_data 都不接 InputEvent），
 ##       于是鼠标与触摸天然走同一条代码路径，03 §8「原始事件只在 input_normalizer.gd 翻译」不被破坏；
-##       不得写任何字面色值（06 §10.7）；不得出现任何会自动推进的构造（Timer / _process，03 §2）；
-##       不得实现信号传播 / 数值 / 战斗 / 类型校验 / 环路检测 / 删除 / 撤销 —— 那是 S2-06 及以后。
+##       不得写任何字面色值（06 §10.7）；不得出现任何会自动推进的构造（Timer / _process，03 §2）——
+##       机器由 MachineDriver 推进，本文件只画，不推；
+##       不得实现信号传播 / 数值 / 战斗 / 类型校验 / 环路检测 / 删除 / 撤销 —— 传播与数值在
+##       scripts/gameplay/machine_runtime.gd，校验属 S2-06 及以后。
 ##
-## 一个脚本担两个角色（本卡 ALLOWED FILES 只给了一个新文件）：
+## 一个脚本担三个角色（ALLOWED FILES 只给了两个界面文件，故不再拆新文件）：
 ##   Area.CANVAS    挂 RegionCenter —— 持有蓝图数据、画节点与连线、接收落点；
-##   Area.WAREHOUSE 挂 RegionBottom —— 画 7 个仓库槽位、只提供拖拽源。
-## 两者不必互相持有：仓库只产出拖拽载荷，落点判定全在画布一侧，载荷本身就是接口。
+##   Area.WAREHOUSE 挂 RegionBottom —— 画 7 个仓库槽位、只提供拖拽源；
+##   Area.VIEWER    挂 COMBAT 的 MachineView —— **只读**：不接拖放、不建图、不落盘，
+##                  只把 combat_screen 交进来的蓝图与 MachineRuntime 画出来。
+## 角色之间不必互相持有：仓库只产出拖拽载荷，落点判定全在画布一侧，载荷本身就是接口；
+## 视图只读运行时的公开只读方法，也不是接口的另一半 —— 方向是单向的（仿真 → 视图）。
 ##
 ## 为什么用原生 drag-and-drop 而不是自己读事件：本仓库把「鼠标 / 触摸的分支」收在 InputNormalizer
 ## 一处（03 §8），而原生拖放不含任何来源分支，触摸端由引擎的 emulate_mouse_from_touch（工程默认开）
 ## 合成 —— 这正是「不另写一套输入」的最省实现。代价见交付报告的【偏离规范之处】。
 
+class_name BlueprintWorkspace
 extends Control
 
-## 本节点的角色。两个值分别对应 .tscn 里的 BlueprintCanvas 与 NodeWarehouse。
+## 本节点的角色。三个值分别对应 .tscn 里的 BlueprintCanvas / NodeWarehouse / MachineView。
+## VIEWER 追加在末尾：枚举值会被 .tscn 按整数写死（`area = 1`），插在中间会静默把仓库变成视图。
 enum Area {
 	CANVAS,
 	WAREHOUSE,
+	VIEWER,
 }
 
 ## 06 §4 的节点卡记法。
@@ -36,6 +45,10 @@ const DRAG_ALPHA: float = 0.7
 const LABEL_HEIGHT: float = 10.0
 const LABEL_FONT_SIZE: int = 8
 const MARKER_INSET: float = 2.0
+## 火花（信号 / 占位弹丸）的边长。04 §3.10 要求 FX 三层（芯 / 体 / 描边），各占 1px 时最小就是 6×6。
+const SPARK: float = 6.0
+## 占位弹丸升起的高度（像素）。升到顶即消失，不留轨迹。
+const SHOT_RISE: float = 48.0
 
 ## 拖拽载荷的类型标签。
 const PAYLOAD_NODE: StringName = &"node"
@@ -45,14 +58,18 @@ const PORT_OUT: StringName = &"out"
 const PORT_IN: StringName = &"in"
 
 ## 仓库清单：1×CORE / 3×FUNCTION / 3×WEAPON（本卡范围）。顺序即槽位顺序。
+##
+## function_kind 是 2/4 卡才加的一列：三个 FUNCTION 槽位在**卡片上长得一模一样**
+## （06 §4 的类型标识只按 Kind 分三色，不分小类），分别全靠这一列 ——
+## 拖出去的节点带的是哪种行为，就是从这里传下去的。CORE / WEAPON 没有可选项，一律 NONE。
 const WAREHOUSE: Array[Dictionary] = [
-	{"kind": NodeData.Kind.CORE, "name": "核心"},
-	{"kind": NodeData.Kind.FUNCTION, "name": "分流"},
-	{"kind": NodeData.Kind.FUNCTION, "name": "增幅"},
-	{"kind": NodeData.Kind.FUNCTION, "name": "延迟"},
-	{"kind": NodeData.Kind.WEAPON, "name": "针"},
-	{"kind": NodeData.Kind.WEAPON, "name": "炸弹"},
-	{"kind": NodeData.Kind.WEAPON, "name": "锯"},
+	{"kind": NodeData.Kind.CORE, "name": "核心", "function_kind": NodeData.Function.NONE},
+	{"kind": NodeData.Kind.FUNCTION, "name": "分流", "function_kind": NodeData.Function.SPLIT},
+	{"kind": NodeData.Kind.FUNCTION, "name": "增幅", "function_kind": NodeData.Function.AMPLIFY},
+	{"kind": NodeData.Kind.FUNCTION, "name": "延迟", "function_kind": NodeData.Function.DELAY},
+	{"kind": NodeData.Kind.WEAPON, "name": "针", "function_kind": NodeData.Function.NONE},
+	{"kind": NodeData.Kind.WEAPON, "name": "炸弹", "function_kind": NodeData.Function.NONE},
+	{"kind": NodeData.Kind.WEAPON, "name": "锯", "function_kind": NodeData.Function.NONE},
 ]
 
 @export var area: Area = Area.CANVAS
@@ -71,6 +88,10 @@ var _counter: int = 0
 ## 载入的节点还在等一个有效尺寸才能落格（见 _on_resized）。
 var _awaiting_size: bool = false
 
+## 仅 Area.VIEWER 用：由 combat_screen 交进来的机器运行时。为 null 时只画静态的图与连线。
+## 它是**只读**引用 —— 本文件只调它的 pulses / is_lit / shot_age 这些取数方法，不调 tick()。
+var runtime: MachineRuntime = null
+
 
 func _ready() -> void:
 	# 分区容器一律 MOUSE_FILTER_IGNORE（test_preparation 逐个断言），命中必须由本节点自己接住；
@@ -80,6 +101,11 @@ func _ready() -> void:
 	# 尺寸由 apply_layout_for 给，槽位与卡片都按 size 现算不缓存，故改尺寸只需重画。
 	resized.connect(_on_resized)
 	if area == Area.WAREHOUSE:
+		return
+	if area == Area.VIEWER:
+		# 只读视图：图由 combat_screen 在它自己的 _ready 里交进来（那边已经读过一次盘），
+		# 这里不重复读。整块不接触输入 —— COMBAT 期间玩家不操控任何东西（06 §10）。
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
 		return
 	_load_blueprint()
 
@@ -115,6 +141,7 @@ func _draw() -> void:
 	_draw_connections()
 	for node_id: StringName in _boxes:
 		_draw_card(_boxes[node_id], _kind_of(node_id))
+	_draw_effects()
 
 
 ## 仓库槽位：24×24（06 §4），底部仓库同样取 24×24。间距优先 28；
@@ -226,7 +253,15 @@ func _get_drag_data(at: Vector2) -> Variant:
 			return null
 		var entry: Dictionary = WAREHOUSE[index]
 		set_drag_preview(_make_preview(int(entry["kind"])))
-		return {"type": PAYLOAD_NODE, "kind": int(entry["kind"]), "name": String(entry["name"])}
+		return {
+			"type": PAYLOAD_NODE,
+			"kind": int(entry["kind"]),
+			"name": String(entry["name"]),
+			"function_kind": int(entry["function_kind"]),
+		}
+	# 只读视图不接拖放：COMBAT 期间蓝图不可编辑（03 §4.3）。
+	if area != Area.CANVAS:
+		return null
 	# 画布：按住一张卡片就是「从它的输出端口拉一根线出去」。
 	# 抓取面取整张卡片而不是 3×3 的端口方块 —— 06 §1 的触摸下限是 24 逻辑像素（2× 下 48 设备像素），
 	# 3×3 的方块在触摸端抓不住，端口的 3×3 只作视觉标记（同「视觉矩形 vs 命中矩形」的既有做法）。
@@ -250,18 +285,23 @@ func _can_drop_data(at: Vector2, data: Variant) -> bool:
 func _drop_data(at: Vector2, data: Variant) -> void:
 	var payload: Dictionary = data
 	if payload.get("type", &"") == PAYLOAD_NODE:
-		_add_node(int(payload["kind"]), String(payload["name"]), at)
+		var function_kind: int = int(payload.get("function_kind", NodeData.Function.NONE))
+		_add_node(int(payload["kind"]), String(payload["name"]), at, function_kind)
 		return
 	if not _connect(StringName(payload.get("from", &"")), _card_at(at)):
 		return
 	queue_redraw()
 
 
-func _add_node(kind: int, display_name: String, at: Vector2) -> void:
+## 落一个节点。function_kind 有缺省值：不带行为信息的调用方（旧测试、将来的程序化建图）
+## 拿到的是「直通」，不会因为少传一个参数就落出一个行为随机的节点。
+func _add_node(kind: int, display_name: String, at: Vector2,
+		function_kind: int = NodeData.Function.NONE) -> void:
 	var node := NodeData.new()
 	node.id = _next_id(kind)
 	node.display_name = display_name
 	node.kind = kind
+	node.function_kind = function_kind
 	_blueprint.nodes.append(node)
 	_boxes[node.id] = _snapped(at)
 	_save_blueprint()
@@ -356,3 +396,43 @@ func _relayout() -> void:
 		cell.x = minf(cell.x, floorf(limit.x / GRID) * GRID)
 		cell.y = minf(cell.y, floorf(limit.y / GRID) * GRID)
 		_boxes[node.id] = Rect2(cell, Vector2(CARD, CARD))
+
+
+## COMBAT 只读视图（Area.VIEWER）的可见反馈 —— 卡片要求的「信号经过节点 / 连线时必须有可见变化」：
+##   · 在途信号   → 连线上的火花，位置由 pulse.progress() 插值；
+##   · 节点被点亮 → 卡片描边闪一下 BLUE_050（窗口由 MachineRuntime.FLASH_TICKS 定）；
+##   · 武器开火   → 卡片上缘升起一枚占位弹丸（存活期由 MachineRuntime.SHOT_TICKS 定）。
+##
+## 本函数**只读** runtime，一个仿真状态都不改 —— 视图与仿真是单向的，
+## 于是「画得对不对」永远不会反过来影响「跑得对不对」。位置一律由节拍序号算出，不读真实时间（03 §6）。
+func _draw_effects() -> void:
+	if runtime == null:
+		return
+	for pulse: SignalPulse in runtime.pulses():
+		if not (_boxes.has(pulse.from_node_id) and _boxes.has(pulse.to_node_id)):
+			continue
+		var from: Vector2 = _anchor(_boxes[pulse.from_node_id], false)
+		var to: Vector2 = _anchor(_boxes[pulse.to_node_id], true)
+		_draw_spark(from.lerp(to, pulse.progress()))
+	for node_id: StringName in _boxes:
+		var box: Rect2 = _boxes[node_id]
+		if runtime.is_lit(node_id):
+			draw_rect(box, Palette.get_color(Palette.Key.BLUE_050), false, 1.0)
+		var age: int = runtime.shot_age(node_id)
+		if age >= 0:
+			_draw_spark(Vector2(box.position.x + CARD * 0.5, box.position.y - _rise(age)))
+
+
+## 占位弹丸从武器卡片上缘垂直升起；升到 SHOT_RISE 时恰好用完 MachineRuntime.SHOT_TICKS 拍，随即消失。
+func _rise(age: int) -> float:
+	return SHOT_RISE * float(age + 1) / float(MachineRuntime.SHOT_TICKS)
+
+
+## 信号与弹丸画成同一个东西：04 §3.10 的 FX 三层结构（芯 BLUE_050 / 体 BLUE_FX_600 / 描边 NAVY_900）。
+## 三层缺一不可，故最小尺寸就是 6×6 —— 这正合意：类型标识讲「这是什么节点」，
+## 火花讲「此刻这里有事发生」，后者本就该更亮眼。
+func _draw_spark(center: Vector2) -> void:
+	var box := Rect2((center - Vector2(SPARK, SPARK) * 0.5).floor(), Vector2(SPARK, SPARK))
+	draw_rect(box, Palette.get_color(Palette.Key.NAVY_900), true)
+	draw_rect(box.grow(-1.0), Palette.get_color(Palette.Key.BLUE_FX_600), true)
+	draw_rect(box.grow(-2.0), Palette.get_color(Palette.Key.BLUE_050), true)

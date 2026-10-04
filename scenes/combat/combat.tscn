@@ -1,7 +1,9 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/combat_screen.gd" id="1_combat"]
 [ext_resource type="Theme" path="res://assets/ui/theme_main.tres" id="2_theme"]
+[ext_resource type="Script" path="res://scripts/ui/blueprint_workspace.gd" id="3_machine"]
+[ext_resource type="Script" path="res://scripts/gameplay/machine_driver.gd" id="4_driver"]
 
 [node name="Combat" type="Control"]
 layout_mode = 3
@@ -32,20 +34,31 @@ mouse_filter = 2
 
 [node name="Placeholder" type="Label" parent="Battlefield"]
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = 10
 anchor_right = 1.0
-anchor_bottom = 1.0
 offset_left = 8.0
-offset_top = 8.0
+offset_top = 4.0
 offset_right = -8.0
-offset_bottom = -8.0
+offset_bottom = 28.0
 grow_horizontal = 2
-grow_vertical = 2
 mouse_filter = 2
-text = "战场（占位 · 敌人生成与推进 / CORE 运行 / 武器执行 / 伤害结算 属 Stage 4）"
+text = "战场占位 · 敌人生成与推进 / 伤害结算 属下一批（PET-65）；机器运行见下方示意区"
 horizontal_alignment = 1
-vertical_alignment = 1
 autowrap_mode = 3
+
+[node name="MachineView" type="Control" parent="Battlefield"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_top = 87.0
+offset_right = 320.0
+offset_bottom = 135.0
+mouse_filter = 2
+script = ExtResource("3_machine")
+area = 2
+
+[node name="MachineDriver" type="Node" parent="."]
+unique_name_in_owner = true
+script = ExtResource("4_driver")
 
 [node name="NoticeLabel" type="Label" parent="Battlefield"]
 unique_name_in_owner = true
@@ -141,6 +154,7 @@ mouse_filter = 2
 text = "100%"
 
 [node name="Heat" type="VBoxContainer" parent="StatusBar/Readouts/ReadoutsRow"]
+unique_name_in_owner = true
 layout_mode = 2
 custom_minimum_size = Vector2(54, 0)
 
