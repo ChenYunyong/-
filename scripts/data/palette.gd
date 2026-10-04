@@ -5,6 +5,13 @@
 ## 禁止：本文件不得出现任何十六进制色值 —— 色值只允许存在于 palette.tres；
 ##       任何其它文件也不得写裸 Color("#......")（04 §1、§4.9）。
 
+## 必须是 @tool：本类的**唯一调用方** PaletteTheme 是 @tool，编辑器加载
+## assets/ui/theme_main.tres 时就会在 _init() 里取色。非 tool 脚本在编辑器里被
+## ResourceLoader 载入时只得到**占位实例**，其方法一律不可调用 —— 实测会稳定刷出
+## 32 条 `SCRIPT ERROR: ... Attempt to call a method on a placeholder instance`
+## （palette_theme.gd:47 _init → apply_palette → get_color → palette.gd:87 resolve）。
+## 本类只读 palette.tres，不含任何副作用，进 tool 模式是安全的。
+@tool
 class_name Palette
 extends Resource
 

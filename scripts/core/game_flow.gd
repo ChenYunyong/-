@@ -156,6 +156,20 @@ func _route_to_scene(state: GameState) -> void:
 			state_name(state), path, String(route["task"]),
 		])
 		return
+	_apply_scene_change.call_deferred(path)
+
+
+## 真正执行换场景。**必须**经 deferred 抵达：本函数会被 `_ready()` 里的同步调用链
+## 触发（BOOT 的 `_ready` → `change_state` → `_commit_transition` → 本文件 `_route_to_scene`），
+## 而那一刻 root 正在 `add_child()` 内部（`blocked > 0`），`change_scene_to_file()`
+## 内部的 `remove_child()` 会被引擎 ERR_FAIL 挡下并抛
+## 「Parent node is busy adding/removing children」（node.cpp:1750）。
+## 延后一帧后 root 已空闲，摘除 / 释放 / 挂载全部正常。
+##
+## 为什么不让 `_route_to_scene()` 直接 `change_scene_to_file.call_deferred()`：
+## 那样会连同**返回值检查**一起丢掉，切换失败就变成静默 —— 与本文件「不静默失败」的
+## 口径冲突。落成一个独立函数，deferred 之后仍能拿到 Error 并 push_error。
+func _apply_scene_change(path: String) -> void:
 	var error: Error = get_tree().change_scene_to_file(path)
 	if error != OK:
 		push_error("GameFlow: 切换到 '%s' 失败（错误码 %d）。" % [path, error])
