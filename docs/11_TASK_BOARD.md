@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.2.9**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.3.0**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -227,6 +227,8 @@
 > - **环境说明（非本卡缺陷）**：本卡在 DSH 沙箱内首次复跑时 `user://` 不可写（`%APPDATA%\Godot\app_userdata\PixelFusion` 被沙箱拒绝，`ERR_FILE_CANT_WRITE`），导致 7 条与本卡无关的假红（含 S2-02 的 4 条）；把 `APPDATA` 重定向到工作区内即复现交付方的 1625/1625。**`09 §4` 的「先 `--headless --import` 刷类缓存」同样是必需前置**，否则 `Palette` 等一系列假红。
 > - **遗留（转 Codex，非阻塞）**：`assets/_review/pending/visual_batch_01/` 下 3 个 `*.png.import` 是 `--headless --import` 的**引擎产物**（DSH 已在自己的干净树复现其成因）；本仓库**不追踪任何 `.import` 文件**（已入库 `*.png` 亦无旁挂），故不入库、不删、随下次导入自然重建。
 > - **视觉偏离登记（接受，理由成立）**：不使用引擎原生 drag-and-drop 之外的输入分支（`03 §8` 未被破坏，`scripts/input/**` 也不在授权范围）；`RegionCenter/Title` 占位标题隐藏、底条仓库由占位 Label 换成真实槽位 —— 均在 `preparation.tscn` 授权范围内。
+
+> **2026-10-04 追加裁定**：三张 Kit 批准为 **FIRST PLAYABLE 正式结构基线**（结构 / 组件基线 + 开发期视觉资源，**不是最终美术**）。**不再因 UI Kit 阻塞 Gameplay**。优先级切换为 **`FIRST PLAYABLE Gameplay > UI Kit 继续打磨`**。**下一批主交付目标 = 一个实际可玩的 Godot Build**（PREPARATION → 拖放 → 连线 → 战斗 → 敌人推进 → 武器攻击 → 死亡 → REWARD 三选一 → 返回）。细则见 `13 §9`。
 
 ## 5. STAGE 3 — CORE / FUNCTION / WEAPON（未开始）
 

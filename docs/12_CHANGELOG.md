@@ -20,6 +20,18 @@
 - 与 `13_VISUAL_RULING.md` §4 一致：蓝图区仍为**面积最大分区**、颜色全走 `Palette` 无裸色值、**未引入任何人物 / 吉祥物 / 剧情元素**。
 - 遗留（非阻塞，转 Codex）：`assets/_review/pending/visual_batch_01/` 下 3 个 `*.png.import` 是 `--headless --import` 的引擎产物；本仓库**不追踪任何 `.import`**，不入库、不删、随下次导入重建。
 
+### 追加裁定：UI Kit 定位为 FIRST PLAYABLE 结构基线，优先级切到 Gameplay（2026-10-04）
+
+#### Changed
+- **三张 Kit 的定位**：**FIRST PLAYABLE 正式结构基线 + 开发阶段视觉资源**（**不是**最终美术）⇒ **不再因 UI Kit 阻塞 Gameplay**。
+- 优先级：`FIRST PLAYABLE Gameplay > UI Kit 继续打磨`。
+- `13_VISUAL_RULING.md` → **v2**：新增 **§9 追加裁定 1–7**（Combat / MainMenu 结构可直接接入；左侧人物仅占位；底栏敌人仅测试占位；调试标注不得进入运行界面；Codex 不得阻塞 Gameplay；本阶段不再重复审批大稿；**下一批主交付 = 可玩 Build**）。
+- `11_TASK_BOARD.md` → **v0.2.9**：记入追加裁定与主交付目标。
+
+#### Notes
+- 本阶段**不再要求完整 UI 大稿重新审批**（除非严重可用性问题）。
+- FIRST PLAYABLE 链（`PET-63 → 64 → 65 → 66`）连续推进；`PET-70`（UI-KIT 接入）与 `PET-67`（I18N-MIN）排在其后，**不得插队阻塞**。
+
 ### 三张 UI Kit 正式裁定：有条件批准 + `13` 号视觉裁定落盘（2026-10-04）
 
 #### Added
