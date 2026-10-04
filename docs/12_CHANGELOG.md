@@ -5,6 +5,26 @@
 
 ## [Unreleased]
 
+### PET-70 验收（`ACCEPTED`）：UI-KIT 接入（MAIN_MENU + COMBAT 结构）+ 开卡前置 `weapon_kind` 落地（2026-10-04）
+
+#### Added
+- **PET-70 通过 DSH 独立复核 → `ACCEPTED`**（提交 `1af0c42`，已推送）：按批准的三张 UI Kit 建 `MAIN_MENU` / `COMBAT` 的 **Godot 结构**（占位资源，正式美术后替换）。主菜单：新增 `LogoSlot`（顶部横条 8–32，文案 `PixelFusion / 像素融合屋` 过 `translate_text()`）、左侧构图区改成可替换的 `DecorationSlot`（既有 `PanelCore` 变体，不新增控件样式）+ 内嵌 `DecorationArt`；**拆掉** `ArtSkyIsland` / `ArtGirl` / `ArtCat` 三个照参考图摆的具象物件（`13 §2`）；右下信息框降级为一行 `VersionLabel`（次级色、右对齐，`13 §3.3`）。COMBAT：状态带五格只调**字重**（一级读数 10 / 二级 8，一级标题走正文色、二级取 `LabelSecondary`），**五格数量与几何原样**；`热量` 格接 `MachineRuntime.overheat_started / overheat_ended` 换色（常态 `ORANGE_500` → 过热 `ORANGE_300`；`ORANGE_600` 在本带底上实测 **2.96:1**，低于 `04 §3.7` 门槛，故取「更亮」而非「更深」）；底栏仍只有 5 个只读 Label，**敌人不同栏**（`13 §5`）。
+- **开卡前置（PET-65 登记待办）同批落地**：`WeaponData.BY_DISPLAY_NAME` 与**按显示名反查武器**的临时桥**已删**；`NodeData.WeaponKind`（`NONE` / `NEEDLE` / `BOMB` / `SAW`，`NONE` 排第一兼缺省值与旧存档落点）由 `blueprint_workspace.WAREHOUSE` 第 5 列在落节点时写入；`WeaponData.resolve()` 改读该字段 —— **I18N 的定时炸弹已拆**（`PET-67` 改翻译名不再影响打出的是什么）。旧存档（`.tres` 无该字段）载回为 `NONE` 并按 `02 §9` 降级到 Needle，**不是** `null`（「开火但不掉血」那条最难查的路被挡住）；两份各自写下的枚举（`NodeData.WeaponKind` / `WeaponData.Kind`）的逐项对应由测试顶住。
+- **`PET-67`（I18N-MIN）自 `BACKLOG` 提升为 `TODO`**，并挂**同款条件唤醒**（`status = in_review`），链条不断。
+- `11_TASK_BOARD.md` → **v0.3.7**：§4.1 记入 PET-70 `ACCEPTED`（含 L1 证据、基线对照与反向对照）与 PET-67 `TODO`；登记待办 **R1–R4**；顺手修掉 PET-66 关记录里的 `1af0c42` 占位符。
+
+#### Notes
+- **复核方式（不采信自报）**：按卡上写明的 **L1**（`09 §1.1`，**未擅自上 L3**）在交付树的**独立副本**上复跑 —— unit + integration **2043/2043 · 426/426**（`--fixed-fps 600`，headless）；场景冒烟 **MAIN_MENU 67/67 · COMBAT 106/106 · blueprint 82/82 · combat_loop 75/75 · signal_flow 38/38 · input 41/41**（非 headless，`320×180`，真实 GL：RTX 4060 / OpenGL 3.3）；像素探针 **284 / 0 失败**（`09 §4`：本批改了场景视觉权重并宣称「层级已落地」，故必须跑）。
+- **基线对照**：未改动的 `24a8685` 同一命令 **1943/1943 · 426/426**、`ERROR` **38** 行、退出期 **3 ObjectDB / 2 resources** —— 与复跑逐项对齐（unit 净 **+100** 全在新增用例；退出期与基线一致，非本批增量）。
+- **反向对照（DSH 自选）**：只把 7 个源码文件换回基线、保留 9 个新测试文件 → **恰好 17 条转红**（3 条脚本因缺 `WeaponKind` 编译失败 + 14 条按名转红：Logo 翻译入口、三个具象物件未拆、`LogoSlot`/`DecorationSlot`/`VersionLabel` 缺失、一级读数字号与标题色、两级差一档）。**新断言不是恒真。**
+- **取证独立复现**：交付的两张附件与本机重跑产物 **SHA256 逐张相同**（`combat_loop_spawn_4x.png` = `48DE7C65…`；`pet70_main_menu_4x.png` / `full_loop_01_menu.png` = `FE5E248E…`）—— 真实渲染帧，不是重画。
+- **像素级核对（DSH 自量原生 320×180 帧）**：一级读数墨迹 **8px** vs 二级 **6–7px**；标题色 `BLUE_100` **11.75:1** vs `GREY_300` **9.37:1**；主菜单 Logo 居中且占宽 50%、装饰位在 8px 安全区内、右下版本行为次级色、**旧 `ArtCat` 框与 8px 安全区内各 0 个墨迹像素**（`13 §2` / `§3` 落到像素）。
+- **`09 §5` 的 `ERROR` 增量**：**44 vs 基线 38（+6）**，逐条归因 —— **5 条**来自 `tests/integration/full_loop_smoke.gd`（**不在本卡 ALLOWED FILES**，仍按老写法建武器节点 → 走 `02 §9` 降级），登记待办 **R1**；**1 条**是刻意断言的旧存档负路径（`09 §5` 明文豁免）。
+- **三处待裁定的裁定（依据 `13 §9`：`FIRST PLAYABLE Gameplay > UI Kit 继续打磨`）**：① `06 §8.1` 五格 vs `13 §5` 二级 `GOLD` / `NEXT` —— **不动 §8.1**（`13 §9.1` 允许当前 COMBAT 结构直接接入），本批交集口径（一级 = 波次 / CORE / 热量，二级 = 能量 / 队列）**接受为过渡**，正式收口登记 **R2**；② VB-03 HUD 分级切片（`3×72 + 2×48 = 312 > 272` 可用宽）装不进五格 —— **不接入运行时**，登记 **R3**（manifest 仍 `pending_dsh_review`，用户批准也未走）；③ Machine 面板「左下」vs 已被 `signal_flow_smoke` 钉住的整宽机器区 —— **保持现状**，登记 **R2**；附带的主按钮 64×20 vs 90×20 命中区不一致登记 **R4**。**一律不再为这几处阻塞玩法。**
+- **视觉「够不够分明」的主观判断仍属 Codex / 用户**：`13 §5` 的原文口径是「二级**视觉可稍弱**」，本批落在这一档（可量测证据见上）。
+- **报告口径待补（非阻塞）**：交付方 `TEST REPORT` 未按 `09 §5` v0.1.7 单列「退出期资源清点」—— 实测与基线一致（3 / 2），已在册缺陷（`palette.gd` / `palette.tres`）。
+- **环境说明（非本卡缺陷）**：复核 run 需把 `APPDATA` 重定向进工作区并先 `--headless --import` 刷类缓存（`09 §4` v0.1.4），否则会出现 9 条 `user://` 落盘假红与类名解析全线假红；本 run 的沙箱**禁止写工作区外的 `.repos`**（git 索引锁被拒），落地提交经**授权的提权重试**完成。
+
 ### PET-66 验收（`ACCEPTED`）：FIRST PLAYABLE 完成 —— 循环闭合（2026-10-04）
 
 #### Added

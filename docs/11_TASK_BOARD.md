@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.3.6**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.3.7**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -209,13 +209,17 @@
 | PET-65 | **FP 3/4** COMBAT 真实：Slime/Runner 生成推进 + 三武器伤害结算 + 死亡 | Claude | `ACCEPTED`（DSH 独立复核通过，提交 `d122d3d`，已推送；证据见本节末注） |
 | PET-66 | **FP 4/4** 循环闭合：3 波 + REWARD 三选一 + 回 PREPARATION + Overheat | Claude | `ACCEPTED`（DSH 独立复核通过，提交 `84d18e9`，已推送；**FIRST PLAYABLE 完成**，证据见本节末注） |
 | PET-62 | **Visual Batch 01**（并行）：MAIN MENU / PREPARATION / COMBAT UI Kit | Codex | `APPROVED`（有条件批准，见 `13`） |
-| PET-67 | **I18N-MIN** UI 中英可切换：Godot CSV 翻译表（中文原文 = key → en）+ 最小语言开关 + 持久化 | Claude | `BACKLOG`（排 `PET-70` 之后；**开卡前置**：先补 `NodeData.weapon_kind`） |
+| PET-67 | **I18N-MIN** UI 中英可切换：Godot CSV 翻译表（中文原文 = key → en）+ 最小语言开关 + 持久化 | Claude | `TODO`（2026-10-04 DSH 自 `BACKLOG` 提升 —— `PET-70` 的开卡前置 `NodeData.weapon_kind` 已落地，I18N 的定时炸弹已拆；已挂条件唤醒 `status = in_review`） |
 | PET-68 | **VB-01b** 三张 UI Kit 补英文标签版 + 中英版式容纳结论 | Codex | `REVIEW`（复核：英文版与原图逐字节相同，容纳结论不成立） |
 | PET-69 | **VB-02** UI Kit 组件化制作 + 批准附带小改（含 COMBAT 越框修正） | Codex | `DONE`（用户 2026-10-04 批准组件方向） |
-| PET-71 | **VB-03** 正式组件切图 + `_approved/` 流程（基础组件语言 v1，含 `13 §10` 三修） | Codex | `REVIEW`（已交付；DSH 过程复核通过，`_approved/` 与场景集成随 PET-70） |
-| PET-70 | **UI-KIT 接入**（MAIN_MENU + COMBAT 结构）：按批准 Kit 建场景结构，placeholder 资源 | Claude | `TODO`（2026-10-04 DSH 自 `BACKLOG` 提升，单写手；**开卡前置**：先补 `NodeData.weapon_kind`，删掉按显示名反查武器的临时桥） |
+| PET-71 | **VB-03** 正式组件切图 + `_approved/` 流程（基础组件语言 v1，含 `13 §10` 三修） | Codex | `REVIEW`（已交付；DSH 过程复核通过；**`_approved/` 与 HUD Block 集成未随 PET-70 落地** —— 切片尺寸装不进 `06 §8.1` 五格横排，见待办 R3） |
+| PET-70 | **UI-KIT 接入**（MAIN_MENU + COMBAT 结构）：按批准 Kit 建场景结构，placeholder 资源 | Claude | `ACCEPTED`（DSH 独立复核通过，提交 `1af0c42`，已推送；证据见本节末注 —— 开卡前置 `weapon_kind` 同批落地） |
 
 | — | 退出期资源清点：`palette.gd` / `palette.tres` 未释放（已复核、非阻塞；随下一张触碰该文件的卡一并修） | Claude | `BACKLOG` |
+| R1 | `tests/integration/full_loop_smoke.gd` 仍按老写法建武器节点（无 `weapon_kind`）→ 每次跑出 5 条 `WeaponData.resolve` 降级 `push_error`，且该用例的武器全部落到 Needle。**一条参数即可消除**（`09 §5` 的 ERROR 零增量） | Claude | `BACKLOG` |
+| R2 | COMBAT HUD 正式分层收口：`06 §8.1` 五格冻结 vs `13 §5` 的二级 `GOLD` / `NEXT`（**不在**五格内），以及与 Machine 面板「左下」（`13 §5`）的冲突 —— 需同时改 `06 §8.1`、`13 §5` 落点与 `signal_flow_smoke` 的整宽机器区断言 | Claude | `BACKLOG` |
+| R3 | VB-03 HUD 分级切片（`ui_hud_block_primary_72x24` / `secondary_48x20`，`assets/ui/vb03_component_language/`）装不进 `06 §8.1` 五格横排（3×72 + 2×48 = 312 > 272 可用宽）→ 未接运行时；`asset_manifest.json` 的 `status` 仍 `pending_dsh_review`。与 R2 同批 | Codex | `BACKLOG` |
+| R4 | 主按钮切片 64×20 与主菜单四按钮 90×20（`tests/unit/test_input.gd` 命中区表）不一致 —— 是否按切片尺寸重排待定 | Claude | `BACKLOG` |
 
 **执行纪律（用户 2026-10-04）**：
 
@@ -270,7 +274,7 @@
 
 > **2026-10-04 PET-71（VB-03）交付与复核**：24 张 token 驱动切片 + 4 张预览已入库（`assets/_review/pending/vb03_component_language/` 与 `assets/ui/vb03_component_language/`）。**DSH 只核过程与硬约束**：`asset_manifest.json` 的 `constraints` 逐条对上 `13 §10.1` 三修 —— `focus_semantics = BLUE_300 light corner/thin frame`、`selected_semantics = GOLD_500/GOLD_200 primary emphasis`、`type_color_rule = small marker only; unified NAVY card body remains unchanged`；九宫格边距 / 尺寸 / Token 名列齐；`status` 仍为 `pending_dsh_review`（**未**自行进 `_approved/`）。**视觉判断属 Codex / 用户**。`_approved/` + 场景集成随 **PET-70**（等 PET-66 让位，单写手）。
 
-> **2026-10-04 PET-66 验收（`ACCEPTED`，提交 `__SHA__`，DSH 已推送）—— FIRST PLAYABLE 完成** —— DSH **不采信自报**，按卡上写明的 **L2**（`09 §1.1`，**未擅自上 L3**）在交付树的一份**独立副本**上逐项复跑。
+> **2026-10-04 PET-66 验收（`ACCEPTED`，提交 `84d18e9`，DSH 已推送）—— FIRST PLAYABLE 完成** —— DSH **不采信自报**，按卡上写明的 **L2**（`09 §1.1`，**未擅自上 L3**）在交付树的一份**独立副本**上逐项复跑。
 >
 > - **L2 结果（全部 `exit=0` / 失败项 0）**：unit + integration **1943/1943 · 426/426**（`--fixed-fps 600`，headless）；十套场景冒烟 **COMBAT 103/103 · REWARD 165/165 · RESULT 92/92 · PREPARATION 86/86 · input 41/41 · BOOT 31/31 · MAIN_MENU 67/67 · blueprint 79/79 · signal_flow 38/38 · combat_loop 75/75**（后三套**非 headless**，`--resolution 320x180`，真实 GL 渲染）。
 > - **完整循环取证独立复现**：DSH 用自己的窗口重跑重出全部 10 张 `full_loop_*.png` 与联络表，**SHA256 与交付方附件逐张相同**（主菜单 → 整备 → 第 1/2/3 波 → 三选一 → 回整备 → 结算 → 再来一局）；另 8 张 `combat_loop_*` / 4 张 `signal_flow_*` / 蓝图取证图同样**逐张相同** —— 是真实渲染帧，不是重画。
@@ -281,6 +285,22 @@
 > - **PET-65 登记待办（开卡前置）**：`NodeData` 仍无 `weapon_kind`，`WeaponData.BY_DISPLAY_NAME` 这条**按显示名反查武器**的临时桥仍在（`resolve()` 一旦认不出就 `push_error` + 按 Needle 降级；`PET-67` 一改翻译名即**全量**落到降级分支）。**必须在开 `PET-70` / `PET-67` 时先做**，已写进两卡的开卡前置与本卡关记录。
 > - **环境说明（非本卡缺陷）**：DSH 沙箱下 `user://` 需把 `APPDATA` / `LOCALAPPDATA` / `TEMP` 重定向进工作区（否则 8 条落盘假红），且**必须**先 `--headless --import` 刷类缓存（`09 §4` v0.1.4，否则 `Could not find type "Palette" / "NodeData"` 全线假红）。两者都排除后与交付方自报**逐位吻合**。
 > - **下一步**：**FIRST PLAYABLE 完成 ⇒ 已在 `PET-37` 交用户亲测**（14 步完整循环 Build）；**`PET-70` 提升为 `TODO`**（单写手），`PET-67` 仍 `BACKLOG` 排其后。
+
+> **2026-10-04 PET-70 验收（`ACCEPTED`，提交 `1af0c42`，DSH 已推送）** —— DSH **不采信自报**，按卡上写明的 **L1**（`09 §1.1`，**未擅自上 L3**）在交付树的一份独立副本上逐项复跑；追加了**基线对照**与**反向对照**（`09 §4` 的判别力要求）。
+>
+> - **L1 结果（全部 `exit=0` / 失败项 0）**：unit + integration **2043/2043 · 426/426**（`--fixed-fps 600`，headless）；场景冒烟 **MAIN_MENU 67/67 · COMBAT 106/106 · blueprint 82/82 · combat_loop 75/75 · signal_flow 38/38 · input 41/41**（**非 headless**，`--resolution 320x180`，真实 GL 渲染：NVIDIA RTX 4060 / OpenGL 3.3）；像素探针 **284 / 0 失败**（`09 §4` 要求：本批改了场景视觉权重并宣称「层级已落地」，故必须跑）。
+> - **基线对照**：未改动的 `24a8685` 同一命令 **1943/1943 · 426/426**，`ERROR` **38** 行，退出期 **3 ObjectDB / 2 resources** —— 与本批复跑逐项对齐；本批 unit 净 **+100** 条全在新增用例。
+> - **反向对照（DSH 自选）：把 PET-70 的 7 个源码文件换回基线、只留 PET-70 新增/改写的 9 个测试文件 → 恰好 17 条转红**（3 条用例脚本因缺 `WeaponKind` 无法编译 + 14 条按名转红：Logo 翻译入口、ArtSkyIsland / ArtGirl / ArtCat 未拆、LogoSlot / DecorationSlot / VersionLabel 缺失、三块一级读数字号仍为 8、三块一级标题仍取次级色、两级差一档）。**新断言不是恒真。**
+> - **开卡前置（PET-65 登记待办）已落地**：`weapon_data.gd` 的 `BY_DISPLAY_NAME` 与显示名反查分支**已删**，`resolve()` 改读 `NodeData.weapon_kind`；`WeaponKind`（`NONE` 排第一兼缺省值与旧存档落点）由 `blueprint_workspace.WAREHOUSE` 第 5 列在落节点时写入；旧存档（`.tres` 里没有该字段）由 `test_blueprint_data.gd` **从真实落盘文件删掉那一行**后载回，得 `NONE` 且 `resolve()` 按 `02 §9` 降级到 Needle（**不是** `null`、「开火不掉血」那条最难查的路被挡住）；`NodeData.WeaponKind` 与 `WeaponData.Kind` 两份独立枚举的逐项对应由 `test_combat_damage.gd` 顶住。
+> - **截图独立复现**：交付的两张附件**与本机重跑产物 SHA256 逐张相同** —— `combat_loop_spawn_4x.png` = `48DE7C65…`、`pet70_main_menu_4x.png` / `full_loop_01_menu.png` = `FE5E248E…`：真实渲染帧，不是重画。
+> - **像素级核对（DSH 自量，320×180 原生帧）**：状态带五格中**一级读数墨迹 8px（波次 / CORE / 热量）· 二级 6–7px（能量 / 队列）**；标题色一级 `BLUE_100`（对 `NAVY_800` **11.75:1**）vs 二级 `GREY_300`（**9.37:1**）；主菜单 Logo 墨迹 `x81..239`（中心 160 = 画面中心，占宽 50%）、左侧装饰位是 `x8..92 / y44..172` 的既有面板变体、右下版本行 `x249..311 / y163..168` 右对齐且为次级色、**旧 `ArtCat` 框内 0 个墨迹像素、8px 安全区内 0 个墨迹像素**（`13 §2` / `§3.1` / `§3.2` / `§3.3` 全部落到像素）。**过热提示的取色方向复核通过**：`ORANGE_600` 在本带底上实测 **2.96:1**（低于 `04 §3.7` 门槛），`ORANGE_500` 5.90:1 / `ORANGE_300` 9.42:1 —— 「更亮」而非「更深」成立。
+> - **改动面核对**：**16 个文件全部落在 ALLOWED FILES**（含卡上追加的 `scripts/data/**` 前置三件）；`docs/**` · `assets/_review/**` · 其它场景**未触碰**；`.tscn` 无字面 `Color(`；COMBAT 仍零 Button、MAIN_MENU 仍 4 个；**未 push**（按卡）。卡面把主菜单场景写成 `scenes/main_menu/main_menu.tscn`，实际路径是 `scenes/menu/main_menu.tscn`（**卡面笔误**，交付方用的是真实文件）。
+> - **`ERROR` 增量（`09 §5`）**：**44 行 vs 基线 38 = +6**，逐条归因 —— **5 条**来自 `tests/integration/full_loop_smoke.gd`（**不在本卡 ALLOWED FILES**，仍按老写法建武器节点 → 走 `02 §9` 降级），**1 条**是 `test_combat_damage.gd` 里**故意断言的旧存档负路径**（`09 §5` 明文豁免）。前者登记为待办 **R1**（不得静默豁免）。
+> - **三处待裁定的裁定**：① **`06 §8.1` 五格冻结 vs `13 §5` 二级 `GOLD` / `NEXT`** —— **不动 §8.1**：按 `13 §9.1`「COMBAT 当前 HUD / 战场 / Machine 区 / 底栏结构允许直接接入」与 `§9.7`「本阶段不再要求完整 UI 大稿重新审批」，本批的**交集口径**（一级 = 波次 / CORE / 热量；二级 = 能量 / 队列）**接受为过渡**；正式收口登记为 **R2**（与 R3 同批）。② **VB-03 HUD 分级切片装不进五格** —— **不接入**（`3×72 + 2×48 = 312 > 272` 可用宽；其 manifest 仍 `pending_dsh_review`，用户批准也未走），登记 **R3**。③ **Machine 面板「左下」vs 已被 `signal_flow_smoke` 钉住的整宽机器区** —— **保持现状**（改用例属卡外），登记 **R2**。附带问题（主按钮切片 64×20 vs 90×20 命中区表）登记 **R4**。依据 `13 §9` 的优先级 `FIRST PLAYABLE Gameplay > UI Kit 继续打磨`：**一律不为这几处再阻塞玩法**。
+> - **视觉「够不够分明」的主观判断仍属 Codex / 用户**（DSH 给出的是可量测证据：字号 10 vs 8、墨迹 8px vs 6–7px、对比度 11.75:1 vs 9.37:1）。`13 §5` 的原文口径是「二级**视觉可稍弱**」，本批落在这一档。
+> - **报告口径待补（非阻塞）**：交付方 `TEST REPORT` 未按 `09 §5` v0.1.7 单列「退出期资源清点」—— 实测与基线一致（3 / 2），已在册缺陷（`palette.gd` / `palette.tres`），仅记口径。
+> - **环境说明（非本卡缺陷）**：本复核 run 把 `APPDATA` 重定向进工作区并先 `--headless --import` 刷类缓存（`09 §4` v0.1.4）；未做这两步时会看到 9 条 `user://` 落盘假红与 `Could not find type "Palette"` 全线假红。**本复核 run 的沙箱禁止写工作区外的 `.repos`**（`git` 索引锁被拒），交付提交由**授权的提权重试**完成。
+
 
 ## 5. STAGE 3 — CORE / FUNCTION / WEAPON（未开始）
 
