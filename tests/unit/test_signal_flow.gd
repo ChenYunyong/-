@@ -229,9 +229,9 @@ func _run_delay_checks(ctx: RefCounted) -> void:
 	ctx.equal(_count_fired("needle"), 1, "放行后再走满 %d 拍应抵达并开火" % MachineRuntime.TRAVEL_TICKS)
 
 
-## WEAPON 开火 → 累积 Heat；顺带钉住点亮 / 弹丸两个时间窗口。
+## WEAPON 开火 → 累积 Heat → 到阈值触发 Overheat；顺带钉住点亮 / 弹丸两个时间窗口。
 func _run_weapon_heat_checks(ctx: RefCounted) -> void:
-	ctx.begin_case("WEAPON · 开火与 Heat 累积（06 §8.1 的 `热量` 读数）")
+	ctx.begin_case("WEAPON · 开火与 Heat 累积到阈值（06 §8.1 的 `热量` 读数）")
 	# 用的就是验收卡点名的那台机器：CORE → Split → Amplify → Needle。
 	# 三条边各走 TRAVEL_TICKS 拍，故首发的绝对拍号是 10 + 3 × 4 = 22 —— 这条把整条链路钉在一起：
 	# 节拍、传播、FUNCTION 的转发、WEAPON 的开火，任何一环改了时长这里都会转红。
@@ -268,17 +268,28 @@ func _run_weapon_heat_checks(ctx: RefCounted) -> void:
 	ctx.equal(_fire_ticks[1], second, "第二发的拍号")
 	ctx.equal(runtime.heat(), MachineRuntime.HEAT_PER_SHOT * 2.0, "两发之后的 Heat 应是累加的")
 
-	# 封顶：本卡不做 Overheat（PET-66），但读数格只有三位，不封顶会溢出成四位数。
-	_tick(runtime, 600)
-	ctx.equal(runtime.heat(), MachineRuntime.MAX_HEAT, "Heat 应封顶在 MAX_HEAT")
-	var previous: float = 0.0
-	var monotonic: bool = true
+	# 阈值：Heat 累加到 MAX_HEAT 即触发 Overheat（PET-66）。到阈值需要几发由两个常数直接算出，
+	# 不写死拍号 —— HEAT_PER_SHOT 或 MAX_HEAT 一改，这里应当跟着算，而不是跟着烂。
+	# 本用例只钉「确实走到了那一步」；阈值之后的停火 / 冷却 / 恢复归 tests/unit/test_heat.gd。
+	var shots_to_overheat: int = int(ceilf(MachineRuntime.MAX_HEAT / MachineRuntime.HEAT_PER_SHOT))
+	_tick(runtime, (shots_to_overheat - 3) * MachineRuntime.CORE_PERIOD_TICKS)
+	ctx.check(not runtime.is_overheated(), "差一发到阈值时不得过热")
+	ctx.check(runtime.heat() < MachineRuntime.MAX_HEAT, "差一发到阈值时 Heat 应低于上限")
+
+	_tick(runtime, MachineRuntime.CORE_PERIOD_TICKS)
+	ctx.check(runtime.is_overheated(), "连续开火累加到阈值应触发 Overheat")
+	ctx.equal(runtime.heat(), MachineRuntime.MAX_HEAT, "触发的那一拍 Heat 应恰是 MAX_HEAT")
+
+	# 封顶：读数格只有三位，任何一次广播越过 MAX_HEAT 都会印成四位数。
+	var peak: float = 0.0
+	var overflow: bool = false
 	for value: float in _heat_log:
-		if value < previous or value > MachineRuntime.MAX_HEAT:
-			monotonic = false
-		previous = value
-	ctx.check(monotonic,
-		"Heat 的每次广播都应是「不减且不超上限」的绝对值（共 %d 次）" % _heat_log.size())
+		peak = maxf(peak, value)
+		if value > MachineRuntime.MAX_HEAT:
+			overflow = true
+	ctx.check(not overflow,
+		"Heat 的每次广播都不得越过 MAX_HEAT（读数格只有三位，共 %d 次）" % _heat_log.size())
+	ctx.equal(peak, MachineRuntime.MAX_HEAT, "广播的最大值应恰是 MAX_HEAT（确实走到过阈值）")
 
 
 ## 退化输入一律不崩、不产生事件 —— 「没有机器」是玩家的正常状态，不是异常。

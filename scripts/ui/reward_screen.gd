@@ -1,9 +1,10 @@
 ## reward_screen.gd
 ## 职责：REWARD 场景（06 §9）—— 三个选项卡，不足时以「跳过」补齐；
-##       玩家**选定**其中一项后经 GameFlow 回到 PREPARATION。
-##       **本批只做骨架与布局，不含任何奖励数值逻辑。**
+##       玩家**选定**其中一项后经 GameFlow 回到 PREPARATION（循环由此闭合：回去继续改造机器打下一波）。
+##       本批（FIRST PLAYABLE 4/4）给三个选项接上**真实数据**：一张固定的三选项池（见 default_options）。
 ## 所属系统：ui
-## 依赖：GameFlow、RewardLayout、RewardCard、RewardOption、MessagePanel、Palette、InputScreen
+## 依赖：GameFlow、RewardLayout、RewardCard、RewardOption、MessagePanel、Palette、InputScreen、
+##       MachineRuntime、WeaponData
 ## 禁止：本文件不得调用 change_scene_to_file() —— 场景路由只能由 GameFlow 落地（03 §1.1 R3）；
 ##       不得写任何字面色值（06 §10.7）；
 ##       不得判断任何原始输入事件类型（InputEventMouseButton 等）—— 输入一律经 InputScreen
@@ -11,7 +12,9 @@
 ##       不得出现任何会自动推进的构造（Timer / create_timer / timeout / _process /
 ##       _physics_process，见 03 §2 与 00 §5 交互硬规则第 1 条）—— 进入 REWARD 后永远等玩家，
 ##       不倒计时、不自动选中、不自动离开；
-##       不得实现奖励数值 / 掉落池 / 稀有度权重（属 Stage 4 的 S4-07），
+##       不得实现奖励的**效果**（拿到手就多一个节点 / 改数值）—— 那需要掉落池与稀有度权重，
+##       属 Stage 4 的 S4-07；本文件只把选项**显示**出来并交出玩家选中的那一项
+##       （get_chosen_option()），选中的东西怎么落地由那张卡决定；
 ##       也不得实现 RESULT 场景（属 S1-10）。
 
 extends InputScreen
@@ -45,8 +48,8 @@ func _ready() -> void:
 	_cards.assign([%Card0, %Card1, %Card2])
 	for card: RewardCard in _cards:
 		card.option_chosen.connect(_on_option_chosen)
-	# 本批没有奖励数据源（掉落池属 Stage 4 的 S4-07），故填一组纯展示用的占位选项，
-	# 保证 06 §9 的五个展示位在这一批就有落点。数据接入后改由 set_options() 传入即可。
+	# 本批用一张固定池填满三个选项位（见 default_options）。掉落池属 Stage 4 的 S4-07，
+	# 届时改由那一侧通过 set_options() 注入即可 —— 本场景不关心选项从哪来。
 	set_options(default_options())
 	# 提示面板可点任意处关闭。
 	register_dismissible_notice(_notice_panel)
@@ -60,14 +63,25 @@ func _ready() -> void:
 	apply_layout_for(size)
 
 
-## 06 §9 的占位选项。三个都是**字面展示串**：没有计算、没有掉落池、没有稀有度权重，
-## 只是让「图标 / 名称 / 类型 / 数值 / 特殊规则」五项各自有落点。
-## 真实数据由 Stage 4 的 S4-07 通过 set_options() 注入。
+## 本批（FIRST PLAYABLE 4/4）的三选项池：一波清空后摆出来的**固定三项**，玩家挑一个。
+##
+## 卡面允许「选项可以是固定池」，故这里没有随机、没有掉率、没有稀有度权重 ——
+## 那三样连同「选中之后真的把东西给到玩家手里」都属 Stage 4 的 S4-07。
+## 本批只把选项**显示**出来，并把玩家选中的那一项经 get_chosen_option() 交出去。
+##
+## 三项都是玩家在整备界面**真能拖出来**的东西：名字逐字取 06 §4 的仓库槽位名（核心 / 增幅 / 炸弹），
+## 数值则从它们的定义处现取，不在这里抄第二份。卡片上的「伤害 25」与结算里真正生效的那个 25
+## 一旦漂开，玩家会照着卡面做决定 —— 而这种错在画面上完全看不出来。
 static func default_options() -> Array[RewardOption]:
+	var period_seconds: float = float(MachineRuntime.CORE_PERIOD_TICKS) / float(MachineRuntime.TICK_RATE)
+	var bomb: WeaponData = WeaponData.for_kind(WeaponData.Kind.BOMB)
 	return [
-		RewardOption.new(RewardOption.Kind.CORE, "核心节点（占位）", "CORE", "能量 +2", "每波开始脉冲一次"),
-		RewardOption.new(RewardOption.Kind.FUNCTION, "功能节点（占位）", "FUNCTION", "延时 0.5 秒", "同一拍只转发一次"),
-		RewardOption.new(RewardOption.Kind.WEAPON, "武器节点（占位）", "WEAPON", "伤害 12", "每次开火热量 +3"),
+		RewardOption.new(RewardOption.Kind.CORE, "核心", "CORE",
+			"每 %.1f 秒一次脉冲" % period_seconds, "自己就是信号源，不需要上游连线"),
+		RewardOption.new(RewardOption.Kind.FUNCTION, "增幅", "FUNCTION",
+			"脉冲 ×%d" % roundi(MachineRuntime.AMPLIFY_FACTOR), "进一枚，出去一枚更强的"),
+		RewardOption.new(RewardOption.Kind.WEAPON, bomb.display_name, "WEAPON",
+			"伤害 %d" % roundi(bomb.damage), "打全场，不分先后"),
 	]
 
 

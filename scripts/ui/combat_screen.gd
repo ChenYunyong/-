@@ -1,11 +1,13 @@
 ## combat_screen.gd
 ## 职责：COMBAT 场景 —— 06 §8 的战场（敌人推进区 + 机器示意区）+ 底部状态带（状态 / 预览的只读展示），
 ##       以及通往 REWARD / RESULT 的两个触发入口。
-##       本批（FIRST PLAYABLE 3/4）把战斗**真的打起来**：载入蓝图 → 建 CombatSimulation
-##       （机器 + 一波敌人 + 伤害结算）→ 交给 MachineDriver 按固定节拍推进 →
-##       把敌人画进战场、把 CORE 血量写进状态带读数。
+##       本批（FIRST PLAYABLE 4/4）把循环**闭合**：按 RunState 的当前波次建 CombatSimulation
+##       （机器 + 这一波敌人 + 伤害结算）→ 交给 MachineDriver 按固定节拍推进 →
+##       把敌人画进战场、把 CORE 血量与波次写进状态带读数；
+##       本波清空时**非末波**推进波次并进 REWARD（选完奖励回 PREPARATION 继续改造机器），
+##       **末波**清空即本局打完，直接进 RESULT。
 ## 所属系统：ui
-## 依赖：Palette、Theme、GameFlow、CombatLayout、InputScreen、MachineRuntime、MachineDriver、
+## 依赖：Palette、Theme、GameFlow、RunState、CombatLayout、InputScreen、MachineRuntime、MachineDriver、
 ##       CombatSimulation、EnemyState、EnemyData、BlueprintWorkspace
 ## 禁止：本文件不得调用 change_scene_to_file() —— 场景路由只能由 GameFlow 落地（03 §1.1 R3）；
 ##       不得写任何字面色值（06 §10.7）—— 全部经 Palette；
@@ -15,15 +17,20 @@
 ##       本文件只负责「把谁交给它」「把结果写到哪个 Label 上」「把敌人画在哪」；
 ##       不得自己结算伤害 / 生成敌人 / 判死亡 —— 那些全在 CombatSimulation，
 ##       本文件只按它给的 progress / hp_ratio 换算屏幕位置，一个数值都不改；
+##       不得自己判定 Overheat（阈值 / 停火 / 冷却全在 MachineRuntime）—— 本场景只把 heat_changed
+##       的绝对值印成读数。06 §8.1 把这条带冻结成 5 个只读读数块，故过热**不做**单独的视觉元素：
+##       它在画面上的表现就是「热量从 100% 掉回 0%」+ 武器这几秒不开火；
 ##       不得出现任何需要玩家长按 / 连点的动作控件（00 §5 第 3 条交互硬规则、06 §8）——
-##       这条带是状态与预览，COMBAT 阶段玩家不直接操控任何单位；
-##       不得处理 Overheat（PET-66）。
+##       这条带是状态与预览，COMBAT 阶段玩家不直接操控任何单位。
 
 extends InputScreen
 
-## 可读提示文案。两个出口的目标场景尚未实现（REWARD 属 S1-09、RESULT 属 S1-10）。
-const NOTICE_WAVE_CLEARED: String = "本波清空后将进入奖励场景（REWARD），该场景属 S1-09、尚未实现，本次留在战斗场景。"
-const NOTICE_CORE_DESTROYED: String = "CORE 被摧毁后将进入结算场景（RESULT），该场景属 S1-10、尚未实现，本次留在战斗场景。"
+## 可读提示文案。三个出口的目标场景都已落地，这几句只在**路由故障**时出现（场景文件缺失 / 路径写错）。
+const NOTICE_WAVE_CLEARED: String = "本波清空后将进入奖励场景（REWARD），该路由未就绪，本次留在战斗场景。"
+const NOTICE_CORE_DESTROYED: String = "CORE 被摧毁后将进入结算场景（RESULT），该路由未就绪，本次留在战斗场景。"
+## 末波清空走的是「本局打完」这条路，与 CORE 被摧毁同一个去处、但不是同一件事 ——
+## 复用上面那句会把玩家引到「我的 CORE 炸了？」这个错误方向。
+const NOTICE_FINAL_WAVE: String = "最后一波清空后将进入结算场景（RESULT），该路由未就绪，本次留在战斗场景。"
 ## Escape 出口的路由故障提示。与上一条分开：那条讲的是「CORE 被摧毁」，
 ## 而这里玩家按的是 Escape，提示说成 CORE 被摧毁会把人引到错误的方向。
 const NOTICE_ESCAPE: String = "结算场景（RESULT）的路由未就绪，本次留在战斗场景。"
@@ -77,6 +84,9 @@ const ENEMY_HP_GAP: float = 3.0
 ## 06 §8.1 的 `CORE` 读数格。同 `_heat_value` 的理由：唯一名挂在读数块（`Core`）上，再往下走一级。
 @onready var _core_value: Label = %Core.get_node(^"Value") as Label
 
+## 06 §8.1 的 `波次` 读数格。同上：唯一名挂在读数块（`Wave`）上，再往下走一级。
+@onready var _wave_value: Label = %Wave.get_node(^"Value") as Label
+
 ## 两块区域容器，下标即 CombatLayout.Region。顺序必须与场景里的节点顺序一致。
 var _regions: Array[Control] = []
 var _is_narrow: bool = false
@@ -129,6 +139,14 @@ func reload_machine() -> void:
 	_driver.bind(null)
 	_simulation = null
 	_notice_label.visible = false
+	# COMBAT 永远属于某一局：没有进行中的一局就先开一局。波次读数与「末波清空 → RESULT」
+	# 都靠 RunState 那一份进度，而本场景是全项目**唯一**读它的玩法场景 —— 开局放在这里，
+	# 就不必让主菜单 / 整备两处各记一次（那两个场景不在本卡范围内）。
+	# 上一局在 COMBAT 里结束时已经 end_run()，故这里同时兼顾「再来一局」与「回主菜单后再开」。
+	if not RunState.is_active():
+		RunState.start_run()
+	var wave: int = RunState.current_wave()
+	_show_wave(wave)
 	_show_heat(0.0)
 	_show_core_hp(CombatSimulation.CORE_MAX_HP)
 	# 读数归零之后必须重画一次敌人层：上一局的尸体否则会留在屏幕上，
@@ -139,7 +157,7 @@ func reload_machine() -> void:
 		_show_notice(NOTICE_NO_MACHINE)
 		return
 	# 图由工作区持有并绘制（06 §8 / 03 §4.3：蓝图在 COMBAT 是只读的），仿真只借用它建索引。
-	var simulation := CombatSimulation.new(blueprint)
+	var simulation := CombatSimulation.new(blueprint, wave)
 	_simulation = simulation
 	var machine: MachineRuntime = simulation.machine()
 	_machine_view.runtime = machine
@@ -166,6 +184,15 @@ func _show_heat(heat: float) -> void:
 ## CORE_MAX_HP 取 100，故血量本身就是百分比，这里不做第二次换算。
 func _show_core_hp(core_hp: float) -> void:
 	_core_value.text = "%d%%" % roundi(core_hp)
+
+
+## 06 §8.1 的 `波次` 读数：`当前/总数`。
+##
+## 06 §8.1 的表里这一格写的是 `1/1` —— 那是「一局只有一波」时期冻结的**占位值**。
+## 本卡一局三波，按表里的同一形状拼成 `n/3`：形状不变（读两条数字），内容不再是死的。
+## 总数取 RunState.TOTAL_WAVES，不在这里另写一个 3（两处一旦漂开就会拼出 `2/3` 打第 4 波这种读数）。
+func _show_wave(current: int) -> void:
+	_wave_value.text = "%d/%d" % [current, RunState.TOTAL_WAVES]
 
 
 ## 当前是否处于 06 §7.1 的折叠布局。
@@ -202,12 +229,25 @@ func _on_resized() -> void:
 	apply_layout_for(size)
 
 
-## 本波清空 → REWARD（03 §1.1 R2：这条边**只能**由「本波清空」触发）。
-## 「清空」怎么判定属 Stage 4，本批只留这个入口。
+## 本波清空 → 两条路（03 §1.1 R2：COMBAT 的出边只有 REWARD 与 RESULT）。
+##
+## **非末波**：记下进度（RunState.advance_wave，`波次` 读数下一次进本场景就 +1），进 REWARD。
+## 玩家选完奖励回 PREPARATION，蓝图原样保留，可以继续改造机器 —— 循环就在这里闭合。
+## **末波**：本局打完，进 RESULT（不是 REWARD：打完最后一波还给「三选一」，
+## 选完回整备却已经没有下一波可打，那一步是空转）。
+##
+## 先查路由就绪、再推进波次：路由没通时不能把进度算进去，否则玩家会「白丢一波」。
 func on_wave_cleared() -> void:
+	if RunState.is_final_wave():
+		if not _is_route_ready(GameFlow.GameState.RESULT):
+			_show_notice(NOTICE_FINAL_WAVE)
+			return
+		_end_run()
+		return
 	if not _is_route_ready(GameFlow.GameState.REWARD):
 		_show_notice(NOTICE_WAVE_CLEARED)
 		return
+	RunState.advance_wave()
 	GameFlow.change_state(GameFlow.GameState.REWARD)
 
 
@@ -217,6 +257,16 @@ func on_core_destroyed() -> void:
 	if not _is_route_ready(GameFlow.GameState.RESULT):
 		_show_notice(NOTICE_CORE_DESTROYED)
 		return
+	_end_run()
+
+
+## 本局结束：先让 RunState 收尾（它保留**结束时的波次**给 RESULT 显示），再走 R3 的唯一通道。
+##
+## 收尾这一步不能省：下次进 COMBAT 时会靠 `not is_active()` 判断「该开新的一局了」，
+## 少了它，玩家从 RESULT 回主菜单再开局就会接着上一局的波次打（甚至一进去就结算）。
+func _end_run() -> void:
+	if RunState.is_active():
+		RunState.end_run()
 	GameFlow.request_end_run()
 
 
@@ -236,7 +286,7 @@ func _on_back_requested() -> bool:
 	if not _is_route_ready(GameFlow.GameState.RESULT):
 		_show_notice(NOTICE_ESCAPE)
 		return true
-	GameFlow.request_end_run()
+	_end_run()
 	return true
 
 

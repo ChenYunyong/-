@@ -10,20 +10,28 @@
 ##       不得使用真实时间、Timer 或自动运行 —— 推进的唯一入口是 tick()，由 MachineDriver 按固定节拍喂
 ##       （03 §2：把时间来源放进仿真内部，仿真就无法在测试里被精确驱动）；
 ##       不得使用 randi() / randf()（03 §6）—— 同一份蓝图 + 同一波敌人必须跑出同一串结果；
-##       不得处理 Heat / Overheat（PET-64 已定，Overheat 属 PET-66）—— 本文件只读 machine().heat()，
-##       一个字节都不改它；
+##       不得处理 Heat / Overheat —— 两者全在 MachineRuntime 内部（含「过热期间不开火」），
+##       本文件一个字节都不改它，只是照常接收（或收不到）weapon_fired；
 ##       不得自己画任何东西 —— 敌人在屏幕上的位置由 ui 层按 progress 换算。
 
 class_name CombatSimulation
 extends RefCounted
 
-## 本波的敌人序列，按出场顺序。**一次 COMBAT = 一波**：
-## 03 §1.1 R2 只给了 COMBAT → REWARD 一条由「本波清空」触发的边，而 06 §8.1 把 `波次`
-## 读数格冻结成 `1/1`（两位数字，本期没有第二波的位置）。故「进入下一波」由
-## REWARD → PREPARATION → 再进一次 COMBAT 落地，本文件不实现波次表。
-const WAVE: Array[int] = [
-	EnemyData.Kind.SLIME, EnemyData.Kind.RUNNER,
-	EnemyData.Kind.SLIME, EnemyData.Kind.RUNNER,
+## 一局的波次表，下标 = 波次 - 1（`_init()` 的 wave_index 从 1 起）。**一次 COMBAT = 一波**：
+## 03 §1.1 R2 只给了 COMBAT → REWARD 一条由「本波清空」触发的边，故「进入下一波」由
+## REWARD → PREPARATION → 再进一次 COMBAT 落地，本文件只按 wave_index 挑这一波打谁。
+##
+## 难度靠**出怪条数**递增（4 / 6 / 8）：敌人种类只有两种，改数值会牵动 PET-65 已取证的伤害结算，
+## 而条数是纯加法。三张表的条数必须等于 RunState.TOTAL_WAVES —— 一致性由
+## tests/integration/full_loop_smoke.gd 钉住（本文件不得引用 RunState：gameplay 不依赖 core 单例）。
+## 第 1 波**必须**保持 PET-65 取证时的那四只（combat_loop_smoke.gd 的击杀拍号与截图都按它取样）。
+const WAVES: Array = [
+	[EnemyData.Kind.SLIME, EnemyData.Kind.RUNNER, EnemyData.Kind.SLIME, EnemyData.Kind.RUNNER],
+	[EnemyData.Kind.SLIME, EnemyData.Kind.SLIME, EnemyData.Kind.RUNNER,
+		EnemyData.Kind.RUNNER, EnemyData.Kind.SLIME, EnemyData.Kind.RUNNER],
+	[EnemyData.Kind.SLIME, EnemyData.Kind.RUNNER, EnemyData.Kind.SLIME,
+		EnemyData.Kind.SLIME, EnemyData.Kind.RUNNER, EnemyData.Kind.RUNNER,
+		EnemyData.Kind.SLIME, EnemyData.Kind.RUNNER],
 ]
 
 ## 第一只敌人的出场拍号，以及之后每只的间隔（拍）。20 拍 = 1 秒。
@@ -74,8 +82,17 @@ var _spawned: int = 0
 var _cleared: bool = false
 var _failed: bool = false
 
+## 本场打第几波（从 1 起）与它对应的敌人序列。越界一律夹进表内 ——
+## 夹取而不是报错，是因为「蓝图 / 波次」都可能来自落盘数据，一个越界值不该让整局崩掉。
+var _wave_index: int = 1
+var _wave: Array = []
 
-func _init(blueprint: BlueprintData) -> void:
+
+## wave_index 缺省为 1：本卡之前的所有调用方（含 PET-65 的取证用例）只传蓝图，
+## 语义上就是「打第 1 波」，于是它们的取证数值一条都不用改。
+func _init(blueprint: BlueprintData, wave_index: int = 1) -> void:
+	_wave_index = clampi(wave_index, 1, WAVES.size())
+	_wave = WAVES[_wave_index - 1]
 	if blueprint != null:
 		_build_weapons(blueprint)
 	_machine = MachineRuntime.new(blueprint)
@@ -127,6 +144,16 @@ func core_hp() -> float:
 ## 已推进的拍数。UI 与测试用它算「最近 N 拍内发生过什么」，不必自己数帧。
 func tick_index() -> int:
 	return _tick_index
+
+
+## 本场打第几波（从 1 起）。UI 与用例据此核对「进来的确实是这一波」。
+func wave_index() -> int:
+	return _wave_index
+
+
+## 本场要出的敌人总数。用例据此做「全漏会不会正好打空 CORE」这类算术。
+func wave_size() -> int:
+	return _wave.size()
 
 
 ## 本波是否已清空。清空之后 tick() 不再推进（终局态不该继续跑）。
@@ -211,11 +238,11 @@ func _leak(enemy: EnemyState) -> void:
 ## 按固定间隔放下一只敌人。每拍最多放一只 —— 间隔远大于 1 拍，故这条断言本来就成立，
 ## 写出来是为了让「一帧里蹦出两只」在间隔被改小到 1 拍时也不会发生。
 func _spawn_due() -> void:
-	if _spawned >= WAVE.size():
+	if _spawned >= _wave.size():
 		return
 	if _tick_index < FIRST_SPAWN_TICK + _spawned * SPAWN_INTERVAL_TICKS:
 		return
-	_enemies.append(EnemyState.new(EnemyData.for_kind(WAVE[_spawned]), _spawned % LANES))
+	_enemies.append(EnemyState.new(EnemyData.for_kind(_wave[_spawned]), _spawned % LANES))
 	_spawned += 1
 
 
@@ -235,8 +262,8 @@ func _check_outcome() -> void:
 		_failed = true
 		run_failed.emit()
 		return
-	# `_spawned >= WAVE.size()` 挡住「还没出怪就判清空」；
+	# `_spawned >= _wave.size()` 挡住「还没出怪就判清空」；
 	# `_enemies.is_empty()` 要求连尸体都退场，于是最后一只的死亡动画有机会播完。
-	if _spawned >= WAVE.size() and _enemies.is_empty():
+	if _spawned >= _wave.size() and _enemies.is_empty():
 		_cleared = true
 		wave_cleared.emit()

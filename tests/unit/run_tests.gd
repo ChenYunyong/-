@@ -25,10 +25,14 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 	{"path": "res://tests/unit/test_combat.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_signal_flow.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_combat_damage.gd", "layer": "unit"},
+	{"path": "res://tests/unit/test_heat.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_reward.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_result.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_input.gd", "layer": "unit"},
 	{"path": "res://tests/integration/test_state_loop.gd", "layer": "integration"},
+	# 一局完整循环（3 波 → 奖励 → 整备 → 下一波 → 结算 → 重开）。**必须排在最后**：
+	# 它会把真实场景一路换过去，前面每个用例的场景断言都不能在它之后跑。
+	{"path": "res://tests/integration/full_loop_smoke.gd", "layer": "integration"},
 ]
 
 ## 场景冒烟不进本入口：BOOT 成功路径会把真实 GameFlow 从 BOOT 推到 MAIN_MENU，

@@ -1,13 +1,14 @@
 ## machine_runtime.gd
-## 职责：蓝图机器的固定节拍仿真（FIRST PLAYABLE 2/4）—— CORE 按固定节拍发脉冲、脉冲沿有向边传播、
-##       FUNCTION 变换脉冲（分流 / 放大 / 延时）、WEAPON 收到脉冲即开火并把 Heat 加上去。
+## 职责：蓝图机器的固定节拍仿真（FIRST PLAYABLE 2/4 + 4/4 的 Heat）—— CORE 按固定节拍发脉冲、
+##       脉冲沿有向边传播、FUNCTION 变换脉冲（分流 / 放大 / 延时）、WEAPON 收到脉冲即开火并把 Heat 加上去，
+##       连续开火到阈值即 **Overheat**（停火 + 冷却，冷却完自动恢复）。
 ## 所属系统：gameplay
 ## 依赖：NodeData / ConnectionData / BlueprintData / SignalPulse
 ## 禁止：本文件不得触碰场景树 / 渲染 / 输入 / Palette / 存档 —— 它只推进数值，可见反馈由 ui 层读它的只读状态；
 ##       不得使用真实时间、Timer、_process 或自动运行 —— 推进的唯一入口是 tick()，由调用方按固定节拍喂
 ##       （03 §2：固定步长累加器；把时间来源放进仿真内部，仿真就无法在测试里被精确驱动）；
 ##       不得使用 randi() / randf()（03 §6）—— 同一份蓝图必须跑出同一串结果，否则确定性无从验证；
-##       不得结算伤害 / 生成敌人 / 判定死亡 / 处理 Overheat（分别属 PET-65 与 PET-66）。
+##       不得结算伤害 / 生成敌人 / 判定死亡（属 PET-65 的 combat_simulation.gd）。
 
 class_name MachineRuntime
 extends RefCounted
@@ -36,6 +37,11 @@ const BASE_PULSE_VALUE: float = 1.0
 const HEAT_PER_SHOT: float = 2.0
 const MAX_HEAT: float = 100.0
 
+## 过热后的冷却速度（每拍降多少 Heat）。**阈值就是 MAX_HEAT，不另设第二个常数** ——
+## 两个数一旦各自可调，「读数到 100% 了却没停火」这类错就会没有任何断言能钉住。
+## 100 / 2.5 = 40 拍 = 2 秒：短到不至于让玩家以为机器坏了，长到能真的改变战况。
+const COOL_PER_TICK: float = 2.5
+
 ## 「刚被点亮」的判定窗口（拍）。定义在这里而不是 UI 里 —— 窗口若在 UI 侧另写一个数，
 ## 两边迟早对不上，而症状只是「闪烁看起来怪怪的」，没人会去查。
 const FLASH_TICKS: int = 4
@@ -51,6 +57,12 @@ signal weapon_fired(weapon_id: StringName)
 
 ## Heat 变化。携带的是**绝对值**不是增量 —— 增量语义在重连 / 补跑时会把读数加错。
 signal heat_changed(heat: float)
+
+## 进入 Overheat：Heat 到顶，武器停止开火并开始冷却。
+signal overheat_started()
+
+## 冷却完毕，机器恢复开火。
+signal overheat_ended()
 
 ## 本拍推进完毕。UI 用它触发一次重绘，不去轮询。
 signal ticked()
@@ -80,6 +92,10 @@ var _fired: Dictionary = {}
 var _tick_index: int = 0
 var _heat: float = 0.0
 var _has_core: bool = false
+
+## 是否正处于 Overheat。到阈值时置位、冷却到 0 时清除 —— 只有这一个字段决定「能不能开火」，
+## 于是「读数说 100%」与「武器停了」不可能各说各话。
+var _overheated: bool = false
 
 
 func _init(blueprint: BlueprintData) -> void:
@@ -111,6 +127,9 @@ func _init(blueprint: BlueprintData) -> void:
 func tick() -> void:
 	_tick_index += 1
 	var in_flight: int = _pulses.size()
+	# 冷却排在发脉冲之前：冷却恰在本拍走完时，机器本拍就能重新开火 ——
+	# 排到后面会平白多停一拍，而那一拍在画面上只表现为「恢复得慢一点」，查不出原因。
+	_cool()
 	_release_held()
 	_emit_from_cores()
 	_advance(in_flight)
@@ -212,13 +231,33 @@ func _make_pulse(from_id: StringName, to_id: StringName, value: float, travel: i
 	return pulse
 
 
-## 武器开火：本卡只到「打出一发占位弹」+ 累积 Heat，**不结算任何伤害**（PET-65）。
-## Heat 封顶在 MAX_HEAT：本卡不做 Overheat（PET-66），但读数格只有三位，不封顶会溢出成四位数。
+## 武器开火：打出一发（伤害结算在 combat_simulation.gd）+ 累积 Heat。
+##
+## Overheat 期间**根本不开火** —— 节点照旧被点亮（信号确实走到了那里），但没有弹丸、没有伤害。
+## 这就是过热的代价：机器越猛，停火时漏掉的敌人越多。Heat 同时封顶在 MAX_HEAT，
+## 读数格只有三位，不封顶会溢出成四位数。
 func _fire(weapon_id: StringName) -> void:
+	if _overheated:
+		return
 	_fired[weapon_id] = _tick_index
 	_heat = minf(_heat + HEAT_PER_SHOT, MAX_HEAT)
 	weapon_fired.emit(weapon_id)
 	heat_changed.emit(_heat)
+	if _heat >= MAX_HEAT:
+		_overheated = true
+		overheat_started.emit()
+
+
+## 过热后的冷却。每拍降 COOL_PER_TICK，降到 0 即恢复开火。
+## 冷却期间照旧广播绝对值 —— 读数格要能看着它掉下来，否则玩家只看到「100% 卡住不动」。
+func _cool() -> void:
+	if not _overheated:
+		return
+	_heat = maxf(_heat - COOL_PER_TICK, 0.0)
+	heat_changed.emit(_heat)
+	if _heat <= 0.0:
+		_overheated = false
+		overheat_ended.emit()
 
 
 func _light(node_id: StringName) -> void:
@@ -234,6 +273,11 @@ func tick_index() -> int:
 ## 当前 Heat 绝对值（0..MAX_HEAT）。06 §8.1 的 `热量` 读数取它。
 func heat() -> float:
 	return _heat
+
+
+## 是否正处于 Overheat（武器停火、正在冷却）。
+func is_overheated() -> bool:
+	return _overheated
 
 
 ## 机器里有没有信号源。没有 CORE 时这台机器一 tick 都不会动，

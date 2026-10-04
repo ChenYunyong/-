@@ -49,7 +49,12 @@ const STATUS_BAR_SHARE: float = 0.25
 ## 06 §8.1（v0.1.10，Codex 裁定）的 5 个只读读数块，独立复写一遍
 ## （期望值若与被测实现同源，实现改错时两边一起错）。
 const READOUT_CAPTIONS: PackedStringArray = ["波次", "CORE", "热量", "能量", "队列"]
-const READOUT_VALUES: PackedStringArray = ["1/1", "100%", "0%", "0%", "0项"]
+## `波次` 的期望值是 `1/3`：06 §8.1 的表里写的是 `1/1`，那是一局只有一波时期冻结的**占位值**；
+## FIRST PLAYABLE 4/4 起一局三波，这一格由 combat_screen.gd 在 _ready() 里按
+## RunState 的当前波次拼成 `n/N`，故经路由进入后看到的是第 1 波第 1 帧的 `1/3`。
+## 那个 3 刻意写死在这里而不是问 RunState 要（本文件不引用 Autoload 标识符）——
+## 它要钉的正是「总数真的是 3」，与 RunState.TOTAL_WAVES 对不上时这条会当场转红。
+const READOUT_VALUES: PackedStringArray = ["1/3", "100%", "0%", "0%", "0项"]
 ## 06 §8.1 硬规则 1：热量与能量必须分格，故各自是一个独立节点。
 const SPLIT_READOUTS: PackedStringArray = ["Heat", "Energy"]
 ## 06 §8.1 硬规则 2：CORE 用百分比读数，不用自然语言状态词。

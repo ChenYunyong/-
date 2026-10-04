@@ -1,8 +1,10 @@
 ## result_screen.gd
 ## 职责：RESULT 场景（03 §1 状态图、06 §10）—— 本局结算的**展示落点**与两个出口。
 ##       展示落点：本局坚持到第几波、本局随机种子（03 §6「种子可展示在结算界面」）。
-##       出口：「再来一局」经 GameFlow 回 PREPARATION，「返回主菜单」经 GameFlow 回 MAIN_MENU。
-##       **本批只做骨架与布局，不含任何玩法统计。**
+##       出口：「再来一局」经 GameFlow 回 PREPARATION 并**开新的一局**（波次复位），
+##       「返回主菜单」经 GameFlow 回 MAIN_MENU。
+##       本批（FIRST PLAYABLE 4/4）接上真实波次：坚持波数取自 RunState.current_wave()（03 §3），
+##       界面仍然**只显示不算** —— 计分 / 掉落结算 / 局外成长依旧属 Stage 4 的 S4-08。
 ## 所属系统：ui
 ## 依赖：GameFlow、RunState、ResultLayout、PanelTitleBar、MessagePanel、Palette、InputScreen
 ## 禁止：本文件不得调用 change_scene_to_file() —— 场景路由只能由 GameFlow 落地（03 §1.1 R3）；
@@ -13,7 +15,8 @@
 ##       _physics_process，见 03 §2 与 00 §5 交互硬规则第 1 条）—— 进入 RESULT 后永远等玩家，
 ##       不倒计时、不自动回主菜单；
 ##       不得实现任何玩法统计（波次计分 / 掉落结算 / 局外成长属 Stage 4 的 S4-08）——
-##       本文件只把 set_result() 递进来的两个读数摆到界面上，一个数都不算。
+##       本文件只把读数摆到界面上，一个数都不算：波次取自 RunState（进度的唯一来源），
+##       种子取自 RunState（03 §6），本文件不累加、不推断、不回写。
 
 extends InputScreen
 
@@ -30,8 +33,11 @@ const NOTICE_DISMISS: String = "点击任意处关闭"
 const NOTICE_MAIN_MENU: String = "主菜单（MAIN_MENU）的路由未就绪，本次留在结算界面。"
 const NOTICE_PREPARATION: String = "整备场景（PREPARATION）的路由未就绪，本次留在结算界面。"
 
-## Stage 4 的 S4-08 才有真实波次数据（RunState 目前不记录波次，03 §6 也不要求它记）。
-## 本批给一个占位读数，保证「坚持到第几波」这个落点现在就在；接入时由 set_result() 传入真值。
+## 波次读数的**兜底值**：一次都没开过局时 RunState 也报第 1 波（RunState.FIRST_WAVE），两者同值。
+##
+## 保留这个常数而不是把 1 写进各处：它是 set_result() 注入之前界面上那个值的唯一来源，
+## 也是 tests/integration/result_smoke.gd 引用期望值的地方 —— 真实值由 _ready() 从
+## RunState.current_wave() 取，本文件不自己算一个波次出来。
 const WAVE_PLACEHOLDER: int = 1
 
 @onready var _backdrop: ColorRect = %Backdrop
@@ -58,9 +64,11 @@ func _ready() -> void:
 	_title_bar.set_title_key(TITLE_KEY)
 	_button_menu.pressed.connect(_on_menu_pressed)
 	_button_retry.pressed.connect(_on_retry_pressed)
-	# 03 §6：随机种子由 RunState 逐局记录，结算界面展示它是**规范点名**的用途。
-	# 这里读的正是那一份，不另建第二份来源 —— 界面只读不回写。
-	set_result(WAVE_PLACEHOLDER, RunState.get_run_seed())
+	# 两个读数都取自 RunState 那一份（03 §3 的进度、03 §6 的种子），不另建第二份来源 ——
+	# 界面只读不回写。波次在这里读得正是时候：本局已在 COMBAT 里 end_run()，
+	# 而 end_run() **刻意保留结束时的波次**（复位归 start_run()），于是这里拿到的就是
+	# 「坚持到第 N 波」的那个 N —— 失败在第 2 波，显示的就是 2，不是最后一波的 3。
+	set_result(RunState.current_wave(), RunState.get_run_seed())
 	# 提示面板可点任意处关闭；键盘导航从「再来一局」起步 —— 它是本屏的主动作（06 §3 的
 	# 主按钮变体），也是玩家在结算界面最可能想按的那一个。焦点本身由 InputScreen
 	# 在第一次方向键时才交出去，默认渲染（Normal 态）不受影响。
@@ -123,8 +131,19 @@ func _on_menu_pressed() -> void:
 
 
 ## 「再来一局」→ PREPARATION（03 §1 状态图 RESULT → PREPARATION）。
+##
+## 除了换场景，它还要**开新的一局**。复位必须发生在这里：RunState.end_run() 刻意保留结束时的波次
+## 给本屏显示，若不复位，下一局会接着上一局的波次打 —— 打满三波的人一进整备就还在第 3 波，
+## 而画面上只看得出「重开之后怎么这么难」，查起来要一路翻到结算界面。波次的复位归 start_run()。
+##
+## 先查路由、通过了才复位：路由没通时玩家留在本屏，此时把进度清掉等于
+## 「点了没反应，还顺手丢掉上一局的记录」。
 func _on_retry_pressed() -> void:
-	_request(GameFlow.GameState.PREPARATION, NOTICE_PREPARATION)
+	if not _is_route_ready(GameFlow.GameState.PREPARATION):
+		_show_notice(NOTICE_PREPARATION)
+		return
+	RunState.start_run()
+	GameFlow.change_state(GameFlow.GameState.PREPARATION)
 
 
 ## 两个出口共用的一条路：先查路由是否就绪，再把状态交给 GameFlow 的单一提交点。
@@ -137,11 +156,17 @@ func _on_retry_pressed() -> void:
 ## 形参走 int 而不是枚举类型：与 combat_screen.gd 的 _is_route_ready 同款，
 ## 跨脚本引用 Autoload 的枚举类型做类型标注会牵出编译期依赖。
 func _request(state: int, notice_key: String) -> void:
-	var target_path: String = GameFlow.get_scene_path_for(state)
-	if target_path.is_empty() or not ResourceLoader.exists(target_path):
+	if not _is_route_ready(state):
 		_show_notice(notice_key)
 		return
 	GameFlow.change_state(state)
+
+
+## 目标场景是否已就绪。查的是 GameFlow 自己登记的 SCENE_ROUTES（唯一路由来源），
+## 不在这里另抄一份路径（同 combat_screen.gd 的同名判断）。
+func _is_route_ready(state: int) -> bool:
+	var target_path: String = GameFlow.get_scene_path_for(state)
+	return not target_path.is_empty() and ResourceLoader.exists(target_path)
 
 
 ## 显示提示。key 为 tr() 的原文 key（暂无翻译表，06 §11）。

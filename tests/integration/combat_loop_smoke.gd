@@ -89,6 +89,9 @@ const MAX_CATCH_UP: int = 5
 ## 墙钟上限：用例不得挂死（同 run_tests.gd 的兜底）。判据是节拍号，不是这个数。
 const WALL_CLOCK_BUDGET_MS: int = 30_000
 
+## 离屏那一幕开一局用的固定种子（03 §6：随机必须可复现；本用例只用它把波次拨回第 1 波）。
+const WAVE_ONE_SEED: int = 20261004
+
 var _ctx: RefCounted = null
 var _h: RefCounted = null
 var _theme: Theme = null
@@ -334,6 +337,17 @@ func _run_pixel_case(written: bool) -> void:
 	if not _ctx.check(view != null and layer != null and field != null and driver != null,
 			"离屏场景应有战场、机器视图、敌人层与节拍器"):
 		return
+	# 这一幕的拍号（第 20 / 74 拍取样、第 82 拍清空）全是**第 1 波**的绝对值，
+	# 而 combat_screen.reload_machine() 是按 RunState 的**当前波次**建仿真的：上面那场路由用例
+	# 清空了一波、把进度推到了 2，不拨回去这一幕打的就会是 6 只敌人的第 2 波 —— 82 拍永远清不完。
+	# end_run() 刻意保留波次（那是 RESULT 的读数来源），复位归 start_run()，两句都要。
+	var run_state: Node = _autoload("RunState")
+	if not _ctx.check(run_state != null, "RunState Autoload 应存在（波次由它决定打哪一波）"):
+		return
+	if bool(run_state.call(&"is_active")):
+		run_state.call(&"end_run")
+	run_state.call(&"start_run", WAVE_ONE_SEED)
+
 	view.set(&"blueprint_path", CLEAR_PATH)
 	scene.call(&"reload_machine")
 	var sim: Object = driver.get(&"combat")
