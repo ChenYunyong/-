@@ -5,6 +5,16 @@
 
 ## [Unreleased]
 
+### PET-71（VB-03）正式组件切片交付与 DSH 复核（2026-10-04）
+
+#### Added
+- **PET-71（VB-03）交付**：Codex 产出 **24 张 token 驱动切片 + 4 张预览**，落 `assets/_review/pending/vb03_component_language/`（含 `asset_manifest.json` · 生成脚本 · README）与 `assets/ui/vb03_component_language/`；已随本提交入库（此前只存在于交付工作区与 PET-71 的 zip 附件）。
+
+#### Notes
+- **DSH 过程复核**：`asset_manifest.json` 的 `constraints` 逐条对上 `13 §10.1` 三修 —— `focus_semantics = BLUE_300 light corner/thin frame`、`selected_semantics = GOLD_500/GOLD_200 primary emphasis`、`type_color_rule = small marker only; unified NAVY card body remains unchanged`；九宫格边距 / 尺寸 / Token 名齐备；`status = pending_dsh_review`，**未**自行进 `_approved/`。
+- **未完成**：Godot 导入设置未生成（未跑编辑器）；`_approved/` 与场景集成随 **PET-70**（须等 PET-66 单写手让位）。**视觉判断仍属 Codex / 用户**，DSH 只核过程与硬约束。
+- `11_TASK_BOARD.md` → **v0.3.5**：PET-71 记 `REVIEW`。
+
 ### 用户第二轮裁定（2026-10-04 05:24 UTC，崩溃线程）：认可第一轮方向、**不接受**「SceneTree 误用 = 崩溃根因」、维持暂停 + 指定下一轮只做调查性实验（DSH 回执）
 
 用户原文要点：

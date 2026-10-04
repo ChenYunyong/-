@@ -1,0 +1,410 @@
+{
+  "batch": "vb03_component_language",
+  "status": "pending_dsh_review",
+  "source_palette": "assets/palette.tres",
+  "pipeline": "pending -> final -> user approval -> approved -> integration",
+  "output_paths": [
+    "assets/_review/pending/vb03_component_language/slices",
+    "assets/ui/vb03_component_language"
+  ],
+  "constraints": {
+    "main_frame_border_px": 3,
+    "title_bar_height_px": 16,
+    "spacing_px": [
+      4,
+      8,
+      12,
+      16,
+      24
+    ],
+    "node_card_px": [
+      24,
+      24
+    ],
+    "inventory_slot_px": [
+      24,
+      24
+    ],
+    "minimum_touch_device_px": [
+      44,
+      44
+    ],
+    "focus_semantics": "BLUE_300 light corner/thin frame",
+    "selected_semantics": "GOLD_500/GOLD_200 primary emphasis",
+    "type_color_rule": "small marker only; unified NAVY card body remains unchanged"
+  },
+  "slices": {
+    "ui_panel_frame_main_96x64.png": {
+      "file": "ui_panel_frame_main_96x64.png",
+      "nine_patch": [
+        3,
+        16,
+        3,
+        3
+      ],
+      "tokens": [
+        "BROWN_500",
+        "BROWN_600",
+        "GOLD_200",
+        "GOLD_600",
+        "NAVY_800",
+        "NAVY_700"
+      ]
+    },
+    "ui_panel_frame_secondary_64x40.png": {
+      "file": "ui_panel_frame_secondary_64x40.png",
+      "nine_patch": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "tokens": [
+        "BROWN_600",
+        "GOLD_200",
+        "NAVY_800"
+      ]
+    },
+    "ui_button_primary_normal_64x20.png": {
+      "file": "ui_button_primary_normal_64x20.png",
+      "nine_patch": [
+        4,
+        4,
+        4,
+        4
+      ],
+      "tokens": [
+        "GOLD_500",
+        "GOLD_600",
+        "GOLD_200",
+        "NAVY_900"
+      ]
+    },
+    "ui_button_primary_hover_64x20.png": {
+      "file": "ui_button_primary_hover_64x20.png",
+      "nine_patch": [
+        4,
+        4,
+        4,
+        4
+      ],
+      "tokens": [
+        "GOLD_400",
+        "GOLD_500",
+        "GOLD_200",
+        "NAVY_900"
+      ]
+    },
+    "ui_button_primary_focus_64x20.png": {
+      "file": "ui_button_primary_focus_64x20.png",
+      "nine_patch": [
+        4,
+        4,
+        4,
+        4
+      ],
+      "tokens": [
+        "GOLD_500",
+        "BLUE_300",
+        "GOLD_200",
+        "NAVY_900"
+      ]
+    },
+    "ui_button_primary_pressed_64x20.png": {
+      "file": "ui_button_primary_pressed_64x20.png",
+      "nine_patch": [
+        4,
+        4,
+        4,
+        4
+      ],
+      "tokens": [
+        "GOLD_600",
+        "NAVY_900"
+      ]
+    },
+    "ui_button_primary_disabled_64x20.png": {
+      "file": "ui_button_primary_disabled_64x20.png",
+      "nine_patch": [
+        4,
+        4,
+        4,
+        4
+      ],
+      "tokens": [
+        "NAVY_800",
+        "NAVY_600",
+        "GREY_500",
+        "BLACK"
+      ]
+    },
+    "ui_button_primary_selected_64x20.png": {
+      "file": "ui_button_primary_selected_64x20.png",
+      "nine_patch": [
+        4,
+        4,
+        4,
+        4
+      ],
+      "tokens": [
+        "GOLD_400",
+        "GOLD_500",
+        "GOLD_200",
+        "GOLD_600",
+        "NAVY_900"
+      ]
+    },
+    "ui_node_card_core_24.png": {
+      "file": "ui_node_card_core_24.png",
+      "size": [
+        24,
+        24
+      ],
+      "tokens": [
+        "NAVY_700",
+        "BROWN_600",
+        "GOLD_400",
+        "BLUE_100",
+        "NAVY_900",
+        "NAVY_600"
+      ]
+    },
+    "ui_node_card_function_24.png": {
+      "file": "ui_node_card_function_24.png",
+      "size": [
+        24,
+        24
+      ],
+      "tokens": [
+        "NAVY_700",
+        "BROWN_600",
+        "BLUE_400",
+        "BLUE_100",
+        "BLUE_300",
+        "NAVY_900",
+        "NAVY_600"
+      ]
+    },
+    "ui_node_card_weapon_24.png": {
+      "file": "ui_node_card_weapon_24.png",
+      "size": [
+        24,
+        24
+      ],
+      "tokens": [
+        "NAVY_700",
+        "BROWN_600",
+        "ORANGE_500",
+        "GOLD_500",
+        "BLUE_300",
+        "NAVY_900",
+        "NAVY_600"
+      ]
+    },
+    "ui_node_card_focus_24.png": {
+      "file": "ui_node_card_focus_24.png",
+      "size": [
+        24,
+        24
+      ],
+      "tokens": [
+        "NAVY_700",
+        "BROWN_600",
+        "BLUE_300",
+        "BLUE_400",
+        "BLUE_100"
+      ]
+    },
+    "ui_node_card_selected_24.png": {
+      "file": "ui_node_card_selected_24.png",
+      "size": [
+        24,
+        24
+      ],
+      "tokens": [
+        "NAVY_700",
+        "GOLD_500",
+        "GOLD_200",
+        "GOLD_400",
+        "BLUE_100"
+      ]
+    },
+    "ui_inventory_slot_normal_24.png": {
+      "file": "ui_inventory_slot_normal_24.png",
+      "size": [
+        24,
+        24
+      ],
+      "tokens": [
+        "NAVY_800",
+        "BROWN_600",
+        "NAVY_600"
+      ]
+    },
+    "ui_inventory_slot_focus_24.png": {
+      "file": "ui_inventory_slot_focus_24.png",
+      "size": [
+        24,
+        24
+      ],
+      "tokens": [
+        "NAVY_800",
+        "BROWN_600",
+        "BLUE_300"
+      ]
+    },
+    "ui_inventory_slot_selected_24.png": {
+      "file": "ui_inventory_slot_selected_24.png",
+      "size": [
+        24,
+        24
+      ],
+      "tokens": [
+        "NAVY_800",
+        "BROWN_600",
+        "GOLD_500",
+        "GOLD_200"
+      ]
+    },
+    "ui_inventory_slot_disabled_24.png": {
+      "file": "ui_inventory_slot_disabled_24.png",
+      "size": [
+        24,
+        24
+      ],
+      "tokens": [
+        "NAVY_800",
+        "BROWN_600",
+        "GREY_500",
+        "BLACK"
+      ]
+    },
+    "ui_hud_block_primary_72x24.png": {
+      "file": "ui_hud_block_primary_72x24.png",
+      "nine_patch": [
+        4,
+        4,
+        4,
+        4
+      ],
+      "tokens": [
+        "NAVY_800",
+        "BROWN_600",
+        "BLUE_300",
+        "BLUE_100"
+      ]
+    },
+    "ui_hud_block_secondary_48x20.png": {
+      "file": "ui_hud_block_secondary_48x20.png",
+      "nine_patch": [
+        4,
+        4,
+        4,
+        4
+      ],
+      "tokens": [
+        "NAVY_700",
+        "BROWN_600",
+        "NAVY_600",
+        "GREY_300"
+      ]
+    },
+    "ui_tooltip_panel_120x64.png": {
+      "file": "ui_tooltip_panel_120x64.png",
+      "nine_patch": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "max_width": 120,
+      "tokens": [
+        "NAVY_800",
+        "BROWN_600",
+        "GOLD_400",
+        "BLUE_300",
+        "BLUE_100",
+        "ORANGE_500",
+        "GREY_300"
+      ]
+    },
+    "ui_progress_bar_blue_96x12.png": {
+      "file": "ui_progress_bar_blue_96x12.png",
+      "nine_patch": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "tokens": [
+        "NAVY_800",
+        "BROWN_600",
+        "BLUE_500",
+        "BLUE_100",
+        "BLUE_300"
+      ]
+    },
+    "ui_overlay_focus_32.png": {
+      "file": "ui_overlay_focus_32.png",
+      "nine_patch": [
+        8,
+        8,
+        8,
+        8
+      ],
+      "tokens": [
+        "BLUE_300"
+      ]
+    },
+    "ui_overlay_selected_32.png": {
+      "file": "ui_overlay_selected_32.png",
+      "nine_patch": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "tokens": [
+        "GOLD_500",
+        "GOLD_200"
+      ]
+    },
+    "ui_overlay_disabled_32.png": {
+      "file": "ui_overlay_disabled_32.png",
+      "nine_patch": [
+        4,
+        4,
+        4,
+        4
+      ],
+      "tokens": [
+        "BLACK",
+        "GREY_500"
+      ]
+    }
+  },
+  "previews": [
+    "vb03_component_atlas_preview.png",
+    "vb03_main_menu_preview.png",
+    "vb03_preparation_preview.png",
+    "vb03_combat_preview.png"
+  ],
+  "overflow_checks": {
+    "main_menu": [
+      "Logo stays inside central logo zone; no spill over top frame.",
+      "Right-lower info is reduced to secondary save/version text and does not cross menu column.",
+      "Button stack keeps 4px gaps; focus corners remain inside each 64x20 button frame."
+    ],
+    "preparation": [
+      "Left panel remains inside x=15..88.",
+      "Blueprint work area remains inside x=98..226 and y=8..132.",
+      "Right detail panel remains inside x=226..309.",
+      "Bottom inventory strip remains inside y=132..180; CTA intentionally anchors at x=246..310/y=142..162 per 06 section 7.2."
+    ],
+    "combat": [
+      "Primary HUD blocks occupy top row without touching battlefield core.",
+      "Bottom bar contains weapon blocks only; NEXT stays simple and does not become an enemy gallery.",
+      "Projectile FX uses three-layer FX structure and does not cover CORE/HEAT/WAVE blocks."
+    ]
+  }
+}

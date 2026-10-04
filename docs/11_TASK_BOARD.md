@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.3.4**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.3.5**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -212,7 +212,7 @@
 | PET-67 | **I18N-MIN** UI 中英可切换：Godot CSV 翻译表（中文原文 = key → en）+ 最小语言开关 + 持久化 | Claude | `BACKLOG`（排 PET-63 之后） |
 | PET-68 | **VB-01b** 三张 UI Kit 补英文标签版 + 中英版式容纳结论 | Codex | `REVIEW`（复核：英文版与原图逐字节相同，容纳结论不成立） |
 | PET-69 | **VB-02** UI Kit 组件化制作 + 批准附带小改（含 COMBAT 越框修正） | Codex | `DONE`（用户 2026-10-04 批准组件方向） |
-| PET-71 | **VB-03** 正式组件切图 + `_approved/` 流程（基础组件语言 v1，含 `13 §10` 三修） | Codex | `TODO` |
+| PET-71 | **VB-03** 正式组件切图 + `_approved/` 流程（基础组件语言 v1，含 `13 §10` 三修） | Codex | `REVIEW`（已交付；DSH 过程复核通过，`_approved/` 与场景集成随 PET-70） |
 | PET-70 | **UI-KIT 接入**（MAIN_MENU + COMBAT 结构）：按批准 Kit 建场景结构，placeholder 资源 | Claude | `BACKLOG` |
 
 | — | 退出期资源清点：`palette.gd` / `palette.tres` 未释放（已复核、非阻塞；随下一张触碰该文件的卡一并修） | Claude | `BACKLOG` |
@@ -267,6 +267,8 @@
 > - **`13` 号裁定核对**：敌人在**战场**上（`EnemyLayer` 挂在 `Battlefield` 下），底栏仍只有状态读数（`13 §5` 未被破坏）；两种敌人共用「危险」红、靠 8px / 6px 尺寸与行为区分（不在同一语义里造伪危险等级）；`13 §9.5` 相关的开发期占位文案 `占位战场：…` **保留**（PET-63 的既有用例要求该节点存在），**随正式美术落地时一并清掉**。
 > - **交付方两点待裁定的裁定**：① `NodeData` 缺武器种类字段、`WeaponData.resolve()` 按**显示名**反查 —— **接受**（`02 §9` 允许的降级路径；本卡 ALLOWED FILES 不含 `blueprint_workspace.gd`），但这是 **I18N 的定时炸弹**（PET-67 一改翻译名就会全量落到降级分支），**必须**在 `PET-70` / `PET-67` 开卡时先给 `NodeData` 补 `weapon_kind`、由仓库槽位直接写入；② `combat_loop_smoke.gd` 不登记进 `run_tests.gd` —— **接受**（`tests/integration/` 下 12 个冒烟无一登记，`run_tests.gd` 头注已写明「场景冒烟必须独立进程」）。
 > - **已知非阻塞项**：退出期 `3 ObjectDB / 2 resources` 与基线（`affe14d`）**逐字相同**，非本卡增量。
+
+> **2026-10-04 PET-71（VB-03）交付与复核**：24 张 token 驱动切片 + 4 张预览已入库（`assets/_review/pending/vb03_component_language/` 与 `assets/ui/vb03_component_language/`）。**DSH 只核过程与硬约束**：`asset_manifest.json` 的 `constraints` 逐条对上 `13 §10.1` 三修 —— `focus_semantics = BLUE_300 light corner/thin frame`、`selected_semantics = GOLD_500/GOLD_200 primary emphasis`、`type_color_rule = small marker only; unified NAVY card body remains unchanged`；九宫格边距 / 尺寸 / Token 名列齐；`status` 仍为 `pending_dsh_review`（**未**自行进 `_approved/`）。**视觉判断属 Codex / 用户**。`_approved/` + 场景集成随 **PET-70**（等 PET-66 让位，单写手）。
 
 ## 5. STAGE 3 — CORE / FUNCTION / WEAPON（未开始）
 
