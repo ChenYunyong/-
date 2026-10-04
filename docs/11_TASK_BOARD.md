@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.3.5**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.3.6**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -207,13 +207,13 @@
 | PET-63 | **FP 1/4** 蓝图可编辑：节点拖放 + 连线（CORE→FUNCTION→WEAPON） | Claude | `ACCEPTED`（DSH 独立复核通过，提交 `e40629c`，已推送；证据见本节末注） |
 | PET-64 | **FP 2/4** 机器运行：CORE 信号 + Split/Amplify/Delay + Needle/Bomb/Saw 开火 + 基础 Heat | Claude | `ACCEPTED`（DSH 独立复核通过，提交 `c6e085f`，已推送；证据见本节末注） |
 | PET-65 | **FP 3/4** COMBAT 真实：Slime/Runner 生成推进 + 三武器伤害结算 + 死亡 | Claude | `ACCEPTED`（DSH 独立复核通过，提交 `d122d3d`，已推送；证据见本节末注） |
-| PET-66 | **FP 4/4** 循环闭合：3 波 + REWARD 三选一 + 回 PREPARATION + Overheat | Claude | `TODO`（2026-10-04 DSH 自 `BACKLOG` 提升） |
+| PET-66 | **FP 4/4** 循环闭合：3 波 + REWARD 三选一 + 回 PREPARATION + Overheat | Claude | `ACCEPTED`（DSH 独立复核通过，提交 `84d18e9`，已推送；**FIRST PLAYABLE 完成**，证据见本节末注） |
 | PET-62 | **Visual Batch 01**（并行）：MAIN MENU / PREPARATION / COMBAT UI Kit | Codex | `APPROVED`（有条件批准，见 `13`） |
-| PET-67 | **I18N-MIN** UI 中英可切换：Godot CSV 翻译表（中文原文 = key → en）+ 最小语言开关 + 持久化 | Claude | `BACKLOG`（排 PET-63 之后） |
+| PET-67 | **I18N-MIN** UI 中英可切换：Godot CSV 翻译表（中文原文 = key → en）+ 最小语言开关 + 持久化 | Claude | `BACKLOG`（排 `PET-70` 之后；**开卡前置**：先补 `NodeData.weapon_kind`） |
 | PET-68 | **VB-01b** 三张 UI Kit 补英文标签版 + 中英版式容纳结论 | Codex | `REVIEW`（复核：英文版与原图逐字节相同，容纳结论不成立） |
 | PET-69 | **VB-02** UI Kit 组件化制作 + 批准附带小改（含 COMBAT 越框修正） | Codex | `DONE`（用户 2026-10-04 批准组件方向） |
 | PET-71 | **VB-03** 正式组件切图 + `_approved/` 流程（基础组件语言 v1，含 `13 §10` 三修） | Codex | `REVIEW`（已交付；DSH 过程复核通过，`_approved/` 与场景集成随 PET-70） |
-| PET-70 | **UI-KIT 接入**（MAIN_MENU + COMBAT 结构）：按批准 Kit 建场景结构，placeholder 资源 | Claude | `BACKLOG` |
+| PET-70 | **UI-KIT 接入**（MAIN_MENU + COMBAT 结构）：按批准 Kit 建场景结构，placeholder 资源 | Claude | `TODO`（2026-10-04 DSH 自 `BACKLOG` 提升，单写手；**开卡前置**：先补 `NodeData.weapon_kind`，删掉按显示名反查武器的临时桥） |
 
 | — | 退出期资源清点：`palette.gd` / `palette.tres` 未释放（已复核、非阻塞；随下一张触碰该文件的卡一并修） | Claude | `BACKLOG` |
 
@@ -269,6 +269,18 @@
 > - **已知非阻塞项**：退出期 `3 ObjectDB / 2 resources` 与基线（`affe14d`）**逐字相同**，非本卡增量。
 
 > **2026-10-04 PET-71（VB-03）交付与复核**：24 张 token 驱动切片 + 4 张预览已入库（`assets/_review/pending/vb03_component_language/` 与 `assets/ui/vb03_component_language/`）。**DSH 只核过程与硬约束**：`asset_manifest.json` 的 `constraints` 逐条对上 `13 §10.1` 三修 —— `focus_semantics = BLUE_300 light corner/thin frame`、`selected_semantics = GOLD_500/GOLD_200 primary emphasis`、`type_color_rule = small marker only; unified NAVY card body remains unchanged`；九宫格边距 / 尺寸 / Token 名列齐；`status` 仍为 `pending_dsh_review`（**未**自行进 `_approved/`）。**视觉判断属 Codex / 用户**。`_approved/` + 场景集成随 **PET-70**（等 PET-66 让位，单写手）。
+
+> **2026-10-04 PET-66 验收（`ACCEPTED`，提交 `__SHA__`，DSH 已推送）—— FIRST PLAYABLE 完成** —— DSH **不采信自报**，按卡上写明的 **L2**（`09 §1.1`，**未擅自上 L3**）在交付树的一份**独立副本**上逐项复跑。
+>
+> - **L2 结果（全部 `exit=0` / 失败项 0）**：unit + integration **1943/1943 · 426/426**（`--fixed-fps 600`，headless）；十套场景冒烟 **COMBAT 103/103 · REWARD 165/165 · RESULT 92/92 · PREPARATION 86/86 · input 41/41 · BOOT 31/31 · MAIN_MENU 67/67 · blueprint 79/79 · signal_flow 38/38 · combat_loop 75/75**（后三套**非 headless**，`--resolution 320x180`，真实 GL 渲染）。
+> - **完整循环取证独立复现**：DSH 用自己的窗口重跑重出全部 10 张 `full_loop_*.png` 与联络表，**SHA256 与交付方附件逐张相同**（主菜单 → 整备 → 第 1/2/3 波 → 三选一 → 回整备 → 结算 → 再来一局）；另 8 张 `combat_loop_*` / 4 张 `signal_flow_*` / 蓝图取证图同样**逐张相同** —— 是真实渲染帧，不是重画。
+> - **负向对照（DSH 自选，非交付方那三条）**：① `RunState.advance_wave()` 改成恒不推进 → 完整循环用例 **12 条按名转红**（波次读数 `2/3`·`3/3`、末波判定、末波清空 → RESULT、结算读数与落点）；② `MachineRuntime._fire()` 的过热置位改成永不可达 → **4 条按名转红**（`test_heat` 的触发/广播、`test_signal_flow` 的阈值）；两处恢复后文件 SHA256 与交付方一致、重跑回绿。**新断言不是恒真。**
+> - **一致性核对**：`RunState.TOTAL_WAVES = 3` 与 `CombatSimulation.WAVES` 三张表（4 / 6 / 8 只）的条数由 `full_loop_smoke` 钉住；难度只靠**出怪条数**递增（不动 PET-65 已取证的伤害数值）；第 1 波仍是 PET-65 取证的那四只 `Slime/Runner/Slime/Runner`；`RESULT` 读 `RunState.current_wave()`（`end_run()` **刻意保留**结束时的波次）→「坚持到第 3 波」；「再来一局」`start_run()` 复位到第 1 波。
+> - **卡外改动（4 处，交付方已逐条声明）→ 裁定：接受**：① `scripts/ui/combat_screen.gd` + `scenes/combat/combat.tscn`（`波次` 读数接 `RunState` 拼 `n/3`、本波清空分「非末波 → REWARD / 末波 → RESULT」两条路、开局落在**唯一**读 `RunState` 的玩法场景）；② `tests/unit/test_signal_flow.gd`（旧的「Heat 恒等于 MAX 且单调不减」在 Overheat 落地后**必红**，改为「到阈值确实触发」）；③ `tests/integration/combat_smoke.gd`（`波次` 期望 `1/1` → `1/3`，刻意写死以钉住总数）；④ `tests/integration/combat_loop_smoke.gd`（离屏那一幕先拨回第 1 波）。四处**全部在本卡语义范围内**、`docs/**` · `assets/**` **未触碰**、**未 push**。
+> - **交付方两点待裁定 → 裁定**：① **过热不做独立视觉元素** —— **接受现状**：`06 §8.1` 把状态带冻结成恰好 5 个只读读数块，动它属 UI Kit 接入范畴；过热在画面上的表现 = `热量` 从 100% 掉回 0% + 武器数秒不开火。**把「过热需要可辨识的状态提示」登记为 `PET-70` 的输入项**（**不阻塞**本卡）。② `reward_screen` 只展示并交出 `get_chosen_option()`，**奖励效果**（掉落池 / 稀有度 / 生效）属 S4-07 —— **接受**（卡面写明「选项可以是固定池」）。
+> - **PET-65 登记待办（开卡前置）**：`NodeData` 仍无 `weapon_kind`，`WeaponData.BY_DISPLAY_NAME` 这条**按显示名反查武器**的临时桥仍在（`resolve()` 一旦认不出就 `push_error` + 按 Needle 降级；`PET-67` 一改翻译名即**全量**落到降级分支）。**必须在开 `PET-70` / `PET-67` 时先做**，已写进两卡的开卡前置与本卡关记录。
+> - **环境说明（非本卡缺陷）**：DSH 沙箱下 `user://` 需把 `APPDATA` / `LOCALAPPDATA` / `TEMP` 重定向进工作区（否则 8 条落盘假红），且**必须**先 `--headless --import` 刷类缓存（`09 §4` v0.1.4，否则 `Could not find type "Palette" / "NodeData"` 全线假红）。两者都排除后与交付方自报**逐位吻合**。
+> - **下一步**：**FIRST PLAYABLE 完成 ⇒ 已在 `PET-37` 交用户亲测**（14 步完整循环 Build）；**`PET-70` 提升为 `TODO`**（单写手），`PET-67` 仍 `BACKLOG` 排其后。
 
 ## 5. STAGE 3 — CORE / FUNCTION / WEAPON（未开始）
 

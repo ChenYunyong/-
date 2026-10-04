@@ -5,6 +5,22 @@
 
 ## [Unreleased]
 
+### PET-66 验收（`ACCEPTED`）：FIRST PLAYABLE 完成 —— 循环闭合（2026-10-04）
+
+#### Added
+- **PET-66（FP 4/4）通过 DSH 独立复核 → `ACCEPTED`**（提交 `84d18e9`，已推送）：循环真的闭合 —— 一局 **3 波**（出怪 4 / 6 / 8 只，难度只靠**条数**递增，不动 PET-65 已取证的伤害数值）；清空**非末波** → `RunState.advance_wave()` + `REWARD` **三选一**（核心 / 增幅 / 炸弹，名字与数值取自各自定义处）→ 回 `PREPARATION`（**蓝图原样保留**）→ 再打一波；**末波**清空直接进 `RESULT`（「坚持到第 3 波」读 `RunState.current_wave()`），「再来一局」复位到第 1 波。**基础 Heat / Overheat** 落在 `MachineRuntime` 内部：连续开火每发 `+2`，到 **100** 触发过热（**停火** + 每拍 `−2.5`、40 拍 = 2 秒冷却），冷却到 0 自动恢复、**可重复发生**；过热期间信号照旧抵达节点（节点照旧点亮），停的只是开火。
+- **`PET-70`（UI-KIT 接入）自 `BACKLOG` 提升为 `TODO`**（单写手；开卡前置 = 先补 `NodeData.weapon_kind`）；**`PET-67`（I18N-MIN）仍 `BACKLOG`**，排 `PET-70` 之后。
+- `11_TASK_BOARD.md` → **v0.3.6**：§4.1 记入 PET-66 `ACCEPTED`（含 L2 证据与裁定）与 `PET-70` `TODO`。
+
+#### Notes
+- **复核方式（不采信自报）**：按卡上写明的 **L2**（`09 §1.1`，**未上 L3**）在交付树的**独立副本**上复跑 —— unit + integration **1943/1943 · 426/426**，十套场景冒烟全部 `exit=0` / 失败项 0（COMBAT 103 · REWARD 165 · RESULT 92 · PREPARATION 86 · input 41 · BOOT 31 · MAIN_MENU 67 · blueprint 79 · signal_flow 38 · combat_loop 75；后三套非 headless，`320×180`）。
+- **完整循环取证独立复现**：DSH 自己的窗口重跑产出全部 `full_loop_*.png` + 联络表，**SHA256 与交付附件逐张相同**（含 `combat_loop_*` / `signal_flow_*` / `blueprint_first_playable.png`）—— 真实渲染帧，不是重画。
+- **负向对照**：`advance_wave()` 恒不推进 → 完整循环 **12 条按名转红**；过热置位永不可达 → **4 条按名转红**；恢复后哈希复原、重跑回绿。新断言不是恒真。
+- **裁定**：① 过热不做独立视觉元素 —— **接受现状**（`06 §8.1` 五格冻结；「过热需要可辨识提示」登记为 `PET-70` 输入项，不阻塞）；② 奖励的**效果**属 S4-07，本卡只展示并交出选中项 —— **接受**；③ 四处卡外改动（`combat_screen.gd` · `combat.tscn` · `test_signal_flow.gd` · `combat_smoke.gd` · `combat_loop_smoke.gd`）在语义范围内、无越界 —— **接受**。
+- **开卡前置（PET-65 登记待办）**：`NodeData` 补 `weapon_kind`、删掉 `WeaponData.BY_DISPLAY_NAME` 按显示名反查的临时桥，**必须在 `PET-70` / `PET-67` 开卡时先做**（I18N 一改翻译名即坏）。
+- **环境说明（非本卡缺陷）**：沙箱内需把 `APPDATA` / `LOCALAPPDATA` / `TEMP` 重定向进工作区，并先 `--headless --import` 刷类缓存（`09 §4` v0.1.4），否则会看到 `user://` 落盘与类名解析的环境假红。
+- **里程碑**：**FIRST PLAYABLE 完成** —— 已在 `PET-37` 交用户亲测（「开始 → 蓝图拖节点 → 连线 → 开始战斗 → 敌人推进 → 机器运行 → 武器攻击 → 杀敌 → 三选一 → 回蓝图 → 改机器 → 再打一波」的完整 Build）。
+
 ### PET-71（VB-03）正式组件切片交付与 DSH 复核（2026-10-04）
 
 #### Added
