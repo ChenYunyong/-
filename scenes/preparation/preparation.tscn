@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/preparation_screen.gd" id="1_prep"]
 [ext_resource type="Theme" path="res://assets/ui/theme_main.tres" id="2_theme"]
 [ext_resource type="PackedScene" path="res://scenes/components/message_panel.tscn" id="3_notice"]
+[ext_resource type="Script" path="res://scripts/ui/blueprint_workspace.gd" id="4_workspace"]
 
 [node name="Preparation" type="Control"]
 layout_mode = 3
@@ -147,6 +148,7 @@ mouse_filter = 2
 theme_type_variation = &"PanelSecondary"
 
 [node name="Title" type="Label" parent="RegionCenter"]
+visible = false
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -162,6 +164,15 @@ text = "蓝图工作区"
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 3
+
+[node name="BlueprintCanvas" type="Control" parent="RegionCenter"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 2.0
+offset_top = 2.0
+offset_right = 126.0
+offset_bottom = 122.0
+script = ExtResource("4_workspace")
 
 [node name="RegionRight" type="Control" parent="."]
 unique_name_in_owner = true
@@ -238,29 +249,15 @@ grow_vertical = 2
 mouse_filter = 2
 theme_type_variation = &"PanelSecondary"
 
-[node name="Slots" type="ScrollContainer" parent="RegionBottom"]
+[node name="NodeWarehouse" type="Control" parent="RegionBottom"]
 unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 8.0
-offset_top = 8.0
-offset_right = -8.0
-offset_bottom = -8.0
-grow_horizontal = 2
-grow_vertical = 2
-horizontal_scroll_mode = 1
-vertical_scroll_mode = 0
-
-[node name="SlotsRow" type="HBoxContainer" parent="RegionBottom/Slots"]
-layout_mode = 2
-theme_override_constants/separation = 28
-
-[node name="Placeholder" type="Label" parent="RegionBottom/Slots/SlotsRow"]
-layout_mode = 2
-text = "节点仓库（占位 · 槽位与拖放属 S2-03）"
-vertical_alignment = 1
+layout_mode = 0
+offset_left = 2.0
+offset_top = 2.0
+offset_right = 229.0
+offset_bottom = 46.0
+script = ExtResource("4_workspace")
+area = 1
 
 [node name="RegionAction" type="Control" parent="."]
 unique_name_in_owner = true

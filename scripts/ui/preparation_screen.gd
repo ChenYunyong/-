@@ -11,9 +11,14 @@
 ##       不得出现任何会自动推进的构造（Timer / create_timer / _process / _physics_process，
 ##       见 03 §2 与 06 §10.1 R1）—— 进入 PREPARATION 后永远等玩家，
 ##       停留任意时长都不会自行进入 COMBAT；
-##       不得实现节点放置 / 连线 / 删除 / 撤销 / 信号传播 / 存档（全部属 Stage 2/3）。
+##       本文件不得自己实现节点放置 / 连线 / 存档 —— 那些在 blueprint_workspace.gd 里，
+##       这里只负责把两个工作区节点摆到 06 §7 的分区矩形上；信号传播 / 校验 / 删除 / 撤销仍属 Stage 3。
 
 extends InputScreen
+
+## 工作区内容与分区那圈 1px 描边之间留的间距。像素探针逐像素断言四条边都在，
+## 内容一旦压上去那圈描边就断了 —— 故画布与仓库都按此内缩后再落位。
+const WORKSPACE_INSET: float = 2.0
 
 ## 提示面板文案。COMBAT 与 RESULT 均已由 S1-08 / S1-10 落地，这里的提示只在**路由故障**时出现
 ## （场景文件缺失 / 路径写错），措辞与 main_menu.gd 的同名提示对齐。
@@ -30,6 +35,8 @@ const NOTICE_RESULT: String = "结算场景（RESULT）的路由未就绪，本�
 @onready var _region_action: Control = %RegionAction
 @onready var _button_start_combat: Button = %ButtonStartCombat
 @onready var _notice_panel: MessagePanel = %NoticePanel
+@onready var _blueprint_canvas: Control = %BlueprintCanvas
+@onready var _node_warehouse: Control = %NodeWarehouse
 
 ## 五个分区容器，下标即 PreparationLayout.Region。顺序必须与场景里的节点顺序一致。
 var _regions: Array[Control] = []
@@ -91,6 +98,10 @@ func apply_layout_for(viewport_size: Vector2) -> void:
 	# CTA 的落位见 PreparationLayout.action_button_rect 的说明（§7 的 14px 区块装不下按钮）。
 	_place(_button_start_combat, PreparationLayout.action_button_rect(
 		rects[PreparationLayout.Region.ACTION], _button_start_combat.get_combined_minimum_size()))
+	# 蓝图工作区：画布占中栏，节点仓库占底条。两者都从分区矩形内缩，让开那圈 1px 描边。
+	# 放在 CTA 之后：仓库要让开 CTA，得先知道 CTA 落在哪。
+	_place(_blueprint_canvas, _inset(rects[PreparationLayout.Region.CENTER]))
+	_place(_node_warehouse, _warehouse_rect(rects[PreparationLayout.Region.WAREHOUSE]))
 
 
 func _on_resized() -> void:
@@ -150,7 +161,32 @@ func _on_back_requested() -> bool:
 	return true
 
 
-## 把分区贴到矩形上。分区都是场景根下的普通 Control（非容器），故直接给位置与尺寸。
+## 把分区 / 内容贴到矩形上。分区都是普通 Control（非容器），故直接给位置与尺寸。
+##
+## 传进来的矩形一律是**视口坐标**（PreparationLayout 与 06 §7 的实测值都是视口坐标），
+## 而控件的位置是**相对父级**的。分区自己就带偏移 —— RegionCenter 在 (98,8)、RegionBottom 在 (15,132) ——
+## 挂在其下的画布与仓库若照抄视口坐标，就会再叠一次父级偏移，内容整体跑出屏幕
+## （画布会从 x=198 一直画到 322，而基准视口只有 320 宽）。故这里统一减掉父级偏移；
+## 父级是场景根时它的位置是 (0,0)，这一步是恒等变换，五个分区与 CTA 的落位不受影响。
 func _place(control: Control, rect: Rect2) -> void:
-	control.position = rect.position
+	var parent: Control = control.get_parent() as Control
+	var origin: Vector2 = parent.position if parent != null else Vector2.ZERO
+	control.position = rect.position - origin
 	control.size = rect.size
+
+
+## 分区内容的内缩（见 WORKSPACE_INSET）。尺寸被内缩吃光时给 0，不给负值。
+func _inset(rect: Rect2) -> Rect2:
+	var margin := Vector2(WORKSPACE_INSET, WORKSPACE_INSET)
+	return Rect2(rect.position + margin, (rect.size - margin * 2.0).max(Vector2.ZERO))
+
+
+## 节点仓库的可用矩形：底条内缩后再让开右下角的 CTA。
+## 06 §7 里 CTA 区块本就压在底条右端上，仓库不能画到按钮底下 —— 那会既看不见也点不到。
+## 窄屏（§7.1）底条只有 180px 宽、CTA 独取 44px，仓库因此只剩 CTA 左侧一段；
+## 那一段放得下几个槽位由 blueprint_workspace.gd 按宽度自己算，不在布局层写死。
+func _warehouse_rect(rect: Rect2) -> Rect2:
+	var body: Rect2 = _inset(rect)
+	var limit: float = _button_start_combat.position.x - WORKSPACE_INSET
+	body.size.x = maxf(body.size.x - maxf(body.end.x - limit, 0.0), 0.0)
+	return body
