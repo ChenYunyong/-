@@ -5,6 +5,19 @@
 
 ## [Unreleased]
 
+### 三张 UI Kit 正式裁定：有条件批准 + `13` 号视觉裁定落盘（2026-10-04）
+
+#### Added
+- **`docs/13_VISUAL_RULING.md`（新建）**：把用户对 MAIN_MENU / PREPARATION / COMBAT 的第一版正式视觉方向固化为**可执行硬约束**（视觉核心 · 角色与吉祥物禁止项 · 三屏逐屏裁定 · COMBAT 信息层级 · 三屏统一与色值规则 · Codex 组件化 / Claude 结构先行 · 优先级）。
+- **PET-69 → VB-02**（Codex）：转入**组件化制作**（Panel / Button 五态 / Node Card / Inventory Slot / HUD Block / Tooltip / Progress Bar / Frame / Selected / Disabled），**先给关键组件预览**；并入批准附带小改（MAIN MENU 四项 · COMBAT 层级 · **COMBAT 越框修正**）。
+- **PET-70**（Claude）：按批准 Kit 建 **MAIN_MENU + COMBAT** 场景结构（placeholder 资源，批准后替换）；COMBAT 先做 HUD / Machine / 底栏 信息层级整理。
+- `11_TASK_BOARD.md` → **v0.2.8**：记入裁定、PET-62 转 `APPROVED`、PET-69 改列 VB-02、新增 PET-70。
+
+#### Notes
+- 裁定明确：当前视觉核心 = **蓝图 · 节点 · 机器 · 自动战斗 · 日式Q版像素机械世界**；**不确立固定主角 / 吉祥物 / 陪伴系统 / 剧情角色**，参考图里的人物与猫咪只是构图元素。
+- 优先级重申：`FIRST PLAYABLE > UI 细节打磨 > 大量正式美术`；不得因一个边框 / 图标 / 色差 / 按钮阻塞玩法。
+- 本轮同时状态：**PET-63（FP 1/4 蓝图拖放 + 连线）已交付**（自报 L1 unit 1625 · integration 356 · PREPARATION 冒烟 86 · 蓝图冒烟 79）；**PET-68 已交付**（复核发现英文版为逐字节副本，容纳结论不成立）。
+
 ### VB-01c 建卡：COMBAT 图块越框修正（用户实测反馈，2026-10-04）
 
 #### Added

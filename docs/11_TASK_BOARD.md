@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.2.7**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.2.8**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -190,14 +190,15 @@
 | 卡 | 内容 | 负责人 | 状态 |
 |---|---|---|---|
 | PET-61 | **ENGINE-4.7.2**：Godot 4.7.1 → 4.7.2 + 新基线（前置） | Claude | `ACCEPTED` |
-| PET-63 | **FP 1/4** 蓝图可编辑：节点拖放 + 连线（CORE→FUNCTION→WEAPON） | Claude | `IN_PROGRESS`（已开工） |
+| PET-63 | **FP 1/4** 蓝图可编辑：节点拖放 + 连线（CORE→FUNCTION→WEAPON） | Claude | `REVIEW`（已交付并自报 L1 全绿；待 DSH 独立复核） |
 | PET-64 | **FP 2/4** 机器运行：CORE 信号 + Split/Amplify/Delay + Needle/Bomb/Saw 开火 + 基础 Heat | Claude | `BACKLOG` |
 | PET-65 | **FP 3/4** COMBAT 真实：Slime/Runner 生成推进 + 三武器伤害结算 + 死亡 | Claude | `BACKLOG` |
 | PET-66 | **FP 4/4** 循环闭合：3 波 + REWARD 三选一 + 回 PREPARATION + Overheat | Claude | `BACKLOG` |
-| PET-62 | **Visual Batch 01**（并行）：MAIN MENU / PREPARATION / COMBAT UI Kit，先给用户预览 | Codex | `REVIEW`（三张预览已出，待用户批准） |
+| PET-62 | **Visual Batch 01**（并行）：MAIN MENU / PREPARATION / COMBAT UI Kit | Codex | `APPROVED`（有条件批准，见 `13`） |
 | PET-67 | **I18N-MIN** UI 中英可切换：Godot CSV 翻译表（中文原文 = key → en）+ 最小语言开关 + 持久化 | Claude | `BACKLOG`（排 PET-63 之后） |
-| PET-68 | **VB-01b** 三张 UI Kit 补英文标签版 + 中英版式容纳结论 | Codex | `IN_PROGRESS` |
-| PET-69 | **VB-01c** COMBAT 图块越框修正 + 三张 Kit 版式自检（用户实测反馈） | Codex | `BACKLOG`（PET-68 完成后自动提升） |
+| PET-68 | **VB-01b** 三张 UI Kit 补英文标签版 + 中英版式容纳结论 | Codex | `REVIEW`（复核：英文版与原图逐字节相同，容纳结论不成立） |
+| PET-69 | **VB-02** UI Kit 组件化制作 + 批准附带小改（含 COMBAT 越框修正） | Codex | `IN_PROGRESS` |
+| PET-70 | **UI-KIT 接入**（MAIN_MENU + COMBAT 结构）：按批准 Kit 建场景结构，placeholder 资源 | Claude | `BACKLOG` |
 
 | — | 退出期资源清点：`palette.gd` / `palette.tres` 未释放（已复核、非阻塞；随下一张触碰该文件的卡一并修） | Claude | `BACKLOG` |
 
@@ -213,6 +214,8 @@
 **FIRST PLAYABLE 验收（用户亲测）**：开始 → 蓝图拖节点 → 连线 → 开始战斗 → 敌人推进 → 机器运行 → 武器攻击 → 杀敌 → 三选一 → 回蓝图 → 改机器 → 再打一波。任一步是假界面即不算完成。
 
 > **2026-10-04 更新**：**PET-61 已验收 —— Godot 4.7.2 成为新基线**（4.7.2 引擎 + 完整导出模板已落 D:/E:，4.7.1 原样保留可回滚；L3 十项全绿、ERROR/WARNING 零增量、Web Debug 导出通过、像素缩放 4× 整数）。**PET-60 转为「已通过引擎升级规避 / 等待长期观察」**：保持 OPEN、崩溃记录不删、不再主动投入。**PET-63 已开工**。
+
+> **2026-10-04 三张 UI Kit 正式裁定**：**有条件批准（APPROVED WITH MINOR REVISIONS）** —— 完整硬约束见 **`13_VISUAL_RULING.md`**（新建）。PREPARATION **通过**（优先；PET-63 已交付待复核）；MAIN_MENU **小改后接入**（PET-70）；COMBAT **先整理信息层级再接入**（PET-70）。Codex 转**组件化**（PET-69 → VB-02）。**硬约束：不得擅自增加 主角 / 吉祥物 / 陪伴系统 / 剧情角色**（`13 §2`）。优先级：`FIRST PLAYABLE > UI 细节打磨 > 大量正式美术`。
 
 ## 5. STAGE 3 — CORE / FUNCTION / WEAPON（未开始）
 
