@@ -1,8 +1,10 @@
 ## blueprint_workspace.gd
 ## 职责：整备界面的蓝图工作区（FIRST PLAYABLE 1/4）—— 节点仓库拖出、画布网格吸附与连线、存 / 读；
-##       外加战斗界面的**只读机器视图**（FIRST PLAYABLE 2/4）—— 把机器画出来、把运行时状态画成可见反馈。
+##       外加战斗界面的**只读机器视图**（FIRST PLAYABLE 2/4）—— 把机器画出来、把运行时状态画成可见反馈；
+##       外加把 REWARD 选中的奖励落到画布（S4-07 最小版，见 add_reward_node）。
 ## 所属系统：ui
-## 依赖：Palette、BlueprintData / NodeData / ConnectionData、SignalPulse、MachineRuntime（只读，仅 VIEWER 角色）
+## 依赖：Palette、Settings（只订阅语言变化，用于重画）、BlueprintData / NodeData / ConnectionData、
+##       SignalPulse、MachineRuntime（只读，仅 VIEWER 角色）
 ## 禁止：不得判断任何原始输入事件类型 —— 拖放一律交给 Godot 原生 drag-and-drop
 ##       （_get_drag_data / _can_drop_data / _drop_data 都不接 InputEvent），
 ##       于是鼠标与触摸天然走同一条代码路径，03 §8「原始事件只在 input_normalizer.gd 翻译」不被破坏；
@@ -112,6 +114,11 @@ func _ready() -> void:
 	_blueprint = BlueprintData.new()
 	# 尺寸由 apply_layout_for 给，槽位与卡片都按 size 现算不缓存，故改尺寸只需重画。
 	resized.connect(_on_resized)
+	# 仓库槽位名要经 tr() 出字（06 §11），而 draw_string 画的是**当时那种语言**的成品 ——
+	# 切了语言不重画，那 7 个标签就一直停在旧译文上（S4-07 实测：英文态下仍是中文）。
+	# 订阅的是「设置项变了」这个事实，判的是 key，不是「现在是哪种语言」——
+	# 本文件因此不含任何语言分支（06 §11）。
+	Settings.setting_changed.connect(_on_setting_changed)
 	if area == Area.WAREHOUSE:
 		return
 	if area == Area.VIEWER:
@@ -129,6 +136,13 @@ func _on_resized() -> void:
 	if _awaiting_size and size.x > 0.0 and size.y > 0.0:
 		_awaiting_size = false
 		_relayout()
+
+
+## 语言变了就重画。只认 KEY_LOCALE 一个 key —— 别的设置项（音量之类）与画面无关，
+## 跟着重画只是白费一次绘制。
+func _on_setting_changed(key: StringName) -> void:
+	if key == Settings.KEY_LOCALE:
+		queue_redraw()
 
 
 ## 当前蓝图。只读用途：测试与后续系统（信号传播 / 校验）都从这里取，不另开访问路径。
@@ -199,7 +213,16 @@ func _draw_warehouse() -> void:
 			# 名称不画在卡片上（06 §4：24px 放不下可读中文，名称归 Tooltip 与右侧详情面板）。
 			# 仓库槽位底下这一行是本卡唯一的名称落点，用 §1 的正文字号下限 8px。
 			draw_string(font, Vector2(rect.position.x, rect.end.y + LABEL_FONT_SIZE),
-				String(entry["name"]), HORIZONTAL_ALIGNMENT_CENTER, CARD, LABEL_FONT_SIZE, text_color)
+				warehouse_label(entry), HORIZONTAL_ALIGNMENT_CENTER, CARD, LABEL_FONT_SIZE, text_color)
+
+
+## 仓库槽位底下那行标签的文本（06 §11：文本走 key，key 即中文原文）。
+##
+## tr() 在这里、而不是在 _draw_warehouse 的调用点上：换成 draw_string(..., tr(...), ...)
+## 也跑得通，但那样测试只能靠扫源码才问得出「翻译了没」；收成一个纯函数之后，
+## 「切到英文时这 7 个标签读出什么」当场就能断言（见 test_i18n.gd 的同名用例）。
+static func warehouse_label(entry: Dictionary) -> String:
+	return String(TranslationServer.translate(String(entry["name"])))
 
 
 ## 06 §4：底色 NAVY_700、外框 1px BROWN_600、左上 4×4 类型标识、左右各一个 3×3 端口。
@@ -323,6 +346,55 @@ func _add_node(kind: int, display_name: String, at: Vector2,
 	_boxes[node.id] = _snapped(at)
 	_save_blueprint()
 	queue_redraw()
+
+
+## 把一项奖励落到画布（S4-07 最小版：三选一**真的生效**）。返回落下的节点，没落则 null。
+##
+## 三列类型**原样取自载荷**，载荷又取自 WAREHOUSE 那一行 —— 本函数不按显示名 / 文案反推类型，
+## 也不认识「核心 / 炸弹」这些名字：它只认那份载荷。PET-70 刚删掉按显示名反查那条路，
+## 在这里重开一次等于把玩家选的东西悄悄换成别的。
+##
+## 落点是画布内**第一个空闲格**（行优先，自左上起），确定、可复现，且**不覆盖任何既有节点**
+## （03 §6：随机只能来自 RunState，而这里连随机都不需要）。
+## 落完立即经既有 _save_blueprint() 落盘，故重进场景 / 重启游戏都还在。
+##
+## 画布填满时**不落**并返回 null（02 §9 的降级路径）：宁可少给一个节点，
+## 也不能把玩家的图覆盖掉 —— 前者只是奖励没拿到，后者是把人做好的机器拆了。
+func add_reward_node(reward: Dictionary) -> NodeData:
+	if area != Area.CANVAS or reward.is_empty():
+		return null
+	var cell: Rect2 = _first_free_cell()
+	if cell.size.x <= 0.0:
+		return null
+	_add_node(int(reward["kind"]), String(reward["name"]),
+		cell.position + Vector2(CARD, CARD) * 0.5,
+		int(reward["function_kind"]), int(reward["weapon_kind"]))
+	return _blueprint.nodes[_blueprint.nodes.size() - 1]
+
+
+## 画布内第一个空闲格（行优先）。尺寸取不到或一格都放不下时返回零矩形。
+##
+## 上限按 `size - CARD` 算，与 _snapped 的夹取同式：格子必须整张卡都落在画布内，
+## 否则最后一行 / 最后一列会有一半在画布外。
+func _first_free_cell() -> Rect2:
+	var limit: Vector2 = (size - Vector2(CARD, CARD)).max(Vector2.ZERO)
+	var columns: int = int(floorf(limit.x / GRID)) + 1
+	var rows: int = int(floorf(limit.y / GRID)) + 1
+	for row: int in rows:
+		for column: int in columns:
+			var cell := Rect2(Vector2(float(column), float(row)) * GRID, Vector2(CARD, CARD))
+			if not _is_occupied(cell):
+				return cell
+	return Rect2()
+
+
+## 这一格是否已被占用。Rect2.intersects() 对**只贴边**的两张卡返回 false，
+## 故相邻两格（中心距 24px）不算重叠 —— 正是 06 §4 网格该有的语义。
+func _is_occupied(cell: Rect2) -> bool:
+	for node_id: StringName in _boxes:
+		if (_boxes[node_id] as Rect2).intersects(cell):
+			return true
+	return false
 
 
 ## 落点吸附到 24px 网格（06 §4），并以落点为卡片中心；再夹回画布内，免得卡片被拖出可视区。

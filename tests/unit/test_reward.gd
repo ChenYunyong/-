@@ -22,6 +22,8 @@ const LAYOUT_SCRIPT_PATH: String = "res://scripts/ui/reward_layout.gd"
 const OPTION_SCRIPT_PATH: String = "res://scripts/ui/reward_option.gd"
 const FLOW_SCRIPT_PATH: String = "res://scripts/core/game_flow.gd"
 const PALETTE_SCRIPT_PATH: String = "res://scripts/data/palette.gd"
+const WORKSPACE_SCRIPT_PATH: String = "res://scripts/ui/blueprint_workspace.gd"
+const NODE_DATA_PATH: String = "res://scripts/data/node_data.gd"
 
 ## 06 §1 基准与 §7.1 的窄屏取样。
 const REFERENCE_VIEWPORT: Vector2 = Vector2(320.0, 180.0)
@@ -70,6 +72,7 @@ func run(ctx: RefCounted, _tree: SceneTree) -> void:
 	_run_narrow_layout_checks(ctx)
 	_run_touch_size_checks(ctx)
 	_run_option_checks(ctx)
+	_run_payload_checks(ctx)
 	_run_icon_color_checks(ctx)
 
 	var resource: Resource = ResourceLoader.load(SCENE_PATH)
@@ -255,6 +258,97 @@ func _run_option_checks(ctx: RefCounted) -> void:
 		ctx.check(not option.name_key.is_empty() and not option.type_key.is_empty()
 			and not option.value_key.is_empty() and not option.rule_key.is_empty(),
 			"第 %d 个占位选项的四个文字展示位都要有落点" % (index + 1))
+
+
+## S4-07 最小版：三选一**真的落到蓝图**。这一条查的是「选项 -> 落地载荷」这段映射。
+##
+## 它是本卡唯一一处「玩家点的那一项」与「画布上长出什么」之间的接缝，而接缝错了在画面上
+## 完全看不出来：卡面照样是三张、画布照样多一个节点，只有类型悄悄换了。
+## 故这里逐项对死：载荷的三列必须**逐字等于**仓库那一行，且卡面的名字与落地的名字一致。
+func _run_payload_checks(ctx: RefCounted) -> void:
+	ctx.begin_case("REWARD · 选项与落地载荷（S4-07 最小版）")
+	var screen_script: GDScript = load(SCREEN_SCRIPT_PATH)
+	var workspace_script: GDScript = load(WORKSPACE_SCRIPT_PATH)
+	var kinds: GDScript = load(NODE_DATA_PATH)
+	var option_script: GDScript = load(OPTION_SCRIPT_PATH)
+	if not ctx.check(screen_script != null and workspace_script != null and kinds != null
+			and option_script != null, "reward_screen / blueprint_workspace / node_data 应能加载"):
+		return
+
+	var slots: Array = screen_script.OPTION_SLOTS
+	var warehouse: Array = workspace_script.WAREHOUSE
+	if not ctx.check(slots.size() == 3, "三个选项应各对应一个仓库槽位（实得 %d）" % slots.size()):
+		return
+
+	var defaults: Array[RewardOption] = screen_script.default_options()
+	ctx.equal(defaults.size(), slots.size(), "选项数与槽位数应一致")
+	for index: int in slots.size():
+		var slot: int = int(slots[index])
+		if not ctx.check(slot >= 0 and slot < warehouse.size(),
+				"第 %d 个选项对应的槽位应存在（实际 %d）" % [index + 1, slot]):
+			continue
+		var entry: Dictionary = warehouse[slot]
+		var payload: Dictionary = screen_script.reward_payload(slot)
+		# 三列类型逐字对照：载荷是仓库那一行的**转写**，不是重新算出来的一份。
+		ctx.equal(int(payload["kind"]), int(entry["kind"]), "第 %d 项落地的节点类型" % (index + 1))
+		ctx.equal(int(payload["function_kind"]), int(entry["function_kind"]),
+			"第 %d 项落地的 function_kind" % (index + 1))
+		ctx.equal(int(payload["weapon_kind"]), int(entry["weapon_kind"]),
+			"第 %d 项落地的 weapon_kind" % (index + 1))
+		ctx.equal(String(payload["name"]), String(entry["name"]), "第 %d 项落地的显示名" % (index + 1))
+		# 卡面上的名字与落地后的名字必须逐字相同：玩家照着卡面做决定，两处漂开就是「说一套做一套」。
+		ctx.equal(defaults[index].name_key, String(payload["name"]),
+			"第 %d 项的卡面名字与落地名字" % (index + 1))
+
+	# 三个选项的类型各不相同，且与卡面的 Kind 一一对应 —— 仓库表重排时这里当场转红。
+	var expected: Array[int] = [option_script.Kind.CORE, option_script.Kind.FUNCTION,
+		option_script.Kind.WEAPON]
+	for index: int in expected.size():
+		ctx.equal(int(defaults[index].kind), expected[index], "第 %d 项的卡面类型" % (index + 1))
+
+	# 真正会走的那一段：玩家点下去时，屏幕按**选项本身**问它落什么。
+	# 上面对的是「槽位号 -> 载荷」这张表；表全绿而这条线断掉的写法有的是 ——
+	# 本卡就踩过一次：当时按「选项对象的身份」去一张临时重建的池里找，永远找不到，
+	# 于是卡面照常、点击照常、**什么都不落**。故这里逐个选项走真实入口。
+	for index: int in defaults.size():
+		var payload: Dictionary = screen_script.payload_for(defaults[index])
+		if not ctx.check(not payload.is_empty(),
+				"第 %d 项点下去应落下东西（空 = 点了没反应）" % (index + 1)):
+			continue
+		ctx.equal(String(payload["name"]), defaults[index].name_key,
+			"第 %d 项落下的应与卡面写的是同一件东西" % (index + 1))
+		var slot: int = int(slots[int(defaults[index].kind)])
+		ctx.equal(int(payload["weapon_kind"]), int(warehouse[slot]["weapon_kind"]),
+			"第 %d 项落下的 weapon_kind" % (index + 1))
+	# 反向对照：「跳过」是补齐位，点它必须什么都不落（落一个空节点就是凭空多出来的东西）。
+	var skip: RewardOption = option_script.skip()
+	ctx.check(screen_script.payload_for(skip).is_empty(),
+		"「跳过」不得落下任何东西（Kind.SKIP 不在 OPTION_SLOTS 之内）")
+	ctx.check(screen_script.payload_for(null).is_empty(), "空选项不得落下任何东西")
+
+	# 验收点名的三项，逐个反向对照：炸弹必须真的带 BOMB（它一旦落成针，验收的
+	# 「伤害 25 / 打全场」就整条落空）；核心 / 增幅 的 weapon_kind 必须留 NONE。
+	var third: int = 2
+	ctx.equal(defaults[third].name_key, "炸弹", "第 3 项应是炸弹")
+	ctx.equal(int(screen_script.reward_payload(int(slots[third]))["weapon_kind"]),
+		kinds.WeaponKind.BOMB, "炸弹落地后的 weapon_kind")
+	ctx.equal(int(screen_script.reward_payload(int(slots[0]))["weapon_kind"]),
+		kinds.WeaponKind.NONE, "核心不是武器，weapon_kind 必须留 NONE")
+	ctx.equal(int(screen_script.reward_payload(int(slots[1]))["function_kind"]),
+		kinds.Function.AMPLIFY, "增幅落地后的 function_kind 应是 AMPLIFY")
+	ctx.equal(int(screen_script.reward_payload(int(slots[0]))["function_kind"]),
+		kinds.Function.NONE, "核心不是功能节点，function_kind 必须留 NONE")
+
+	# 类型来源纪律：载荷只能来自仓库表，且跨场景只能走 RunState 这个既有 Autoload
+	# （不新造全局单例 / 不新开存档服务）。两条都是「怎么做到的」层面的钉子，
+	# 光看行为断言不出来 —— 行得通但来源错了的写法有一堆。
+	var code: String = _strip_comments(FileAccess.get_file_as_string(SCREEN_SCRIPT_PATH))
+	ctx.check(code.contains("BlueprintWorkspace.WAREHOUSE"),
+		"落地载荷应取自 blueprint_workspace 的仓库表（类型的唯一来源）")
+	ctx.check(code.contains("RunState.set_pending_reward"),
+		"选中项应经 RunState 这个既有载体跨场景传递")
+	ctx.check(not code.contains("BY_DISPLAY_NAME"),
+		"不得按显示名反查类型 —— PET-70 已删掉那条路，这里不得接回来")
 
 
 ## 06 §4 的类型标识色是全项目唯一一处「类型 -> 颜色」对照，奖励卡的图标复用它。

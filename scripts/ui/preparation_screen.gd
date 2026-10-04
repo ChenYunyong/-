@@ -3,7 +3,8 @@
 ##       以及右下角「开始战斗」这个进入 COMBAT 的唯一入口。
 ##       **本批只做骨架与布局，不含任何蓝图玩法。**
 ## 所属系统：ui
-## 依赖：Palette、Theme、GameFlow、PreparationLayout、MessagePanel、InputScreen、InputNormalizer
+## 依赖：Palette、Theme、GameFlow、RunState、PreparationLayout、MessagePanel、InputScreen、
+##       InputNormalizer、BlueprintWorkspace
 ## 禁止：本文件不得调用 change_scene_to_file() —— 场景路由只能由 GameFlow 落地（03 §1.1 R3）；
 ##       不得写任何字面色值（06 §10.7）；
 ##       不得判断任何原始输入事件类型（InputEventMouseButton 等）—— 输入一律经 InputScreen
@@ -64,6 +65,29 @@ func _ready() -> void:
 	# 折叠由可用区尺寸驱动，不用计时器、也不轮询（03 §2）。
 	resized.connect(_on_resized)
 	apply_layout_for(size)
+	# 必须排在 apply_layout_for 之后：落格要按画布**已经拿到手**的尺寸算。
+	_apply_pending_reward()
+
+
+## 把 REWARD 里玩家选中的那一项落到蓝图上（S4-07 最小版：奖励真的生效）。
+##
+## 载荷经 RunState 这个**既有**载体跨场景带过来（不新造全局单例、不新开存档服务），
+## 落成即清 —— 一次选择只落一次，重复进入 PREPARATION 不会重复发奖。
+##
+## 类型判定不在本文件：载荷里的 kind / function_kind / weapon_kind 是仓库槽位那三列，
+## 落地由 blueprint_workspace.add_reward_node() 负责 —— 本文件只把载荷转交给它，
+## 于是「谁的类型对」只有一处可查。
+##
+## 画布取不到（角色不对 / 结构被改坏）或格子已满时不落，载荷留在 RunState 里不清：
+## 前者是结构问题、后者玩家清一个格子后重进就能拿到，都比「悄悄吃掉玩家的奖励」强。
+func _apply_pending_reward() -> void:
+	var reward: Dictionary = RunState.pending_reward()
+	if reward.is_empty():
+		return
+	var canvas: BlueprintWorkspace = _blueprint_canvas as BlueprintWorkspace
+	if canvas == null or canvas.add_reward_node(reward) == null:
+		return
+	RunState.clear_pending_reward()
 
 
 ## 当前是否处于 06 §7.1 的折叠布局。

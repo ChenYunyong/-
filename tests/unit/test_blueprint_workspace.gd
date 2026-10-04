@@ -64,6 +64,7 @@ func run(ctx: RefCounted, _tree: SceneTree) -> void:
 	_run_scene_assembly_checks(ctx)
 	# 必须排在 _run_persistence_checks 之后：它会清掉 SAVE_PATH，而那个文件是上一条用例的物证。
 	_run_weapon_kind_checks(ctx)
+	_run_reward_landing_checks(ctx)
 
 
 ## 04 §6 / 06 §10.7 / 03 §2 / 03 §8 的静态纪律。顺带钉一条编译检查：
@@ -425,6 +426,92 @@ func _run_weapon_kind_checks(ctx: RefCounted) -> void:
 		"不传种类时应落 NONE（降级入口），不得随手指一把武器")
 	ctx.equal(blueprint.nodes[4].weapon_kind, kinds.WeaponKind.NONE,
 		"CORE 不是武器，weapon_kind 必须留 NONE")
+	ws.free()
+
+
+## S4-07 最小版：奖励落到画布。第一个空闲格、确定、不覆盖既有节点、立即落盘。
+##
+## 这是「三选一真的生效」的最后一跳：reward_screen 交出的载荷经 RunState 到这里，由 _add_node
+## 写成节点。上一段钉的是 _add_node 的写入，这一段钉的是**落点**与**不覆盖** ——
+## 覆盖在画面上完全看不出来（还是那个位置、还是那张卡），丢的却是玩家自己拼出来的机器。
+func _run_reward_landing_checks(ctx: RefCounted) -> void:
+	ctx.begin_case("BlueprintWorkspace · 奖励落地（S4-07 最小版）")
+	var script: GDScript = load(WORKSPACE_SCRIPT_PATH)
+	if not ctx.check(script != null and script.can_instantiate(), "blueprint_workspace.gd 应能编译"):
+		return
+	var kinds: GDScript = load(NODE_DATA_PATH)
+	_cleanup()
+	var ws: Control = _workspace(ctx, script.Area.CANVAS, CANVAS_SIZE)
+	if ws == null:
+		return
+	var boxes: Dictionary = ws.get(&"_boxes")
+	var blueprint: BlueprintData = ws.call(&"blueprint")
+	# 载荷就是 reward_screen.reward_payload() 交出来的那份形状（四列，值取自仓库槽位）。
+	var payload := {
+		"kind": kinds.Kind.WEAPON,
+		"function_kind": kinds.Function.NONE,
+		"weapon_kind": kinds.WeaponKind.BOMB,
+		"name": "炸弹",
+	}
+	var cell := Vector2(CARD, CARD)
+
+	# 空载荷不落：本函数不是「随便落一个」的入口，凭空的奖励也是凭空多出来的东西。
+	ctx.check(ws.call(&"add_reward_node", {}) == null, "空载荷不得落地")
+	ctx.equal(blueprint.nodes.size(), 0, "空载荷不得产生节点")
+	# 只有画布接奖励：仓库角色调它必须什么都不做（同一份载荷落到仓库上就是凭空多一个节点）。
+	var warehouse: Control = _workspace(ctx, script.Area.WAREHOUSE, WAREHOUSE_SIZE)
+	if warehouse != null:
+		ctx.check(warehouse.call(&"add_reward_node", payload) == null, "仓库角色不得落奖励节点")
+		ctx.equal((warehouse.call(&"blueprint") as BlueprintData).nodes.size(), 0, "仓库角色不得产生节点")
+		warehouse.free()
+
+	# 先手占掉左上角那一格 —— 「第一个空闲格」最容易被误实现成「永远左上角」，这里把它逼出来。
+	ws.call(&"_add_node", kinds.Kind.CORE, "核心", Vector2(CARD * 0.5, CARD * 0.5))
+	var first_id: StringName = blueprint.nodes[0].id
+	ctx.equal(boxes[first_id], Rect2(Vector2.ZERO, cell), "先手节点应落在左上角那一格")
+	var occupied: Array[StringName] = [first_id]
+
+	# 连落六个：行优先（每行 5 格）依次填 4 格，第 5 个应换行 —— 一路是确定性的，
+	# 既不跳格也不随机。位置序列本身就是「确定性」的凭据（03 §6）。
+	var expected: Array[Vector2] = [
+		Vector2(GRID, 0.0), Vector2(GRID * 2.0, 0.0), Vector2(GRID * 3.0, 0.0), Vector2(GRID * 4.0, 0.0),
+		Vector2(0.0, GRID), Vector2(GRID, GRID),
+	]
+	for index: int in expected.size():
+		var landed: NodeData = ws.call(&"add_reward_node", payload)
+		if not ctx.check(landed != null, "第 %d 个奖励应能落下（画布还有空位）" % (index + 1)):
+			break
+		ctx.equal(boxes[landed.id], Rect2(expected[index], cell),
+			"第 %d 个奖励的落点（第一个空闲格，行优先）" % (index + 1))
+		# 类型三列原样取自载荷，一个都不许改写：按显示名反推的话「炸弹」会落成针。
+		ctx.equal(landed.kind, kinds.Kind.WEAPON, "第 %d 个奖励的节点类型" % (index + 1))
+		ctx.equal(landed.weapon_kind, kinds.WeaponKind.BOMB, "第 %d 个奖励的 weapon_kind" % (index + 1))
+		ctx.equal(landed.function_kind, kinds.Function.NONE, "第 %d 个奖励的 function_kind" % (index + 1))
+		ctx.equal(landed.display_name, "炸弹", "第 %d 个奖励的显示名" % (index + 1))
+		occupied.append(landed.id)
+
+	# 既有节点一个都没少、一个都没被挪走：奖励只加不覆盖。
+	ctx.equal(blueprint.nodes.size(), expected.size() + 1, "奖励应逐个新增节点，而不是替换")
+	ctx.equal(boxes.size(), expected.size() + 1, "每个节点（含先手那个）都应还有落位矩形")
+	ctx.equal(boxes[first_id], Rect2(Vector2.ZERO, cell), "先手节点不得被奖励挪动或覆盖")
+	# 任意两张卡都不得重叠 —— 逐个两两对照，比「落点等于某几个值」更贴近「不覆盖」本身。
+	for left: int in occupied.size():
+		for right: int in range(left + 1, occupied.size()):
+			ctx.check(not (boxes[occupied[left]] as Rect2).intersects(boxes[occupied[right]]),
+				"节点 %s 与 %s 的卡片不得重叠" % [occupied[left], occupied[right]])
+
+	# 每次都立即落盘（沿用 _add_node 的既有行为）：另起一个实例应原样载回，
+	# 位置按序重算、武器种类一个不丢 —— 「重进场景 / 重启游戏都还在」就是这一条。
+	var fresh: Control = _workspace(ctx, script.Area.CANVAS, CANVAS_SIZE)
+	if fresh != null:
+		var reloaded: BlueprintData = fresh.call(&"blueprint")
+		ctx.equal(reloaded.nodes.size(), blueprint.nodes.size(), "新实例载回的节点数应与落盘前一致")
+		var bombs: int = 0
+		for node: NodeData in reloaded.nodes:
+			if node.weapon_kind == kinds.WeaponKind.BOMB:
+				bombs += 1
+		ctx.equal(bombs, expected.size(), "载回的炸弹节点数应与落地数一致（weapon_kind 没丢）")
+		fresh.free()
 	ws.free()
 
 

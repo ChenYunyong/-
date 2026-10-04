@@ -2,20 +2,24 @@
 ## 职责：REWARD 场景的场景冒烟（09 §1）—— 经真实 GameFlow 路由进入、三张卡片的真实矩形、
 ##       06 §9 的五项展示位齐备、**不足 3 项时以「跳过」补齐**、
 ##       **停留 10 模拟分钟不自动离开（00 §5 硬规则第 1 条）**、
-##       玩家显式选定后**经 GameFlow 回 PREPARATION**、窄屏折叠不动状态。**单独进程**运行。
+##       玩家显式选定后**经 GameFlow 回 PREPARATION**、
+##       **选中的那一项真的落到画布上（S4-07 最小版）**、窄屏折叠不动状态。**单独进程**运行。
 ## 所属系统：tests（场景冒烟层）
 ## 依赖：test_context, test_clock, scenes/reward/reward.tscn, scripts/ui/reward_screen.gd
 ## 禁止：本文件不得引用 Autoload 标识符，也不得引用 class_name 全局 —— 它是 --script 入口，
 ##       在工程注册这些全局标识之前就被编译（同 combat_smoke.gd 的约束）；一律 load() + 经 /root 取节点。
 ##       本文件不得写任何字面色值 —— 判据色一律经 Palette 取。
+##       不得在玩家的正式存档目录留下产物（01 §7）：奖励落地会写画布的 blueprint_path，
+##       而那正是正式存档 —— 故本文件整场先快照、收尾还原（同 test_i18n.gd 对 user://settings.cfg）。
 ##
 ## 运行：需要 --fixed-fps 60，否则「停留 600 秒不自动推进」跑不满（该用例会明确报红）。
 ##
 ## 为什么不挂进 run_tests.gd：本用例要真的把 GameFlow 一路推到 REWARD 并让路由换掉当前场景，
 ## 那会污染同进程里 test_state_loop.gd 的场景断言。
 ##
-## 本批只做骨架与布局，故这里**不测任何奖励数值**（掉落池 / 稀有度权重属 Stage 4 的 S4-07）——
-## 测的是「卡片画在哪」「五项都有落点」「跳过补得上」「没人点就永远不走」「点了才走」。
+## 本批（S4-07 最小版）起，这里还测一件事：**选中的那一项真的落进蓝图**（内存 + 磁盘 + 取走即清）。
+## 仍然不测任何奖励**数值**：掉落池 / 稀有度权重属 S4-07 完整版，不在这张卡里。
+## 其余测的是「卡片画在哪」「五项都有落点」「跳过补得上」「没人点就永远不走」「点了才走」。
 
 extends SceneTree
 
@@ -29,6 +33,8 @@ const COMBAT_SCENE_PATH: String = "res://scenes/combat/combat.tscn"
 const REWARD_SCRIPT_PATH: String = "res://scripts/ui/reward_screen.gd"
 const GAME_FLOW_PATH: String = "res://scripts/core/game_flow.gd"
 const PALETTE_PATH: String = "res://scripts/data/palette.gd"
+const NODE_DATA_PATH: String = "res://scripts/data/node_data.gd"
+const BLUEPRINT_DATA_PATH: String = "res://scripts/data/blueprint_data.gd"
 const LOG_PATH: String = "res://tests/output/reward_smoke.log"
 
 ## 06 §1 基准与 §7.1 的窄屏取样。
@@ -73,6 +79,14 @@ var _palette: GDScript = null
 var _clock: Node = null
 var _lines: Array[String] = []
 
+## 画布的落盘路径与本用例进场时它上面已有的节点数。两者都在**第一次进入 PREPARATION**时记下
+## （见 _run_routed_entry_case）—— 那时画布刚读完盘、还什么都没写，正是取快照的时点。
+## 路径刻意问画布本人要，不在这里抄一份 "user://blueprints/blueprint_01.tres"：
+## 抄一份的话，实现一改路径，快照就取在一个不存在的文件上，还原也跟着变成空操作。
+var _save_path: String = ""
+var _save_snapshot: PackedByteArray = PackedByteArray()
+var _nodes_before_reward: int = -1
+
 
 func _initialize() -> void:
 	_ctx = load(CONTEXT_PATH).new()
@@ -116,6 +130,13 @@ func _run_routed_entry_case() -> void:
 	var prep: Node = current_scene
 	if not _ctx.check(prep != null, "应先进入 PREPARATION 场景"):
 		return
+	# 快照取在这里：画布刚读完盘、一个字节都还没写。往后本用例会真的落一次奖励（S4-07），
+	# 而落地点就是画布的 blueprint_path —— 玩家的正式存档。收尾在 _finish() 里还原（01 §7）。
+	var canvas: Control = _find(prep, "BlueprintCanvas") as Control
+	if _ctx.check(canvas != null, "整备界面应有蓝图画布"):
+		_save_path = String(canvas.get(&"blueprint_path"))
+		_save_snapshot = _read_file(_save_path)
+		_nodes_before_reward = canvas.call(&"blueprint").nodes.size()
 	var cta: Button = _find(prep, "ButtonStartCombat") as Button
 	if not _ctx.check(cta != null, "整备界面应有「开始战斗」按钮"):
 		return
@@ -312,7 +333,11 @@ func _run_narrow_case() -> void:
 		"恢复宽屏后卡片应回到三列尺寸")
 
 
-## 验收核心：**由玩家选择**后回到 PREPARATION —— 走 GameFlow 的真实路由，不得自己换场景。
+## 验收核心：**由玩家选择**后回到 PREPARATION，且**选中的那一项真的改变玩家的机器** ——
+## 走 GameFlow 的真实路由，不得自己换场景。
+##
+## 点的是第 3 张卡（炸弹）：它是验收点名的那个，也是唯一能把「类型有没有在路上被换掉」照出来的
+## 一项（核心 / 增幅 的 weapon_kind 都是 NONE，落错了也看不出来）。
 ##
 ## 本用例必须排在**最后**：它会把当前场景换成整备界面。
 func _run_selection_case() -> void:
@@ -323,10 +348,13 @@ func _run_selection_case() -> void:
 	var flow: Node = _autoload("GameFlow")
 	if not _ctx.check(flow != null, "GameFlow Autoload 应存在"):
 		return
-	var card: Control = _find(screen, CARD_NAMES[0]) as Control
-	if not _ctx.check(card != null, "应有 %s" % CARD_NAMES[0]):
+	var card: Control = _find(screen, CARD_NAMES[2]) as Control
+	if not _ctx.check(card != null, "应有 %s" % CARD_NAMES[2]):
 		return
 	var chosen: Variant = card.call(&"get_option")
+	# 卡面写的那个**名字 key**（不是渲染后的文本 —— 渲染后的文本随语言变，key 不变）。
+	# 落地后节点上存的就是它，故这里存下来，待会儿在画布上逐字对照。
+	var face_key: String = String(chosen.name_key)
 	_ctx.equal(String(flow.call(&"get_scene_path_for", _state("PREPARATION"))), PREP_SCENE_PATH,
 		"选定将要走的正是路由表登记的那条路径")
 
@@ -347,6 +375,16 @@ func _run_selection_case() -> void:
 	_ctx.equal(screen.call(&"get_chosen_option"), chosen, "被记下的应是玩家点中的那一项")
 	flow.disconnect(&"state_changed", handler)
 
+	# 跨场景的载荷是**同步**记下的（场景换掉要等下一帧），故此刻还读得到。
+	# 它必须是 BOMB：拿显示名反查的实现会在这一步就变成针，而画面上三张卡长得一模一样。
+	var run_state: Node = _autoload("RunState")
+	if not _ctx.check(run_state != null, "RunState Autoload 应存在"):
+		return
+	var node_script: GDScript = load(NODE_DATA_PATH)
+	var bomb_kind: int = int(node_script.WeaponKind.BOMB)
+	_ctx.equal(int((run_state.call(&"pending_reward") as Dictionary).get("weapon_kind", -1)), bomb_kind,
+		"选中炸弹后待落地的载荷应是 BOMB")
+
 	await process_frame
 	await process_frame
 	var prep: Node = current_scene
@@ -355,6 +393,50 @@ func _run_selection_case() -> void:
 	_ctx.equal(prep.scene_file_path, PREP_SCENE_PATH, "当前场景应是路由表登记的 PREPARATION 路径")
 	_ctx.equal(prep.get_parent(), root, "当前场景应挂在 root 下")
 	_ctx.check(not is_instance_valid(screen), "切换后奖励场景应被释放")
+
+	_run_landing_checks(node_script, bomb_kind, face_key, run_state)
+
+
+## S4-07 最小版的验收核心：奖励**真的改变了玩家的机器** —— 不只是「卡片没了、界面回去了」。
+##
+## 判据分三层，缺一层都可能是假绿：
+##   ① 内存：画布上的节点数 +1（不是「多了一个」就够 —— 数量对上才排得掉「落了一个、丢了两个」），
+##      且新节点的三列与卡面那一项一致；
+##   ② 磁盘：文件里也有它。「重进场景 / 重启游戏都还在」全靠这一步，而只查内存的话，
+##      一个忘了落盘的实现会一路全绿；
+##   ③ 载荷取走即清：一次选择只能落一次，重复进 PREPARATION 不得重复发奖。
+func _run_landing_checks(node_script: GDScript, bomb_kind: int, face_key: String, run_state: Node) -> void:
+	_ctx.begin_case("REWARD 冒烟 · 选中的奖励真的落进蓝图（S4-07 最小版）")
+	var prep: Node = current_scene
+	var canvas: Control = _find(prep, "BlueprintCanvas") as Control
+	if not _ctx.check(canvas != null, "整备界面应有蓝图画布"):
+		return
+	# 一律经 call() 拿 Variant、不标注类型：本文件是 --script 入口，连 BlueprintData / NodeData
+	# 这两个全局类名都还不能引用（见文件头的禁令），标注成 Resource 又读不到 nodes / weapon_kind。
+	var blueprint = canvas.call(&"blueprint")
+	var count: int = blueprint.nodes.size()
+	_ctx.equal(count, _nodes_before_reward + 1,
+		"回整备后画布应恰好多出一个节点（进场时 %d，现在 %d）" % [_nodes_before_reward, count])
+	if count == 0:
+		return
+	var landed = blueprint.nodes[count - 1]
+	_ctx.equal(int(landed.kind), int(node_script.Kind.WEAPON), "落地的应是 WEAPON 节点")
+	_ctx.equal(int(landed.weapon_kind), bomb_kind,
+		"落地的武器种类应原样是 BOMB（降级成针的话，卡面、画布、结算就是三份互不相干的说法）")
+	_ctx.equal(String(landed.display_name), face_key,
+		"落地节点的名字应与卡面那一项同名（同一格仓库，不许各抄一份）")
+
+	# 磁盘上那份。查的是**文件**，不是内存里那个对象 —— 这正是「重启后还在」的凭据。
+	var data_script: GDScript = load(BLUEPRINT_DATA_PATH)
+	var saved = data_script.load_from(_save_path) if data_script != null else null
+	if _ctx.check(saved != null, "落盘后应能从 %s 读回蓝图" % _save_path):
+		_ctx.equal(saved.nodes.size(), count, "磁盘上的节点数应与画布一致（落下即落盘）")
+		if saved.nodes.size() > 0:
+			_ctx.equal(int(saved.nodes[saved.nodes.size() - 1].weapon_kind), bomb_kind,
+				"磁盘上最后一个节点应是刚落下的那枚炸弹")
+
+	_ctx.check((run_state.call(&"pending_reward") as Dictionary).is_empty(),
+		"载荷取走即清：一次选择只落一次，重复进 PREPARATION 不得重复发奖")
 
 
 ## 把一次鼠标事件送到卡片的 gui_input 上。
@@ -397,16 +479,46 @@ func _find(node: Node, node_name: String) -> Node:
 	return node.find_child(node_name, true, false)
 
 
+# --- 正式存档的快照 / 还原（同 test_i18n.gd 对 user://settings.cfg 的做法）------------
+
+## 取文件内容；文件不存在返回空表（「原本就没有」也是一种状态，收尾要还原成那样）。
+func _read_file(path: String) -> PackedByteArray:
+	if path.is_empty() or not FileAccess.file_exists(path):
+		return PackedByteArray()
+	return FileAccess.get_file_as_bytes(path)
+
+
+## 把文件放回快照时的样子。快照为空 = 原本没有这个文件，那就把它删掉 ——
+## 留一个「测试跑出来的存档」在玩家的存档目录里，比留下内容更糟：玩家下次进游戏会看到
+## 一台自己没造过的机器。
+func _restore_file(path: String, snapshot: PackedByteArray) -> void:
+	if path.is_empty():
+		return
+	if snapshot.is_empty():
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+		return
+	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		push_error("reward_smoke: 无法还原 %s，本次运行可能留下了副作用。" % path)
+		return
+	file.store_buffer(snapshot)
+	file.close()
+
+
 func _finish() -> void:
+	# 先还原正式存档再写报告：本用例真的落过一次奖励（S4-07），而落点就是玩家的存档文件。
+	_restore_file(_save_path, _save_snapshot)
+
 	var version: Dictionary = Engine.get_version_info()
 	var window: Vector2i = DisplayServer.window_get_size()
 	_lines.append("TEST REPORT")
-	_lines.append("- 任务：S1-09（PET-45）REWARD 场景：3 选项 + 跳过 + 玩家选择后回 PREPARATION")
+	_lines.append("- 任务：S4-07 最小版（PET-72）奖励真的生效：三选一落到玩家蓝图（顺带结清 R1 / R5）")
 	_lines.append("- 环境：Godot %s / Windows / 窗口 %dx%d" % [version["string"], window.x, window.y])
 	_lines.append("- 单元测试：见 unit_tests.log")
 	_lines.append("- 集成测试：见 unit_tests.log")
 	_lines.append("- 场景冒烟：%d/%d" % [_ctx.passed, _ctx.passed + _ctx.failed])
-	_lines.append("- 手动场景：REWARD 经路由进入(点 CTA→本波清空) · 三张卡片矩形 · 五项俱备 · 「跳过」补齐 · 停留 10 分钟不离开 · 窄屏折叠 · 选定后回 PREPARATION")
+	_lines.append("- 手动场景：REWARD 经路由进入(点 CTA→本波清空) · 三张卡片矩形 · 五项俱备 · 「跳过」补齐 · 停留 10 分钟不离开 · 窄屏折叠 · 选定后回 PREPARATION · 选中的炸弹真的落进蓝图(内存 + 磁盘 + 取走即清)")
 	if _ctx.failures.is_empty():
 		_lines.append("- 失败项：无")
 	else:

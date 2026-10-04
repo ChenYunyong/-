@@ -39,6 +39,32 @@ var _is_active: bool = false
 ## 当前波次（从 FIRST_WAVE 起）。
 var _wave: int = FIRST_WAVE
 
+## 玩家在 REWARD 选中的那一项，等着 PREPARATION 把它落到蓝图里（S4-07 最小版）。
+##
+## 它是**一次性载荷**：REWARD 写入，PREPARATION 取走即清，空字典 = 没有待落地的奖励。
+## 载的是**一行仓库槽位**那四列（kind / function_kind / weapon_kind / name），
+## 不是新造的类型 —— 那四列本来就在 BlueprintWorkspace.WAREHOUSE 里，在这里再定义一遍
+## 只会让「类型」多出第二份抄本，而两份抄本迟早会漂开。
+## 它也不进存档：一次选择在同一个会话里就被消费掉，重启后没有悬着的奖励。
+var _pending_reward: Dictionary = {}
+
+
+## 记下玩家刚选中的奖励。REWARD → PREPARATION 之间唯一的一次写入。
+func set_pending_reward(reward: Dictionary) -> void:
+	_pending_reward = reward.duplicate()
+
+
+## 待落地的奖励。空字典表示没有 —— 调用方据此跳过，而不是拿到一份「空奖励」去落地。
+func pending_reward() -> Dictionary:
+	return _pending_reward
+
+
+## 取走待落地的奖励（取出即清）。
+##
+## 清在这里而不是在落地处：一次选择只落一次，重复进入 PREPARATION 不得重复发奖。
+func clear_pending_reward() -> void:
+	_pending_reward = {}
+
 
 ## 开始新的一局。seed_value 传 SEED_AUTO 时随机生成一个种子并记录下来。
 ##

@@ -366,25 +366,39 @@ func _click(card: Control, pressed: bool) -> void:
 	card.gui_input.emit(event)
 
 
-## 验收卡点名的那台机器：CORE →-- 针。够建武器表、够跑起来，且不牵扯 FUNCTION。
+## 验收卡点名的那台机器：CORE 分三路出去，三条武器各一把 —— 针 / 炸弹 / 锯。
+##
+## 每个武器节点都必须带上自己的 weapon_kind：这是「三把武器各不相同」的**唯一**来源
+## （03 §6；从前那条按显示名反查的桥已随 PET-70 删除）。漏了它，WeaponData.resolve()
+## 会把三把**全部**按 02 §9 降级成针，每把各报一条 push_error —— 而机器照跑、画面照动、
+## 这一层的断言条数一条不少，只有 09 §5 的 ERROR 计数与「这一场到底覆盖了哪几把武器」看得出来。
+## 本用例建 5 个 CombatSimulation，故漏一处就是 5 条 ERROR（R1 的账就记在这里）。
 func _machine_blueprint() -> BlueprintData:
 	var blueprint: BlueprintData = BlueprintData.new()
 	var core := NodeData.new()
 	core.id = &"core"
 	core.display_name = "核心"
 	core.kind = NodeData.Kind.CORE
-	var needle := NodeData.new()
-	needle.id = &"needle"
-	needle.display_name = "针"
-	needle.kind = NodeData.Kind.WEAPON
 	blueprint.nodes.append(core)
-	blueprint.nodes.append(needle)
-	var edge := ConnectionData.new()
-	edge.from_node_id = &"core"
-	edge.from_port = &"out"
-	edge.to_node_id = &"needle"
-	edge.to_port = &"in"
-	blueprint.connections.append(edge)
+	# 一把武器一把，逐把显式给种类：本用例的用途之一就是证明三条武器路径都被走到。
+	var weapons: Array[Dictionary] = [
+		{"id": &"needle", "name": "针", "weapon_kind": NodeData.WeaponKind.NEEDLE},
+		{"id": &"bomb", "name": "炸弹", "weapon_kind": NodeData.WeaponKind.BOMB},
+		{"id": &"saw", "name": "锯", "weapon_kind": NodeData.WeaponKind.SAW},
+	]
+	for entry: Dictionary in weapons:
+		var weapon := NodeData.new()
+		weapon.id = StringName(entry["id"])
+		weapon.display_name = String(entry["name"])
+		weapon.kind = NodeData.Kind.WEAPON
+		weapon.weapon_kind = int(entry["weapon_kind"])
+		blueprint.nodes.append(weapon)
+		var edge := ConnectionData.new()
+		edge.from_node_id = core.id
+		edge.from_port = &"out"
+		edge.to_node_id = weapon.id
+		edge.to_port = &"in"
+		blueprint.connections.append(edge)
 	return blueprint
 
 

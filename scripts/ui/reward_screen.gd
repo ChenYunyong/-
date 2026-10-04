@@ -3,8 +3,8 @@
 ##       玩家**选定**其中一项后经 GameFlow 回到 PREPARATION（循环由此闭合：回去继续改造机器打下一波）。
 ##       本批（FIRST PLAYABLE 4/4）给三个选项接上**真实数据**：一张固定的三选项池（见 default_options）。
 ## 所属系统：ui
-## 依赖：GameFlow、RewardLayout、RewardCard、RewardOption、MessagePanel、Palette、InputScreen、
-##       MachineRuntime、WeaponData
+## 依赖：GameFlow、RunState、RewardLayout、RewardCard、RewardOption、MessagePanel、Palette、
+##       InputScreen、MachineRuntime、WeaponData、BlueprintWorkspace
 ## 禁止：本文件不得调用 change_scene_to_file() —— 场景路由只能由 GameFlow 落地（03 §1.1 R3）；
 ##       不得写任何字面色值（06 §10.7）；
 ##       不得判断任何原始输入事件类型（InputEventMouseButton 等）—— 输入一律经 InputScreen
@@ -12,9 +12,10 @@
 ##       不得出现任何会自动推进的构造（Timer / create_timer / timeout / _process /
 ##       _physics_process，见 03 §2 与 00 §5 交互硬规则第 1 条）—— 进入 REWARD 后永远等玩家，
 ##       不倒计时、不自动选中、不自动离开；
-##       不得实现奖励的**效果**（拿到手就多一个节点 / 改数值）—— 那需要掉落池与稀有度权重，
-##       属 Stage 4 的 S4-07；本文件只把选项**显示**出来并交出玩家选中的那一项
-##       （get_chosen_option()），选中的东西怎么落地由那张卡决定；
+##       不得实现奖励的**效果**（往蓝图里加节点 / 改数值）—— 落地归 blueprint_workspace.gd，
+##       经 preparation_screen.gd 触发。本文件只做两件：把选项**显示**出来，把玩家选中的那一项
+##       记成一份**载荷**交给 RunState 这个既有载体（S4-07 最小版，见 reward_payload）；
+##       仍然不得有掉落池 / 稀有度 / 权重（那属 S4-07 完整版）；
 ##       也不得实现 RESULT 场景（属 S1-10）。
 
 extends InputScreen
@@ -28,6 +29,18 @@ const NOTICE_TITLE: String = "路由未就绪"
 const NOTICE_DISMISS: String = "点击任意处关闭"
 const NOTICE_PREPARATION: String = "整备场景（PREPARATION）的路由未就绪，本次留在奖励界面。"
 
+## 三个奖励选项各自对应的仓库槽位：**下标即 RewardOption.Kind**，值是 BlueprintWorkspace.WAREHOUSE
+## 的行号（CORE→0 核心 / FUNCTION→2 增幅 / WEAPON→5 炸弹）。
+##
+## 类型只从这一处来，且**只按选项的 Kind 查**：不看卡面文案、不看显示名
+## （PET-70 刚删掉「拿显示名反查 weapon_kind」那条路，这里不得从后门接回来 —— 「炸弹」一旦落成针，
+## 卡面、画布、结算就是三份互不相干的说法）。
+##
+## 按 Kind 而不是按「第几张卡」：Kind 说的是「这是什么」，卡位说的是「摆在哪」——
+## 摆错位置仍该落对东西。这条也不是洁癖：按卡位实现时，卡片数与槽位数一旦不同源，
+## 玩家点第一张卡就会拿到第二槽的东西，而画面上两张卡都长得像真的。
+const OPTION_SLOTS: Array[int] = [0, 2, 5]
+
 @onready var _backdrop: ColorRect = %Backdrop
 @onready var _title_bar: PanelTitleBar = %TitleBar
 @onready var _cards_area: Control = %CardsArea
@@ -39,7 +52,6 @@ var _chosen_option: RewardOption = null
 ## apply_layout_for() 落过的档位。存下来而不是现算 size：折叠与否只由**给进来的那个尺寸**
 ## 决定，测试可以在不改窗口的前提下显式落一次布局（同 preparation_screen.gd 的 _is_narrow）。
 var _is_narrow: bool = false
-
 
 func _ready() -> void:
 	# 全屏底色取自 Palette —— 场景里那个 ColorRect 不带 color 字面量（06 §10.7）。
@@ -76,13 +88,44 @@ static func default_options() -> Array[RewardOption]:
 	var period_seconds: float = float(MachineRuntime.CORE_PERIOD_TICKS) / float(MachineRuntime.TICK_RATE)
 	var bomb: WeaponData = WeaponData.for_kind(WeaponData.Kind.BOMB)
 	return [
-		RewardOption.new(RewardOption.Kind.CORE, "核心", "CORE",
+		RewardOption.new(RewardOption.Kind.CORE, slot_name(0), "CORE",
 			"每 %.1f 秒一次脉冲" % period_seconds, "自己就是信号源，不需要上游连线"),
-		RewardOption.new(RewardOption.Kind.FUNCTION, "增幅", "FUNCTION",
+		RewardOption.new(RewardOption.Kind.FUNCTION, slot_name(2), "FUNCTION",
 			"脉冲 ×%d" % roundi(MachineRuntime.AMPLIFY_FACTOR), "进一枚，出去一枚更强的"),
-		RewardOption.new(RewardOption.Kind.WEAPON, bomb.display_name, "WEAPON",
+		RewardOption.new(RewardOption.Kind.WEAPON, slot_name(5), "WEAPON",
 			"伤害 %d" % roundi(bomb.damage), "打全场，不分先后"),
 	]
+
+
+## 仓库某一槽的显示名。卡面上的名字与落地后节点的名字取自**同一格** ——
+## 各抄一份的话，玩家照着卡面做决定，拿到手的东西却叫另一个名字。
+static func slot_name(slot: int) -> String:
+	return String(BlueprintWorkspace.WAREHOUSE[slot]["name"])
+
+
+## 某个仓库槽位落地时写进蓝图的那几列。
+##
+## **原样取仓库那一行**，不做任何换算：类型（kind / function_kind / weapon_kind）与显示名
+## 都是那一行的字段，故「卡面说的」与「画布上长的」不可能漂开。
+## 这也是本文件**唯一**产生载荷的地方 —— 类型不从卡面文案、不从 type_key 反推。
+static func reward_payload(slot: int) -> Dictionary:
+	var entry: Dictionary = BlueprintWorkspace.WAREHOUSE[slot]
+	return {
+		"kind": int(entry["kind"]),
+		"function_kind": int(entry["function_kind"]),
+		"weapon_kind": int(entry["weapon_kind"]),
+		"name": String(entry["name"]),
+	}
+
+
+## 选项 -> 落地载荷（S4-07 最小版）。只看选项的 Kind，**不看卡位、不看名字**：
+##   · 「跳过」是补齐位，不是一件东西，故不落地（Kind.SKIP 落在 OPTION_SLOTS 之外）；
+##   · 认不出的 Kind 同理，返回空字典 —— 不猜它该落成什么。
+## 空字典 = 「这一项不落地」，调用方据此跳过，而不是落一个空节点。
+static func payload_for(option: RewardOption) -> Dictionary:
+	if option == null or int(option.kind) < 0 or int(option.kind) >= OPTION_SLOTS.size():
+		return {}
+	return reward_payload(OPTION_SLOTS[int(option.kind)])
 
 
 ## 06 §9：三个选项位，不足时以「跳过」补齐。多于三个的丢弃。
@@ -135,6 +178,12 @@ func _on_option_chosen(option: RewardOption) -> void:
 	if target_path.is_empty() or not ResourceLoader.exists(target_path):
 		_show_notice(NOTICE_PREPARATION)
 		return
+	# 先记账再路由（S4-07 最小版）：跨场景的载体是 RunState 这个**既有** Autoload，
+	# 不新造全局单例、不新开存档服务。载荷为空（「跳过」或池外选项）时不写 ——
+	# 那种选择本就不该给玩家任何东西，落一个空节点反而是凭空多出来的东西。
+	var payload: Dictionary = payload_for(option)
+	if not payload.is_empty():
+		RunState.set_pending_reward(payload)
 	GameFlow.change_state(GameFlow.GameState.PREPARATION)
 
 

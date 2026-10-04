@@ -13,6 +13,7 @@ const CSV_PATH: String = "res://assets/i18n/ui.csv"
 const SETTINGS_SCRIPT_PATH: String = "res://scripts/core/settings_service.gd"
 const MENU_SCRIPT_PATH: String = "res://scripts/ui/main_menu.gd"
 const MENU_SCENE_PATH: String = "res://scenes/menu/main_menu.tscn"
+const WORKSPACE_SCRIPT_PATH: String = "res://scripts/ui/blueprint_workspace.gd"
 
 ## 表头即列序。key 是**中文原文**（06 §11「文本必须走 key」的落地约定）。
 const EXPECTED_HEADER: String = "keys,zh_CN,en"
@@ -50,6 +51,7 @@ func run(ctx: RefCounted, tree: SceneTree) -> void:
 	_run_coverage_case(ctx, keys)
 	_run_no_branch_case(ctx)
 	await _run_live_switch_case(ctx, tree)
+	await _run_warehouse_label_case(ctx, tree)
 	_run_persistence_case(ctx, tree, script, path)
 
 	TranslationServer.set_locale(locale_before)
@@ -226,6 +228,58 @@ func _check_notice_texts(ctx: RefCounted, menu: Node, english: bool) -> void:
 		else:
 			ctx.check(_has_cjk(message.text), "中文下提示正文应是中文（实际：%s）" % message.text)
 	_dismiss(menu)
+
+
+## S4-07 的 R5：仓库槽位名要经 tr()，且**切了语言要重画**。
+##
+## 两件事缺一不可：只 tr() 不重画，英文态下那 7 个标签仍然停在中文（实测就是这样 ——
+## draw_string 画的是**当时那种语言**的成品，不重画就一直是旧译文）；只重画不 tr()，
+## 重画一百次也还是中文。故一条断言管**取字**、一条断言管**重画**。
+func _run_warehouse_label_case(ctx: RefCounted, tree: SceneTree) -> void:
+	ctx.begin_case("I18N · 仓库槽位名（S4-07 R5：tr() + 切语言重画）")
+	var workspace_script: GDScript = load(WORKSPACE_SCRIPT_PATH)
+	var settings: Node = _autoload(tree, "Settings")
+	if not ctx.check(workspace_script != null and settings != null,
+			"blueprint_workspace.gd 与 Settings 应能加载"):
+		return
+	var slots: Array = workspace_script.WAREHOUSE
+
+	TranslationServer.set_locale("zh_CN")
+	for entry: Dictionary in slots:
+		var key: String = String(entry["name"])
+		ctx.equal(workspace_script.warehouse_label(entry), key,
+			"zh_CN 下槽位名应原样返回 key（%s）" % key)
+
+	# 正面判据是「取到了英文」，不是「等于某个我抄下来的英文串」—— 抄一份英文，
+	# 表里改词时两边就一起错。故判据是：不含中文、非空、且确实与 key 不同。
+	TranslationServer.set_locale("en")
+	var translated: int = 0
+	for entry: Dictionary in slots:
+		var key: String = String(entry["name"])
+		var label: String = workspace_script.warehouse_label(entry)
+		ctx.check(not label.is_empty(), "en 下槽位名不得为空（%s）" % key)
+		ctx.check(not _has_cjk(label), "en 下槽位名不得残留中文（%s → %s）" % [key, label])
+		if label != key:
+			translated += 1
+	ctx.equal(translated, slots.size(),
+		"7 个槽位名都应取到英文译文（实得 %d 个；缺行的话切了语言也还是中文）" % translated)
+	TranslationServer.set_locale("zh_CN")
+
+	# 重画：工作区必须订阅「语言变了」。_draw 只在重画时跑，没有别的机制会替它补上。
+	var warehouse: Control = workspace_script.new()
+	warehouse.set(&"area", workspace_script.Area.WAREHOUSE)
+	tree.root.add_child(warehouse)
+	await tree.process_frame
+	ctx.check(settings.is_connected(&"setting_changed", Callable(warehouse, &"_on_setting_changed")),
+		"仓库应订阅 Settings.setting_changed（切语言后要重画）")
+	_release(warehouse)
+
+	# 「怎么做到的」层面的两条钉子：取字只能经 warehouse_label()，重画只认语言这一个 key。
+	var source: String = FileAccess.get_file_as_string(WORKSPACE_SCRIPT_PATH)
+	ctx.check(source.contains("warehouse_label(entry)"),
+		"_draw_warehouse 应经 warehouse_label() 取字，而不是直接画 entry[\"name\"]")
+	ctx.check(source.contains("key == Settings.KEY_LOCALE"),
+		"重画只应认语言这一个设置项（别的设置项与画面无关）")
 
 
 ## 验收第二条：选过的语言，重启后还在。
