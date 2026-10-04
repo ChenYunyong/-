@@ -8,6 +8,8 @@ extends RefCounted
 
 ## 03 §4.1 的三类节点，顺序即枚举值顺序。
 const EXPECTED_KINDS: PackedStringArray = ["CORE", "FUNCTION", "WEAPON"]
+## 武器种类枚举，顺序即枚举值顺序（NONE 是缺省值兼旧存档的落点，排第一）。
+const EXPECTED_WEAPON_KINDS: PackedStringArray = ["NONE", "NEEDLE", "BOMB", "SAW"]
 
 
 func run(ctx: RefCounted, tree: SceneTree) -> void:
@@ -41,14 +43,31 @@ func _run_node_checks(ctx: RefCounted) -> void:
 	ctx.not_equal(NodeData.Kind.FUNCTION, NodeData.Kind.WEAPON, "FUNCTION 与 WEAPON 不得同值")
 	ctx.not_equal(NodeData.Kind.CORE, NodeData.Kind.WEAPON, "CORE 与 WEAPON 不得同值")
 
+	# weapon_kind 的缺省值是 NONE，且**非武器节点不得带武器种类** ——
+	# NONE 正是旧存档（写于该字段存在之前）载回后的取值，也是 WeaponData 的降级入口。
+	ctx.begin_case("NodeData · weapon_kind 与缺省值")
+	ctx.equal(node.weapon_kind, NodeData.WeaponKind.NONE, "weapon_kind 缺省应为 NONE")
+	ctx.equal(NodeData.WeaponKind.size(), EXPECTED_WEAPON_KINDS.size(),
+		"WeaponKind 成员数应覆盖 三把武器 + NONE")
+	for index: int in EXPECTED_WEAPON_KINDS.size():
+		ctx.check(NodeData.WeaponKind.has(EXPECTED_WEAPON_KINDS[index]),
+			"WeaponKind 应含成员 %s" % EXPECTED_WEAPON_KINDS[index])
+	# 顺序即整数落盘值：重排会静默改变既有存档的语义（同 Kind 的理由）。
+	ctx.equal(int(NodeData.WeaponKind.NONE), 0, "NONE 的枚举值（缺省值兼降级入口，必须排第一）")
+	ctx.equal(int(NodeData.WeaponKind.NEEDLE), 1, "NEEDLE 的枚举值")
+	ctx.equal(int(NodeData.WeaponKind.BOMB), 2, "BOMB 的枚举值")
+	ctx.equal(int(NodeData.WeaponKind.SAW), 3, "SAW 的枚举值")
+
 	ctx.begin_case("NodeData · 实例独立性")
 	var first: NodeData = NodeData.new()
 	var second: NodeData = NodeData.new()
 	first.id = &"alpha"
 	first.kind = NodeData.Kind.CORE
+	first.weapon_kind = NodeData.WeaponKind.SAW
 	ctx.equal(String(first.id), "alpha", "first 的 id 应已写入")
 	ctx.equal(String(second.id), "", "改 first 不应影响 second 的 id")
 	ctx.equal(second.kind, NodeData.Kind.FUNCTION, "改 first 不应影响 second 的 kind")
+	ctx.equal(second.weapon_kind, NodeData.WeaponKind.NONE, "改 first 不应影响 second 的 weapon_kind")
 
 
 func _run_connection_checks(ctx: RefCounted) -> void:

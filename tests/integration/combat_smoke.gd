@@ -262,6 +262,25 @@ func _run_readout_case() -> void:
 	_collect_buttons(scene, buttons)
 	_ctx.equal(buttons.size(), 0, "整幕 COMBAT 应仍零 Button（实际：%s）" % _names(buttons))
 
+	# 硬规则 1 的另一半：**分格之后才允许**分别套 Heat 橙 / Energy 蓝。
+	# 这里量的是入树后 `_ready()` 真的落上去的**有效**颜色（get_theme_color 会把 Theme 的
+	# 默认值与覆写一起算进来）—— 脚本里写没写那行 override 是单测的事，落没落到节点上是这里的事。
+	_check_semantic_colors(row)
+
+
+## 06 §8.1 硬规则 1 的语义色落点。**只钉语义色本身**，「过热时 `热量` 转亮橙」那条状态变化
+## 属一次真实的过热过程（要几百拍），归 tests/unit/test_combat.gd 的取色映射与像素探针，
+## 本用例不在这里伪造一次过热。
+func _check_semantic_colors(row: Node) -> void:
+	var heat_value: Label = _find(_find(row, SPLIT_READOUTS[0]), "Value") as Label
+	var energy_value: Label = _find(_find(row, SPLIT_READOUTS[1]), "Value") as Label
+	if not _ctx.check(heat_value != null and energy_value != null, "热量与能量的读数格都应存在"):
+		return
+	_ctx.equal(heat_value.get_theme_color(&"font_color"), _color("ORANGE_500"),
+		"`热量` 读数常态应取 Heat 橙（04 §3.8）")
+	_ctx.equal(energy_value.get_theme_color(&"font_color"), _color("BLUE_300"),
+		"`能量` 读数应取 Energy 蓝（04 §3.8）")
+
 
 ## 03 §1.1 R2：COMBAT 的两条出口**各自**只能由特定事件触发 —— 本波清空 → REWARD、
 ## CORE 被摧毁 → RESULT；且两条都必须真的经 GameFlow 换掉当前场景（R3）。

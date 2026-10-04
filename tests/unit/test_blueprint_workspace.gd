@@ -62,6 +62,8 @@ func run(ctx: RefCounted, _tree: SceneTree) -> void:
 	_run_graph_checks(ctx)
 	_run_persistence_checks(ctx)
 	_run_scene_assembly_checks(ctx)
+	# 必须排在 _run_persistence_checks 之后：它会清掉 SAVE_PATH，而那个文件是上一条用例的物证。
+	_run_weapon_kind_checks(ctx)
 
 
 ## 04 §6 / 06 §10.7 / 03 §2 / 03 §8 的静态纪律。顺带钉一条编译检查：
@@ -165,6 +167,37 @@ func _run_warehouse_checks(ctx: RefCounted) -> void:
 	# 顺序即槽位顺序，也即玩家拖出的顺序：核心在最左，武器在最右。
 	ctx.equal(int(list[0]["kind"]), kinds.Kind.CORE, "槽位 0 应是 CORE")
 	ctx.equal(int(list[list.size() - 1]["kind"]), kinds.Kind.WEAPON, "最后一个槽位应是 WEAPON")
+
+	# weapon_kind 列：三张武器槽在卡片上长得一模一样（类型标识只按 Kind 分三色），
+	# 「拖出去的是针还是锯」全靠这一列。它是这条信息的**唯一来源** ——
+	# 从前那条「拿中文显示名反查武器」的桥已删，这里空了就等于玩家的武器全部落到降级分支。
+	_check_warehouse_weapon_column(ctx, kinds, list, counts)
+
+
+## 武器槽位必须给出三把**互不相同**的武器种类，非武器槽位必须一律 NONE。
+## 反向对照齐备：种类写成同一个 → 三把武器退化成同一把；给非武器槽位也写上种类 →
+## 「这是不是武器」有两个互相矛盾的答案。
+func _check_warehouse_weapon_column(ctx: RefCounted, kinds: GDScript, list: Array,
+		counts: Dictionary) -> void:
+	var seen: Dictionary = {}
+	for index: int in list.size():
+		var entry: Dictionary = list[index]
+		var kind: int = int(entry["kind"])
+		var weapon_kind: int = int(entry["weapon_kind"])
+		if kind == kinds.Kind.WEAPON:
+			ctx.check(weapon_kind != kinds.WeaponKind.NONE,
+				"武器槽位 %d（%s）必须写明武器种类，不得留 NONE" % [index, entry["name"]])
+			ctx.check(int(weapon_kind) in [kinds.WeaponKind.NEEDLE, kinds.WeaponKind.BOMB,
+					kinds.WeaponKind.SAW],
+				"武器槽位 %d 的种类应是三把武器之一（实际 %d）" % [index, weapon_kind])
+			ctx.check(not seen.has(weapon_kind),
+				"两个武器槽位不得是同一把武器（重复的种类 %d）" % weapon_kind)
+			seen[weapon_kind] = String(entry["name"])
+		else:
+			ctx.equal(weapon_kind, kinds.WeaponKind.NONE,
+				"槽位 %d（%s）不是武器，weapon_kind 必须留 NONE" % [index, entry["name"]])
+	ctx.equal(seen.size(), int(counts.get(kinds.Kind.WEAPON, 0)),
+		"三张武器槽应恰好覆盖三把各不相同的武器")
 
 
 ## 06 §4 的 28px 间距优先；装不下时退到「不重叠的最小间距 + 少放几个」。
@@ -344,12 +377,54 @@ func _run_persistence_checks(ctx: RefCounted) -> void:
 
 	# 载回后自增序号必须从既有节点数续起，否则新节点会与存档里的旧 id 撞车 ——
 	# 撞车的后果是 _boxes 这个以 id 为键的字典把旧节点顶掉，图与画面对不上。
-	ws.call(&"_add_node", kinds.Kind.WEAPON, "针", Vector2(60.0, 60.0))
+	ws.call(&"_add_node", kinds.Kind.WEAPON, "针", Vector2(60.0, 60.0),
+		kinds.Function.NONE, kinds.WeaponKind.NEEDLE)
 	var seen: Dictionary = {}
 	for node: NodeData in blueprint.nodes:
 		ctx.check(not seen.has(String(node.id)), "载回后新增节点的 id 不得与既有 id 重复（'%s'）" % node.id)
 		seen[String(node.id)] = true
 	ctx.equal(blueprint.nodes.size(), 3, "载回后应能继续加节点")
+	ws.free()
+
+
+## weapon_kind 的写入路径：仓库槽位（WAREHOUSE 表）→ 载荷 → _add_node → NodeData。
+## 这里量的是最后一跳；仓库表本身由 _run_warehouse_checks 钉住，
+## 中间那一跳（原生拖放的载荷）由 tests/integration/blueprint_smoke.gd 的真实拖拽钉住。
+##
+## 三段里断掉任何一段，「拖出去的锯」都会变成针（或落到 02 §9 的降级分支）——
+## 而三张武器卡在画面上长得一模一样，玩家看不出来，只有这几条断言能挡住。
+func _run_weapon_kind_checks(ctx: RefCounted) -> void:
+	ctx.begin_case("BlueprintWorkspace · 落节点写入 weapon_kind")
+	var script: GDScript = load(WORKSPACE_SCRIPT_PATH)
+	if not ctx.check(script != null and script.can_instantiate(), "blueprint_workspace.gd 应能编译"):
+		return
+	var kinds: GDScript = load(NODE_DATA_PATH)
+	# 上一条用例在 SAVE_PATH 上留了 3 个节点；这份图必须从空的起，否则节点下标全错位。
+	_cleanup()
+	var ws: Control = _workspace(ctx, script.Area.CANVAS, CANVAS_SIZE)
+	if ws == null:
+		return
+
+	var weapons: Array[int] = [kinds.WeaponKind.NEEDLE, kinds.WeaponKind.BOMB, kinds.WeaponKind.SAW]
+	for index: int in weapons.size():
+		ws.call(&"_add_node", kinds.Kind.WEAPON, "w%d" % index, Vector2(48.0, 48.0),
+			kinds.Function.NONE, weapons[index])
+	# 缺省（旧调用方 / 将来的程序化建图）必须落 NONE —— 那是 02 §9 的降级入口，
+	# 而不是「随手指一把武器」：随机的那把会让调试图与玩家的图对不上。
+	ws.call(&"_add_node", kinds.Kind.WEAPON, "w_default", Vector2(72.0, 72.0))
+	ws.call(&"_add_node", kinds.Kind.CORE, "核心", Vector2(96.0, 96.0))
+
+	var blueprint: BlueprintData = ws.call(&"blueprint")
+	if not ctx.equal(blueprint.nodes.size(), 5, "应落出 5 个节点"):
+		ws.free()
+		return
+	for index: int in weapons.size():
+		ctx.equal(blueprint.nodes[index].weapon_kind, weapons[index],
+			"第 %d 个武器节点应带上拖它出来那一槽的种类" % index)
+	ctx.equal(blueprint.nodes[3].weapon_kind, kinds.WeaponKind.NONE,
+		"不传种类时应落 NONE（降级入口），不得随手指一把武器")
+	ctx.equal(blueprint.nodes[4].weapon_kind, kinds.WeaponKind.NONE,
+		"CORE 不是武器，weapon_kind 必须留 NONE")
 	ws.free()
 
 

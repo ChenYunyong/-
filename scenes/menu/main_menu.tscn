@@ -25,31 +25,39 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="ArtSkyIsland" type="Control" parent="."]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_top = 104.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-
-[node name="ArtGirl" type="Control" parent="."]
+[node name="DecorationSlot" type="Panel" parent="."]
+unique_name_in_owner = true
 layout_mode = 0
 offset_left = 8.0
 offset_top = 44.0
 offset_right = 92.0
-offset_bottom = 176.0
+offset_bottom = 172.0
 mouse_filter = 2
+theme_type_variation = &"PanelCore"
 
-[node name="ArtCat" type="Control" parent="."]
-layout_mode = 0
-offset_left = 236.0
-offset_top = 128.0
-offset_right = 312.0
-offset_bottom = 176.0
+[node name="DecorationArt" type="TextureRect" parent="DecorationSlot"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="LogoSlot" type="TextureRect" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 8.0
+offset_bottom = 32.0
+grow_horizontal = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
 
 [node name="Logo" type="Label" parent="."]
 unique_name_in_owner = true
@@ -60,8 +68,8 @@ offset_top = 8.0
 offset_bottom = 32.0
 grow_horizontal = 2
 mouse_filter = 2
-theme_override_font_sizes/font_size = 16
-text = "像素融合屋"
+theme_override_font_sizes/font_size = 14
+text = "PixelFusion / 像素融合屋"
 horizontal_alignment = 1
 vertical_alignment = 1
 
@@ -162,6 +170,19 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 text = "退出（未实现）"
+
+[node name="VersionLabel" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 220.0
+offset_top = 160.0
+offset_right = 312.0
+offset_bottom = 172.0
+mouse_filter = 2
+theme_type_variation = &"LabelSecondary"
+text = "VER. 0.1 · SAVE --"
+horizontal_alignment = 2
+vertical_alignment = 1
 
 [node name="NoticePanel" parent="." instance=ExtResource("4_notice")]
 unique_name_in_owner = true

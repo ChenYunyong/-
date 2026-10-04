@@ -16,6 +16,9 @@ const SCENE_PATH: String = "res://scenes/combat/combat.tscn"
 const SCREEN_SCRIPT_PATH: String = "res://scripts/ui/combat_screen.gd"
 const LAYOUT_SCRIPT_PATH: String = "res://scripts/ui/combat_layout.gd"
 const GAME_FLOW_SCRIPT_PATH: String = "res://scripts/core/game_flow.gd"
+## 次级文字色变体的**定义处**。用例取的是变体常量本身而不是字面量 `&"LabelSecondary"`：
+## 变体改名时这里跟着断，而不是静默地永远不成立。
+const THEME_SCRIPT_PATH: String = "res://scripts/data/palette_theme.gd"
 
 ## 06 §8 对 Reference C 的实测值，在本文件**独立复写一遍**（同 test_preparation.gd 的理由：
 ## 期望值若与被测实现同源，实现里把 135 写成 153 时两边一起错，断言就永远是绿的）。
@@ -63,6 +66,16 @@ const READOUT_VALUES: PackedStringArray = ["1/1", "100%", "0%", "0%", "0项"]
 ## 06 §8.1 硬规则 1：热量与能量必须**分格**（Heat 归橙 / Energy 归蓝，语义不同，
 ## 合并后告警读不出是哪个系统）。这里按节点名钉住它们各自独立。
 const SPLIT_READOUTS: PackedStringArray = ["Heat", "Energy"]
+
+## 13 §5 的 HUD 分层，落在 §8.1 冻结的这五格上：
+## 一级 = §5 点名的 `WAVE` · `CORE / HP` · `HEAT`（本带里就是 波次 / CORE / 热量）；
+## 二级 = 剩下两格。§5 的二级 `GOLD` / `NEXT` **不在** §8.1 的五格里，故不在此表 ——
+## 它们要不要进来属 §8.1 的格数问题，已按任务卡要求上报 DSH，不自行改规范。
+const PRIMARY_READOUTS: PackedStringArray = ["Wave", "Core", "Heat"]
+const SECONDARY_READOUTS: PackedStringArray = ["Energy", "Queue"]
+## 06 §1 的正文字号。二级读数就是它，一级读数必须**严格大于**它 ——
+## 只断言「两者不同」的话，五格一起调小也会绿。
+const BODY_FONT_SIZE: int = 8
 
 ## 本批禁令（任务卡 FORBIDDEN：禁止实现任何战斗玩法）。
 ## COMBAT 在 Stage 4 会**合法地**引入固定 tick（03 §2 的 TICK_RATE / _physics_process），
@@ -228,6 +241,8 @@ func _run_structure_checks(ctx: RefCounted, packed: PackedScene) -> void:
 	ctx.check(_find(scene, "Backdrop") != null, "应有全屏底色层（色值在 _ready() 里取自 Palette）")
 	_check_status_bar_read_only(ctx, scene, bar)
 	_check_readout_blocks(ctx, scene)
+	_check_readout_hierarchy(ctx, scene)
+	_check_overheat_cue(ctx)
 	scene.free()
 
 
@@ -329,6 +344,92 @@ func _check_readout_blocks(ctx: RefCounted, scene: Node) -> void:
 			ctx.check(core_value.text.ends_with("%"), "CORE 应是百分比读数（实际：%s）" % core_value.text)
 			ctx.check(core_value.text.trim_suffix("%").is_valid_int(),
 				"CORE 的百分号前应是可比较的整数（实际：%s）" % core_value.text)
+
+
+## 13 §5：五块 HUD 不得像五个同等级的菜单按钮。判据取两条**可量的差**：
+##   ① 一级读数的字号严格大于正文字号，二级就是正文字号；
+##   ② 一级标题不带次级文字色变体（走更亮的正文色），二级带。
+## 两条都只钉「层级存在且方向正确」，不钉具体字号 / 具体变体名 ——
+## 后者归 test_theme.gd（变体本身）与 .tscn 字面量（由本用例顶住）。
+func _check_readout_hierarchy(ctx: RefCounted, scene: Node) -> void:
+	ctx.begin_case("COMBAT · HUD 一级 / 二级 权重分层（13 §5）")
+	var row: Node = _find(scene, "ReadoutsRow")
+	if not ctx.check(row != null, "状态带应有读数行的容器 ReadoutsRow"):
+		return
+	var theme_script: GDScript = load(THEME_SCRIPT_PATH)
+	if not ctx.check(theme_script != null, "palette_theme.gd 应能加载"):
+		return
+	var secondary: StringName = theme_script.TYPE_LABEL_SECONDARY
+
+	var primary_size: int = 0
+	for block_name: String in PRIMARY_READOUTS:
+		var block: Node = _find(row, block_name)
+		if not ctx.check(block != null, "应有读数块 %s" % block_name):
+			continue
+		var size: int = _value_font_size(block)
+		primary_size = maxi(primary_size, size)
+		ctx.check(size > BODY_FONT_SIZE,
+			"一级读数块 %s 的字号应大于正文字号 %d（实际 %d）" % [block_name, BODY_FONT_SIZE, size])
+		var caption: Label = _find(block, "Caption") as Label
+		if ctx.check(caption != null, "%s 应有 Caption" % block_name):
+			ctx.check(caption.theme_type_variation != secondary,
+				"一级标题 %s 不得用次级文字色（否则与二级同暗，层级就没了）" % block_name)
+
+	for block_name: String in SECONDARY_READOUTS:
+		var block: Node = _find(row, block_name)
+		if not ctx.check(block != null, "应有读数块 %s" % block_name):
+			continue
+		ctx.equal(_value_font_size(block), BODY_FONT_SIZE,
+			"二级读数块 %s 的字号应就是正文字号" % block_name)
+		var caption: Label = _find(block, "Caption") as Label
+		if ctx.check(caption != null, "%s 应有 Caption" % block_name):
+			ctx.equal(caption.theme_type_variation, secondary,
+				"二级标题 %s 应取次级文字色（视觉权重低一档）" % block_name)
+
+	# 方向性单独钉一条：五格一起调小、或两级调成同一个值时，上面那些「等于/不等于」仍可能绿。
+	ctx.check(primary_size > BODY_FONT_SIZE,
+		"一级与二级必须真的差一档（一级 %d > 正文 %d）" % [primary_size, BODY_FONT_SIZE])
+
+
+## 读数格的**字号**：场景给了覆写就用覆写，没给就是 06 §1 的正文字号。
+##
+## 读的是 `theme_override_font_sizes/font_size` 这个节点属性本身，而不是 `get_theme_font_size()`：
+## 后者要沿 Theme 链解析，而本用例的节点**不入树**，解析结果取决于 Theme 有没有被继承到，
+## 量到的就不是「场景里写了什么」而是「此刻解析成了什么」。属性读法两处都确定。
+func _value_font_size(block: Node) -> int:
+	var value: Label = _find(block, "Value") as Label
+	if value == null:
+		return -1
+	var override_size: Variant = value.get(&"theme_override_font_sizes/font_size")
+	return int(override_size) if override_size != null else BODY_FONT_SIZE
+
+
+## 过热提示（PET-66 遗留项）：本卡评估后落地的形式是**只给 `热量` 那一格换色**，
+## 因为 06 §8.1 把这条带冻结成 5 个只读读数块 —— 加格子 / 加控件 / 改几何都属于
+## 「改动 §8.1 的结构」，按任务卡要求不得自行进行。于是这里钉两件事：
+##   ① 取色映射本身（常态 / 过热各取到 Palette 里的哪一个 Token，且两者不同）；
+##   ② 换色的触发来自 MachineRuntime 的过热信号，而不是每拍比对 heat() 自己判定过热。
+## 「换色真的画到了屏幕上」属像素取证，本用例（不入树）不冒充。
+func _check_overheat_cue(ctx: RefCounted) -> void:
+	ctx.begin_case("COMBAT · 过热提示只换色、不动五格（06 §8.1 冻结）")
+	var screen: GDScript = load(SCREEN_SCRIPT_PATH)
+	if not ctx.check(screen != null, "combat_screen.gd 应能加载"):
+		return
+
+	var normal: Color = screen.heat_readout_color(false)
+	var overheated: Color = screen.heat_readout_color(true)
+	ctx.equal(normal, Palette.get_color(Palette.Key.ORANGE_500),
+		"常态的 `热量` 读数色（04 §3.8：Heat 条 / 高温）")
+	ctx.equal(overheated, Palette.get_color(Palette.Key.ORANGE_300),
+		"过热中的 `热量` 读数色（04 §3.8：过热高光）")
+	ctx.check(normal != overheated, "两种状态必须取到不同的颜色，否则这个提示并不存在")
+
+	var code: String = _strip_comments(FileAccess.get_file_as_string(SCREEN_SCRIPT_PATH))
+	for signal_name: String in ["overheat_started", "overheat_ended"]:
+		ctx.check(code.contains(signal_name),
+			"应接上 MachineRuntime.%s（否则换色永不发生）" % signal_name)
+	ctx.check(not code.contains("is_overheated("),
+		"不得自己判定过热（06 §8.1 / 03 §2：阈值与停火都在 MachineRuntime）")
 
 
 func _check_one_readout(ctx: RefCounted, block: Node, index: int) -> void:

@@ -110,6 +110,7 @@ var _backdrop: Color = Color.BLACK
 var _kind_core: int = 0
 var _kind_function: int = 0
 var _kind_weapon: int = 0
+var _weapon_needle: int = 0
 var _fn_none: int = 0
 var _fn_split: int = 0
 
@@ -138,6 +139,7 @@ func _initialize() -> void:
 	_kind_core = int(_node_script.Kind.CORE)
 	_kind_function = int(_node_script.Kind.FUNCTION)
 	_kind_weapon = int(_node_script.Kind.WEAPON)
+	_weapon_needle = int(_node_script.WeaponKind.NEEDLE)
 	_fn_none = int(_node_script.Function.NONE)
 	_fn_split = int(_node_script.Function.SPLIT)
 
@@ -456,8 +458,10 @@ func _write_clear_blueprint() -> bool:
 	var spec: Array = [
 		["core", "核心", _kind_core, _fn_none],
 		["split", "分流", _kind_function, _fn_split],
-		["needle_a", "针", _kind_weapon, _fn_none],
-		["needle_b", "针", _kind_weapon, _fn_none],
+		# 第 5 项是武器种类：机器要打的伤害只由它决定，显示名不参与解析
+		# （按显示名反查的那条桥已删，见 scripts/data/weapon_data.gd）。
+		["needle_a", "针", _kind_weapon, _fn_none, _weapon_needle],
+		["needle_b", "针", _kind_weapon, _fn_none, _weapon_needle],
 	]
 	var edges: Array = [["core", "split"], ["split", "needle_a"], ["split", "needle_b"]]
 	var blueprint: Resource = _build_blueprint(spec, edges, "验收机器甲")
@@ -479,6 +483,9 @@ func _build_blueprint(spec: Array, edges: Array, label: String) -> Resource:
 		node.set(&"display_name", String(item[1]))
 		node.set(&"kind", int(item[2]))
 		node.set(&"function_kind", int(item[3]))
+		# 武器种类可选：非武器节点不写，留 NONE（它们没有武器种类可言）。
+		if item.size() > 4:
+			node.set(&"weapon_kind", int(item[4]))
 		blueprint.get(&"nodes").append(node)
 	for edge: Array in edges:
 		var link: Resource = _link_script.new()

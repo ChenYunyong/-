@@ -14,6 +14,8 @@
 class_name WeaponData
 extends Resource
 
+## 与 NodeData.WeaponKind 逐项对应（NodeData 那边多一个 NONE 兼作缺省值与降级入口）。
+## **不得重排**：理由同 NodeData.Kind —— 两边的对应关系由 tests/unit/test_combat_damage.gd 钉住。
 enum Kind { NEEDLE, BOMB, SAW }
 
 ## 打击范围。三把武器的差异**只在**这两个字段（reach + damage）上 ——
@@ -34,20 +36,6 @@ const MELEE_FROM: float = 0.7
 @export var kind: Kind = Kind.NEEDLE
 @export var damage: float = NEEDLE_DAMAGE
 @export var reach: Reach = Reach.SINGLE
-
-## 武器节点 display_name → Kind。
-##
-## **这是一条临时桥，必须删**：NodeData 目前没有「这是哪一把武器」的字段，而带着
-## 针 / 炸弹 / 锯 三张槽位的仓库表在 scripts/ui/blueprint_workspace.gd —— 那个文件
-## 不在本卡 ALLOWED FILES 内，故本卡只能按工作区落进蓝图里的显示名反查。
-## 正确做法是给 NodeData 补一个 weapon_kind 字段、由仓库槽位直接写入（下一张卡）。
-## 用中文显示名当键在 I18N（PET-67）时一定会坏：翻译一改，这里就全部落到降级分支。
-const BY_DISPLAY_NAME: Dictionary = {
-	&"针": Kind.NEEDLE,
-	&"炸弹": Kind.BOMB,
-	&"锯": Kind.SAW,
-}
-
 
 ## 按种类造一份数值。同 EnemyData.for_kind() 的理由：调用方只认 Kind，不认常数名。
 static func for_kind(wanted: Kind) -> WeaponData:
@@ -75,14 +63,23 @@ static func for_kind(wanted: Kind) -> WeaponData:
 ## 把一个蓝图节点翻译成武器数值。不是武器节点（或空节点）时返回 null ——
 ## 调用方据此跳过，而不是拿到一把「默认武器」去打不该打的东西。
 ##
-## 显示名认不出来时按 02 §9 降级：push_error() 说清是谁认不出，再落到 Needle。
-## 这里不静默返回 null —— 那样玩家的武器会变成「开火但不掉血」，是最难查的一类现象。
+## 种类取自 NodeData.weapon_kind（由仓库槽位在落节点时直接写入）。**不再按显示名反查** ——
+## 显示名是给玩家看的、会随 I18N 变，拿它当键在翻译一改时就整表落空。
+##
+## 种类为 NONE（旧存档写于该字段存在之前 / 认不出的取值）时按 02 §9 降级：
+## push_error() 说清是哪个节点，再落到 Needle。**不能降成 null** —— 那样玩家的武器会变成
+## 「开火但不掉血」，是最难查的一类现象；也不能崩，旧存档必须仍能载入。
 ## 只在建仿真时走一次，故 push_error 不会刷屏。
 static func resolve(node: NodeData) -> WeaponData:
 	if node == null or node.kind != NodeData.Kind.WEAPON:
 		return null
-	if not BY_DISPLAY_NAME.has(node.display_name):
-		push_error("WeaponData.resolve: 认不出武器显示名「%s」（节点 id=%s），按 Needle 降级（02 §9）。"
-			% [node.display_name, node.id])
-		return for_kind(Kind.NEEDLE)
-	return for_kind(BY_DISPLAY_NAME[node.display_name])
+	match node.weapon_kind:
+		NodeData.WeaponKind.BOMB:
+			return for_kind(Kind.BOMB)
+		NodeData.WeaponKind.SAW:
+			return for_kind(Kind.SAW)
+		NodeData.WeaponKind.NEEDLE:
+			return for_kind(Kind.NEEDLE)
+	push_error("WeaponData.resolve: 节点 %s 的 weapon_kind 为 NONE 或认不出的取值（旧存档？），按 Needle 降级（02 §9）。"
+		% node.id)
+	return for_kind(Kind.NEEDLE)

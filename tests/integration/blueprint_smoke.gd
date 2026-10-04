@@ -183,6 +183,23 @@ func _run_drag_out_case() -> void:
 			and rect.end.x <= canvas.size.x + 0.01 and rect.end.y <= canvas.size.y + 0.01,
 			"节点 %s 应落在画布内（实际 %s）" % [id, rect])
 
+	# 拖出来的武器必须带上**它那一槽**的武器种类 —— 这是本卡新接上的那条路，也是「拖出去的是
+	# 针还是锯」的唯一来源（按显示名反查的那条桥已删）。三张武器卡在画面上长得一模一样，
+	# 这一条断了，三把武器会全部落到 02 §9 的降级分支，而界面上看不出任何异常。
+	# 期望值取自仓库表本身：这里证的是「表里的值真的走到了节点上」，表本身的值由
+	# tests/unit/test_blueprint_workspace.gd 独立钉住。
+	var weapon_slot_kind: int = int(_workspace_script.WAREHOUSE[WEAPON_SLOT]["weapon_kind"])
+	if _ctx.check(weapon_slot_kind != kinds.WeaponKind.NONE,
+			"仓库第 %d 槽应写明武器种类（否则下面这条断言是空的）" % WEAPON_SLOT):
+		var dragged_weapons: int = 0
+		for node: Resource in _nodes():
+			if int(node.get(&"kind")) != kinds.Kind.WEAPON:
+				continue
+			dragged_weapons += 1
+			_ctx.equal(int(node.get(&"weapon_kind")), weapon_slot_kind,
+				"拖出来的武器节点应带上它那一槽的武器种类（节点 %s）" % node.get(&"id"))
+		_ctx.equal(dragged_weapons, 1, "本用例只从武器槽拖出过 1 个节点")
+
 	# 仓库是「无限取用」的图章，不是消耗品：拖出 4 个之后仍应有 7 个槽位。
 	_ctx.equal(int((_warehouse().call(&"_slot_layout") as Dictionary)["shown"]), 7,
 		"拖出节点不得消耗仓库槽位")
@@ -288,7 +305,8 @@ func _run_persistence_case() -> void:
 			and rect.end.x <= canvas.size.x + 0.01 and rect.end.y <= canvas.size.y + 0.01,
 			"重载后节点 %s 应落在画布内（实际 %s）" % [id, rect])
 	# 载回后继续加节点不得撞 id —— 撞车的后果是 _boxes 这个以 id 为键的字典把旧节点顶掉。
-	canvas.call(&"_add_node", _node_script.Kind.WEAPON, "锯", Vector2(60.0, 60.0))
+	canvas.call(&"_add_node", _node_script.Kind.WEAPON, "锯", Vector2(60.0, 60.0),
+		_node_script.Function.NONE, _node_script.WeaponKind.SAW)
 	_ctx.equal(_nodes().size(), 5, "载回后应能继续加节点")
 	var ids: Dictionary = {}
 	for node: Resource in _nodes():

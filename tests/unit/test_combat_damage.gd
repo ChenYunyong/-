@@ -109,22 +109,51 @@ func _run_weapon_data_checks(ctx: RefCounted) -> void:
 	ctx.check(saw.damage < needle.damage and needle.damage < bomb.damage,
 		"三者的伤害关系：锯（持续）< 针（单体高频）< 炸弹（范围）")
 
-	ctx.begin_case("WeaponData · 蓝图节点 → 武器数值")
-	# 仓库里三张武器槽的显示名，在整备界面的槽位表上，本文件独立复写一遍。
-	var names: PackedStringArray = ["针", "炸弹", "锯"]
+	ctx.begin_case("WeaponData · 节点上的武器种类 → 武器数值")
+	# 三把武器的种类，本文件独立复写一遍（不转抄 WAREHOUSE 表）。
+	var node_kinds: Array[int] = [
+		NodeData.WeaponKind.NEEDLE, NodeData.WeaponKind.BOMB, NodeData.WeaponKind.SAW,
+	]
 	var kinds: Array[int] = [WeaponData.Kind.NEEDLE, WeaponData.Kind.BOMB, WeaponData.Kind.SAW]
-	for index: int in names.size():
-		var resolved: WeaponData = WeaponData.resolve(_node(&"w", names[index], NodeData.Kind.WEAPON, 0))
-		if ctx.check(resolved != null, "「%s」应能解析成武器" % names[index]):
-			ctx.equal(resolved.kind, kinds[index], "「%s」解析出的武器种类" % names[index])
+	for index: int in node_kinds.size():
+		var resolved: WeaponData = WeaponData.resolve(
+			_node(&"w", "任意名字", NodeData.Kind.WEAPON, 0, node_kinds[index]))
+		if ctx.check(resolved != null, "武器种类 %d 应能解析成武器" % node_kinds[index]):
+			ctx.equal(resolved.kind, kinds[index], "武器种类 %d 解析出的武器种类" % node_kinds[index])
+	# 显示名**不再参与解析**：改名字（或 I18N 之后换成译文）不得影响打出去的是什么。
+	# 这正是删掉按显示名反查那条桥的理由，故这里正面钉一条。
+	var renamed: WeaponData = WeaponData.resolve(
+		_node(&"w", "Saw（英文名）", NodeData.Kind.WEAPON, 0, NodeData.WeaponKind.SAW))
+	if ctx.check(renamed != null, "换了显示名的武器节点仍应能解析"):
+		ctx.equal(renamed.kind, WeaponData.Kind.SAW, "解析只看 weapon_kind，不看显示名")
 	# 不是武器节点的一律返回 null —— 否则 CORE / FUNCTION 也会被当成武器去打人。
 	ctx.equal(WeaponData.resolve(_node(&"c", "核心", NodeData.Kind.CORE, 0)), null,
 		"CORE 节点不得被解析成武器")
 	ctx.equal(WeaponData.resolve(_node(&"f", "分流", NodeData.Kind.FUNCTION, 1)), null,
 		"FUNCTION 节点不得被解析成武器")
 	ctx.equal(WeaponData.resolve(null), null, "空节点不得被解析成武器")
-	# 认不出的显示名走 02 §9 的降级分支（push_error + 落到 Needle）。**刻意不在这里触发** ——
-	# push_error 会在退出期账面上多出一条 ERROR，而那正是交付时要报「零增量」的那个数。
+
+	# 旧存档（没有 weapon_kind 这一字段）载回后是 NONE，这里正面验一次降级：
+	# 落到 Needle 而不是 null —— 降成 null 会让玩家的武器「开火但不掉血」，最难查的那一类。
+	# 这一条会触发一条 push_error，属 09 §5 明文豁免的「被断言的负路径用例」。
+	ctx.begin_case("WeaponData · 缺字段（旧存档）→ 02 §9 降级到 Needle")
+	var legacy: WeaponData = WeaponData.resolve(
+		_node(&"w_old", "锯", NodeData.Kind.WEAPON, 0, NodeData.WeaponKind.NONE))
+	if ctx.check(legacy != null, "缺 weapon_kind 的旧节点不得解析成 null（武器会变成开火不掉血）"):
+		ctx.equal(legacy.kind, WeaponData.Kind.NEEDLE, "缺字段时降级到 Needle")
+
+	# NodeData.WeaponKind 与 WeaponData.Kind 是两份**各自写下**的枚举（不能互相引用：
+	# WeaponData 依赖 NodeData，反过来引用就成了循环依赖），故这条对应关系必须由测试顶住 ——
+	# 哪一边插了一个成员而另一边没跟上，这里当场转红，而不是等到玩家发现锯打出了针的伤害。
+	ctx.begin_case("NodeData.WeaponKind 与 WeaponData.Kind 的对应关系")
+	ctx.equal(int(NodeData.WeaponKind.NEEDLE), int(WeaponData.Kind.NEEDLE) + 1,
+		"NEEDLE 在两份枚举里的相对位置")
+	ctx.equal(int(NodeData.WeaponKind.BOMB), int(WeaponData.Kind.BOMB) + 1,
+		"BOMB 在两份枚举里的相对位置")
+	ctx.equal(int(NodeData.WeaponKind.SAW), int(WeaponData.Kind.SAW) + 1,
+		"SAW 在两份枚举里的相对位置")
+	ctx.equal(NodeData.WeaponKind.size(), WeaponData.Kind.size() + 1,
+		"WeaponKind 应恰好比 Kind 多一个 NONE")
 
 
 ## 一只敌人自己的规则：挨打、死亡、退场。
@@ -210,7 +239,10 @@ func _run_spawn_checks(ctx: RefCounted) -> void:
 func _run_needle_checks(ctx: RefCounted) -> void:
 	ctx.begin_case("CombatSimulation · 针（单体高频）")
 	var sim := CombatSimulation.new(_blueprint(
-		[["core", "核心", NodeData.Kind.CORE, 0], ["w", "针", NodeData.Kind.WEAPON, 0]],
+		[
+			["core", "核心", NodeData.Kind.CORE, 0],
+			["w", "针", NodeData.Kind.WEAPON, 0, NodeData.WeaponKind.NEEDLE],
+		],
 		[["core", "w"]]))
 	_step(sim, FIRE_DIRECT - 1)
 	ctx.equal(sim.enemies().size(), 1, "首发前一拍场上应恰好 1 只")
@@ -241,7 +273,7 @@ func _run_bomb_checks(ctx: RefCounted) -> void:
 		[
 			["core", "核心", NodeData.Kind.CORE, 0],
 			["d", "延迟", NodeData.Kind.FUNCTION, NodeData.Function.DELAY],
-			["w", "炸弹", NodeData.Kind.WEAPON, 0],
+			["w", "炸弹", NodeData.Kind.WEAPON, 0, NodeData.WeaponKind.BOMB],
 		],
 		[["core", "d"], ["d", "w"]]))
 	_step(sim, FIRE_DELAY - 1)
@@ -268,7 +300,10 @@ func _run_bomb_checks(ctx: RefCounted) -> void:
 func _run_saw_checks(ctx: RefCounted) -> void:
 	ctx.begin_case("CombatSimulation · 锯（近身持续）")
 	var sim := CombatSimulation.new(_blueprint(
-		[["core", "核心", NodeData.Kind.CORE, 0], ["w", "锯", NodeData.Kind.WEAPON, 0]],
+		[
+			["core", "核心", NodeData.Kind.CORE, 0],
+			["w", "锯", NodeData.Kind.WEAPON, 0, NodeData.WeaponKind.SAW],
+		],
 		[["core", "w"]]))
 	# 第 94 拍：锯已经开了 9 次火（14…94），但**一只都没进窗** ——
 	# 场上三只的进度是 0.672 / 0.352 / 0.480（第 2 只已在第 80 拍抵达终点退场）。
@@ -294,8 +329,8 @@ func _run_clear_checks(ctx: RefCounted) -> void:
 		[
 			["core", "核心", NodeData.Kind.CORE, 0],
 			["s", "分流", NodeData.Kind.FUNCTION, NodeData.Function.SPLIT],
-			["wa", "针", NodeData.Kind.WEAPON, 0],
-			["wb", "针", NodeData.Kind.WEAPON, 0],
+			["wa", "针", NodeData.Kind.WEAPON, 0, NodeData.WeaponKind.NEEDLE],
+			["wb", "针", NodeData.Kind.WEAPON, 0, NodeData.WeaponKind.NEEDLE],
 		],
 		[["core", "s"], ["s", "wa"], ["s", "wb"]]))
 	_cleared_count = 0
@@ -380,13 +415,16 @@ func _on_run_failed() -> void:
 	_failed_count += 1
 
 
-## 造一个蓝图节点。spec = [id, display_name, kind, function_kind]。
-func _node(id: StringName, display_name: String, kind: int, function_kind: int) -> NodeData:
+## 造一个蓝图节点。spec = [id, display_name, kind, function_kind, weapon_kind?]。
+## weapon_kind 只对 WEAPON 节点有意义，缺省 NONE（02 §9 的降级入口，由 WeaponData.resolve 兜）。
+func _node(id: StringName, display_name: String, kind: int, function_kind: int,
+		weapon_kind: int = NodeData.WeaponKind.NONE) -> NodeData:
 	var node := NodeData.new()
 	node.id = id
 	node.display_name = display_name
 	node.kind = kind
 	node.function_kind = function_kind
+	node.weapon_kind = weapon_kind
 	return node
 
 
@@ -394,7 +432,8 @@ func _node(id: StringName, display_name: String, kind: int, function_kind: int) 
 func _blueprint(nodes: Array, edges: Array) -> BlueprintData:
 	var blueprint := BlueprintData.new()
 	for item: Array in nodes:
-		blueprint.nodes.append(_node(item[0], item[1], int(item[2]), int(item[3])))
+		var weapon_kind: int = int(item[4]) if item.size() > 4 else NodeData.WeaponKind.NONE
+		blueprint.nodes.append(_node(item[0], item[1], int(item[2]), int(item[3]), weapon_kind))
 	for edge: Array in edges:
 		var link := ConnectionData.new()
 		link.from_node_id = StringName(edge[0])

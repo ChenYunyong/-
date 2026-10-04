@@ -18,8 +18,8 @@
 ##       不得自己结算伤害 / 生成敌人 / 判死亡 —— 那些全在 CombatSimulation，
 ##       本文件只按它给的 progress / hp_ratio 换算屏幕位置，一个数值都不改；
 ##       不得自己判定 Overheat（阈值 / 停火 / 冷却全在 MachineRuntime）—— 本场景只把 heat_changed
-##       的绝对值印成读数。06 §8.1 把这条带冻结成 5 个只读读数块，故过热**不做**单独的视觉元素：
-##       它在画面上的表现就是「热量从 100% 掉回 0%」+ 武器这几秒不开火；
+##       的绝对值印成读数，并按 overheat_started / overheat_ended 给 `热量` 那一格换色
+##       （分寸见 _show_overheat：**不加格、不加控件、不改几何**，06 §8.1 的五格冻结不动）；
 ##       不得出现任何需要玩家长按 / 连点的动作控件（00 §5 第 3 条交互硬规则、06 §8）——
 ##       这条带是状态与预览，COMBAT 阶段玩家不直接操控任何单位。
 
@@ -76,6 +76,14 @@ const ENEMY_HP_GAP: float = 3.0
 @onready var _status_edge: ColorRect = %StatusEdge
 @onready var _notice_label: Label = %NoticeLabel
 
+## 读数区的**权重分层**落在场景里（标题明暗 + 读数字号），不在这里 —— 它是静态装配，
+## 归 tests/unit/test_combat.gd 钉。分层口径（13 §5「不要让五块 HUD 像五个同等级菜单按钮」
+## 与 06 §8.1 的五格冻结取交集）：
+##   一级 = `波次` / `CORE` / `热量` —— 正是 §5 点名的一级 `WAVE` · `CORE / HP` · `HEAT`；
+##   二级 = `能量` / `队列` —— §8.1 冻结的五格里，§5 的一级没有点到的就剩这两个。
+## 注意 §5 的二级是 `GOLD` / `NEXT`，那两块**不在** §8.1 的五格内，故本卡不把它们塞进来 ——
+## 见交付说明里向 DSH 提的结构问题。
+##
 ## 06 §8.1 的 `热量` 读数格。取的是读数块里那个叫 `Value` 的 Label。
 ## **不能**给这个 Label 挂 unique_name：5 个读数块的 Value 同名，`%Value` 只会命中其中一个，
 ## 而各用例正是按名字 `Value` 逐块找它的。故唯一名挂在读数块（`Heat`）上，再往下走一级。
@@ -86,6 +94,13 @@ const ENEMY_HP_GAP: float = 3.0
 
 ## 06 §8.1 的 `波次` 读数格。同上：唯一名挂在读数块（`Wave`）上，再往下走一级。
 @onready var _wave_value: Label = %Wave.get_node(^"Value") as Label
+
+## `热量` 格的标题。过热时连标题一起换色 —— 只换读数的话，在一条五格同形的带里
+## 那点色差读不出「这一格进了另一个状态」。
+@onready var _heat_caption: Label = %Heat.get_node(^"Caption") as Label
+
+## 06 §8.1 的 `能量` 读数格。同上：唯一名挂在读数块（`Energy`）上，再往下走一级。
+@onready var _energy_value: Label = %Energy.get_node(^"Value") as Label
 
 ## 两块区域容器，下标即 CombatLayout.Region。顺序必须与场景里的节点顺序一致。
 var _regions: Array[Control] = []
@@ -118,6 +133,11 @@ func _ready() -> void:
 	_hp_missing = Palette.get_color(Palette.Key.RED_600)
 	_hp_fill = Palette.get_color(Palette.Key.RED_500)
 	_enemy_label_color = Palette.get_color(Palette.Key.GREY_300)
+	# 06 §8.1 硬规则 1 明写「**分格之后才允许**分别套 Heat 橙 / Energy 蓝」——
+	# 这两格既已分格（硬规则 1 的另一半是不得合并），就把语义色落上：
+	# `能量` 取 BLUE_300（04 §3.8 的蓝组：能量 / 激活语义），`热量` 的常态色在
+	# _show_overheat(false) 里给（它与过热态是同一个取色入口，不在这里另写一份）。
+	_energy_value.add_theme_color_override(&"font_color", Palette.get_color(Palette.Key.BLUE_300))
 	# 敌人的重绘挂在敌人层的 draw 信号上：绘制命令必须落在**这一层**上，
 	# 落在本节点上会被 Backdrop 与机器视图盖住（父节点先于子节点绘制）。
 	_enemy_layer.draw.connect(_draw_enemies)
@@ -148,6 +168,7 @@ func reload_machine() -> void:
 	var wave: int = RunState.current_wave()
 	_show_wave(wave)
 	_show_heat(0.0)
+	_show_overheat(false)
 	_show_core_hp(CombatSimulation.CORE_MAX_HP)
 	# 读数归零之后必须重画一次敌人层：上一局的尸体否则会留在屏幕上，
 	# 直到本局第一次 tick 才被擦掉 —— 那一段空白里玩家会以为新一局「有敌人但不动」。
@@ -162,6 +183,11 @@ func reload_machine() -> void:
 	var machine: MachineRuntime = simulation.machine()
 	_machine_view.runtime = machine
 	machine.heat_changed.connect(_show_heat)
+	# 过热提示的来源：这两个信号是**一次状态变化的通知**，不是每拍心跳
+	# （test_heat.gd 已把「过热期间不得反复广播」钉住），故这里按事件换色即可，
+	# 不必每拍比对 heat() 去推状态 —— 那会把本场景变成第二个判定过热的地方。
+	machine.overheat_started.connect(_on_overheat_started)
+	machine.overheat_ended.connect(_on_overheat_ended)
 	# 重绘挂在本拍推进之后，而不是每帧无条件重画：机器不动时画面就一个像素都不重画。
 	machine.ticked.connect(_machine_view.queue_redraw)
 	simulation.ticked.connect(_enemy_layer.queue_redraw)
@@ -178,6 +204,41 @@ func reload_machine() -> void:
 ## 06 §8.1 的 `热量` 读数。取整数百分比 —— 读数格只有三位宽（`100%`），小数会被挤掉。
 func _show_heat(heat: float) -> void:
 	_heat_value.text = "%d%%" % roundi(heat)
+
+
+## Overheat 的可辨识提示（PET-66 遗留项：过热当时在画面上只表现为「热量 100% 然后掉回去」，
+## 与「机器没接好、压根不开火」在静帧里分不开）。06 §8.1 把这条带冻结成 5 个只读读数块，
+## 故这里**不加格子、不加控件、不改任何几何** —— 只给已有的 `热量` 那一格换色：
+##   常态   → 读数 ORANGE_500（04 §3.8「Heat 条、高温」）+ 标题留在正文色
+##   过热中 → 标题与读数一起转 ORANGE_300（「爆炸、过热高光」）—— 标题从冷色转暖橙，
+##            在一条五格同形的带里一眼能挑出「这一格不在常态」。
+##
+## 为什么不用 ORANGE_600（它的名字就叫「Overheat 临界」）：在 NAVY_800 带底上只有 2.93:1，
+## 04 §3.7 的对比度硬约束不允许拿它当小号文字（RED_500 的 3.21:1 已被判不合格）。
+## 因此「更亮」而不是「更深」才是这块底上可用的过热信号。
+##
+## 取色写成静态纯函数：颜色与状态的对应关系可以脱离场景树单测，
+## 不必为了断言一行取色去真跑一次过热（那要几百拍）。
+static func heat_readout_color(overheated: bool) -> Color:
+	return Palette.get_color(Palette.Key.ORANGE_300 if overheated else Palette.Key.ORANGE_500)
+
+
+func _on_overheat_started() -> void:
+	_show_overheat(true)
+
+
+func _on_overheat_ended() -> void:
+	_show_overheat(false)
+
+
+## 切到 / 切回过热态。标题在常态下**移除**覆写而不是写回正文色 ——
+## 正文色是 Theme 的事（06 §10.7 一处定义），这里只表达「这一格现在不一样」。
+func _show_overheat(overheated: bool) -> void:
+	_heat_value.add_theme_color_override(&"font_color", heat_readout_color(overheated))
+	if overheated:
+		_heat_caption.add_theme_color_override(&"font_color", heat_readout_color(true))
+	else:
+		_heat_caption.remove_theme_color_override(&"font_color")
 
 
 ## 06 §8.1 的 `CORE` 读数。同样是整数百分比（§8.1 硬规则 2：CORE 用百分比，不用自然语言状态词）。

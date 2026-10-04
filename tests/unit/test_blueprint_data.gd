@@ -19,12 +19,17 @@ const PATH_B: String = TEST_DIR + "/_roundtrip_b.tres"
 ## 又会经 CACHE_MODE_IGNORE 载入一个本已被 ResourceCache 持有的资源。
 const PATH_WRONG_TYPE: String = TEST_DIR + "/_wrong_type.tres"
 const MISSING_PATH: String = TEST_DIR + "/_no_such_file.tres"
+## 「旧存档」对照用的文件：同一份内容，但把 weapon_kind 那一行删掉 ——
+## 那就是该字段存在之前写下的存档长什么样。
+const PATH_OLD_SAVE: String = TEST_DIR + "/_old_save.tres"
+const WEAPON_KIND_LINE: String = "weapon_kind = "
 
 
 func run(ctx: RefCounted, tree: SceneTree) -> void:
 	_run_default_checks(ctx)
 	_run_roundtrip_checks(ctx)
 	_run_negative_controls(ctx)
+	_run_old_save_checks(ctx)
 
 
 func _run_default_checks(ctx: RefCounted) -> void:
@@ -72,6 +77,9 @@ func _run_roundtrip_checks(ctx: RefCounted) -> void:
 		ctx.equal(String(got.id), String(want.id), "节点 %d 的 id" % index)
 		ctx.equal(got.display_name, want.display_name, "节点 %d 的 display_name" % index)
 		ctx.equal(got.kind, want.kind, "节点 %d 的 kind" % index)
+		# weapon_kind 必须真的落盘再载回 —— 它是「拖出去的是针还是锯」的唯一来源，
+		# 丢了它，玩家的锯重进场景就会变成针（而这正是本卡要接上的那条路）。
+		ctx.equal(got.weapon_kind, want.weapon_kind, "节点 %d 的 weapon_kind" % index)
 
 	var link_count: int = mini(reloaded.connections.size(), original.connections.size())
 	for index: int in link_count:
@@ -116,11 +124,55 @@ func _run_negative_controls(ctx: RefCounted) -> void:
 	ctx.equal(BlueprintData.load_from(PATH_WRONG_TYPE), null, "类型不符应返回 null")
 
 
-func _make_node(id: StringName, kind: NodeData.Kind, display_name: String) -> NodeData:
+## 旧存档兼容：本字段存在之前写下的 .tres 里没有 weapon_kind 这一行，
+## 载回来必须是 NONE（缺省值）而不是崩溃或半个对象 —— 否则所有老玩家的蓝图一次性报废。
+##
+## 造「旧存档」的办法是从真实落盘的文件里**删掉那一行**，而不是手写一份 .tres：
+## 手写的格式一旦与 ResourceSaver 的实际输出漂开，这条用例证的就是手写文件能读，
+## 与「旧存档能读」无关了。
+func _run_old_save_checks(ctx: RefCounted) -> void:
+	ctx.begin_case("BlueprintData · 旧存档（无 weapon_kind 字段）仍能载入")
+	var blueprint: BlueprintData = BlueprintData.new()
+	blueprint.nodes.append(_make_node(&"weapon_old", NodeData.Kind.WEAPON, "锯", NodeData.WeaponKind.SAW))
+	if not ctx.check(blueprint.save_to(PATH_OLD_SAVE), "对照用的蓝图应能落盘"):
+		return
+
+	var raw: String = FileAccess.get_file_as_string(PATH_OLD_SAVE)
+	if not ctx.check(raw.contains(WEAPON_KIND_LINE),
+			"落盘文件应真的含 %s 行（否则下面删的是一个不存在的字段，用例空转）" % WEAPON_KIND_LINE):
+		return
+
+	var kept: PackedStringArray = []
+	for line: String in raw.split("\n"):
+		if line.strip_edges().begins_with(WEAPON_KIND_LINE):
+			continue
+		kept.append(line)
+	var stripped: String = "\n".join(kept)
+	ctx.check(not stripped.contains(WEAPON_KIND_LINE), "删掉之后文件里不该再有该字段")
+	var file: FileAccess = FileAccess.open(PATH_OLD_SAVE, FileAccess.WRITE)
+	if not ctx.check(file != null, "应能重写对照文件"):
+		return
+	file.store_string(stripped)
+	file.close()
+
+	var loaded: BlueprintData = BlueprintData.load_from(PATH_OLD_SAVE)
+	if not ctx.check(loaded != null, "缺 weapon_kind 的旧存档应仍能载入（不得崩、不得返回 null）"):
+		return
+	if not ctx.check(loaded.nodes.size() == 1, "旧存档的节点数应原样载回（实际 %d）" % loaded.nodes.size()):
+		return
+	var node: NodeData = loaded.nodes[0]
+	ctx.equal(node.kind, NodeData.Kind.WEAPON, "旧存档里的武器节点仍是武器")
+	ctx.equal(node.weapon_kind, NodeData.WeaponKind.NONE,
+		"缺字段的旧存档载回后 weapon_kind 应为 NONE（02 §9 的降级入口）")
+
+
+func _make_node(id: StringName, kind: NodeData.Kind, display_name: String,
+		weapon_kind: NodeData.WeaponKind = NodeData.WeaponKind.NONE) -> NodeData:
 	var node: NodeData = NodeData.new()
 	node.id = id
 	node.kind = kind
 	node.display_name = display_name
+	node.weapon_kind = weapon_kind
 	return node
 
 
@@ -139,6 +191,7 @@ func _make_connection(
 func _build_blueprint() -> BlueprintData:
 	var blueprint: BlueprintData = BlueprintData.new()
 	blueprint.nodes.append(_make_node(&"core_a", NodeData.Kind.CORE, "Core A"))
-	blueprint.nodes.append(_make_node(&"weapon_b", NodeData.Kind.WEAPON, "Weapon B"))
+	# 刻意取一个非 NONE 的武器种类：两边都是缺省值的话，往返断言恒真、等于没测。
+	blueprint.nodes.append(_make_node(&"weapon_b", NodeData.Kind.WEAPON, "Weapon B", NodeData.WeaponKind.SAW))
 	blueprint.connections.append(_make_connection(&"core_a", &"out", &"weapon_b", &"in"))
 	return blueprint

@@ -1,5 +1,6 @@
 ## main_menu.gd
-## 职责：MAIN_MENU 场景 —— 占位主菜单（Logo / 开始 / 继续 / 设置 / 退出）+ 面板标题栏落地（06 §2.2、§6）。
+## 职责：MAIN_MENU 场景 —— 占位主菜单（Logo / 开始 / 继续 / 设置 / 退出）+ 面板标题栏落地（06 §2.2、§6），
+##       按 13 §3 的裁定把 Logo 区、左侧构图区、右下信息框三处定成可替换的结构位。
 ## 所属系统：ui
 ## 依赖：Palette、Theme、GameFlow、MessagePanel、PanelTitleBar、InputScreen
 ## 禁止：本文件不得调用 change_scene_to_file() —— 场景路由只能由 GameFlow 落地（03 §1.1 R3）；
@@ -8,7 +9,13 @@
 ##       归一后的语义事件（03 §8）；
 ##       不得实现任何玩法或存档 —— 设置界面、退出逻辑、存档读写均属后续批次。
 ##
-## 占位素材位（Codex 出稿后替换，位置尺寸由场景定，脚本不引用）：ArtSkyIsland / ArtGirl / ArtCat。
+## 占位素材位（Codex 出稿后替换；位置与尺寸由场景定，脚本只碰 Logo 的文案）：
+##   `LogoSlot`       顶部横条的 Logo 位（13 §3.1：职责是品牌识别，不做广告式大 Logo）。
+##   `DecorationSlot` **左侧构图区**的可替换装饰位 —— 最终美术落进它的 `DecorationArt`。
+## 将来替换为 工坊 / 核心机器 / 浮岛 等，**不得**擅自加主角或吉祥物（13 §2）。
+##
+## 右下角只剩一行版本 / 存档辅助信息（`VersionLabel`，13 §3.3：原 MENU PANEL 是开发说明框，
+## 正式版或删或降级为版本号一类辅助信息，**不得形成新的视觉中心**）。
 
 extends InputScreen
 
@@ -31,7 +38,16 @@ const NOTICE_PREPARATION: String = "整备场景（PREPARATION）的路由未就
 const NOTICE_SETTINGS: String = "设置界面属后续批次，尚未实现。"
 const NOTICE_EXIT: String = "退出逻辑属后续批次，尚未实现。"
 
+## Logo 文案（06 §11：本阶段没有翻译表，中文原文即 tr() 的 key）。**文案写在场景里**
+## —— 静态 UI 文本放 .tscn，编辑器里点开就能看到成品；这里只负责把它送进翻译入口。
+## 写成静态函数是为了能被单测直接调用：本场景的用例 instantiate 而不入树，_ready() 不会跑。
+## 走 TranslationServer 而不是 Object.tr()：静态函数里没有 tr() 可用（06 §11 的同一件事）。
+static func translate_text(key: String) -> String:
+	return String(TranslationServer.translate(key))
+
+
 @onready var _backdrop: ColorRect = %Backdrop
+@onready var _logo: Label = %Logo
 @onready var _title_bar: PanelTitleBar = %TitleBar
 @onready var _button_start: Button = %ButtonStart
 @onready var _button_continue: Button = %ButtonContinue
@@ -43,6 +59,10 @@ const NOTICE_EXIT: String = "退出逻辑属后续批次，尚未实现。"
 func _ready() -> void:
 	# 全屏底色取自 Palette —— 场景里那个 ColorRect 不带 color 字面量（06 §10.7）。
 	_backdrop.color = Palette.get_color(Palette.Key.NAVY_900)
+	# Logo 文案过一遍翻译入口：无翻译表时它原样返回，补了表就按当前语言出字（06 §11）。
+	# 另外三个按钮的文案暂时留在场景里 —— 它们的「未实现」标注属本批的可见验收项，
+	# 与 Logo 的品牌文案不是同一件事，一并改动只会把两件事的评审绑在一起。
+	_logo.text = translate_text(_logo.text)
 	_title_bar.set_title_key(TEXT_TITLE_BAR)
 	# 按钮文案与「继续」的 disabled = true 都在场景里给（见 main_menu.tscn），
 	# 「继续」另外**不接** pressed：本批不存在存档（11 §8「存档格式与槽位数量」尚未规划），

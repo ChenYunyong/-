@@ -62,14 +62,26 @@ const PORT_IN: StringName = &"in"
 ## function_kind 是 2/4 卡才加的一列：三个 FUNCTION 槽位在**卡片上长得一模一样**
 ## （06 §4 的类型标识只按 Kind 分三色，不分小类），分别全靠这一列 ——
 ## 拖出去的节点带的是哪种行为，就是从这里传下去的。CORE / WEAPON 没有可选项，一律 NONE。
+##
+## weapon_kind 同理是武器槽位的那一列：三张武器槽在卡片上也长得一模一样，
+## 「拖出去的是针还是锯」只由这一列决定。**这是它的唯一来源** —— 从前是拿中文显示名
+## 反查武器，那样一见 I18N 就整表落空（WeaponData.BY_DISPLAY_NAME 已删）。
+## 非武器槽位一律 NONE：给它们也写上武器种类，会让「这是不是武器」有两个互相矛盾的答案。
 const WAREHOUSE: Array[Dictionary] = [
-	{"kind": NodeData.Kind.CORE, "name": "核心", "function_kind": NodeData.Function.NONE},
-	{"kind": NodeData.Kind.FUNCTION, "name": "分流", "function_kind": NodeData.Function.SPLIT},
-	{"kind": NodeData.Kind.FUNCTION, "name": "增幅", "function_kind": NodeData.Function.AMPLIFY},
-	{"kind": NodeData.Kind.FUNCTION, "name": "延迟", "function_kind": NodeData.Function.DELAY},
-	{"kind": NodeData.Kind.WEAPON, "name": "针", "function_kind": NodeData.Function.NONE},
-	{"kind": NodeData.Kind.WEAPON, "name": "炸弹", "function_kind": NodeData.Function.NONE},
-	{"kind": NodeData.Kind.WEAPON, "name": "锯", "function_kind": NodeData.Function.NONE},
+	{"kind": NodeData.Kind.CORE, "name": "核心",
+		"function_kind": NodeData.Function.NONE, "weapon_kind": NodeData.WeaponKind.NONE},
+	{"kind": NodeData.Kind.FUNCTION, "name": "分流",
+		"function_kind": NodeData.Function.SPLIT, "weapon_kind": NodeData.WeaponKind.NONE},
+	{"kind": NodeData.Kind.FUNCTION, "name": "增幅",
+		"function_kind": NodeData.Function.AMPLIFY, "weapon_kind": NodeData.WeaponKind.NONE},
+	{"kind": NodeData.Kind.FUNCTION, "name": "延迟",
+		"function_kind": NodeData.Function.DELAY, "weapon_kind": NodeData.WeaponKind.NONE},
+	{"kind": NodeData.Kind.WEAPON, "name": "针",
+		"function_kind": NodeData.Function.NONE, "weapon_kind": NodeData.WeaponKind.NEEDLE},
+	{"kind": NodeData.Kind.WEAPON, "name": "炸弹",
+		"function_kind": NodeData.Function.NONE, "weapon_kind": NodeData.WeaponKind.BOMB},
+	{"kind": NodeData.Kind.WEAPON, "name": "锯",
+		"function_kind": NodeData.Function.NONE, "weapon_kind": NodeData.WeaponKind.SAW},
 ]
 
 @export var area: Area = Area.CANVAS
@@ -258,6 +270,7 @@ func _get_drag_data(at: Vector2) -> Variant:
 			"kind": int(entry["kind"]),
 			"name": String(entry["name"]),
 			"function_kind": int(entry["function_kind"]),
+			"weapon_kind": int(entry["weapon_kind"]),
 		}
 	# 只读视图不接拖放：COMBAT 期间蓝图不可编辑（03 §4.3）。
 	if area != Area.CANVAS:
@@ -286,22 +299,26 @@ func _drop_data(at: Vector2, data: Variant) -> void:
 	var payload: Dictionary = data
 	if payload.get("type", &"") == PAYLOAD_NODE:
 		var function_kind: int = int(payload.get("function_kind", NodeData.Function.NONE))
-		_add_node(int(payload["kind"]), String(payload["name"]), at, function_kind)
+		var weapon_kind: int = int(payload.get("weapon_kind", NodeData.WeaponKind.NONE))
+		_add_node(int(payload["kind"]), String(payload["name"]), at, function_kind, weapon_kind)
 		return
 	if not _connect(StringName(payload.get("from", &"")), _card_at(at)):
 		return
 	queue_redraw()
 
 
-## 落一个节点。function_kind 有缺省值：不带行为信息的调用方（旧测试、将来的程序化建图）
-## 拿到的是「直通」，不会因为少传一个参数就落出一个行为随机的节点。
+## 落一个节点。function_kind / weapon_kind 都有缺省值：不带这两项信息的调用方
+## （旧测试、将来的程序化建图）拿到的是「直通」与 NONE，不会因为少传一个参数就落出一个
+## 行为随机 / 武器种类随机的节点 —— NONE 由 WeaponData.resolve() 按 02 §9 降级成 Needle。
 func _add_node(kind: int, display_name: String, at: Vector2,
-		function_kind: int = NodeData.Function.NONE) -> void:
+		function_kind: int = NodeData.Function.NONE,
+		weapon_kind: int = NodeData.WeaponKind.NONE) -> void:
 	var node := NodeData.new()
 	node.id = _next_id(kind)
 	node.display_name = display_name
 	node.kind = kind
 	node.function_kind = function_kind
+	node.weapon_kind = weapon_kind
 	_blueprint.nodes.append(node)
 	_boxes[node.id] = _snapped(at)
 	_save_blueprint()
