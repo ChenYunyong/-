@@ -14,6 +14,7 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 	{"path": "res://tests/unit/test_palette.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_game_flow.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_data_registry.gd", "layer": "unit"},
+	{"path": "res://tests/unit/test_node_data.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_settings.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_theme.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_boot_check.gd", "layer": "unit"},
