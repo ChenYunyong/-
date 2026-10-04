@@ -1,18 +1,19 @@
 ## combat_screen.gd
-## 职责：COMBAT 场景 —— 06 §8 的占位战场 + 底部状态带（状态 / 预览的只读展示），
+## 职责：COMBAT 场景 —— 06 §8 的战场（机器示意区）+ 底部状态带（状态 / 预览的只读展示），
 ##       以及通往 REWARD / RESULT 的两个触发入口。
-##       **本批只做骨架与布局，不含任何战斗玩法。**
+##       本批（FIRST PLAYABLE 2/4）把蓝图机器**真的跑起来**：载入蓝图 → 建 MachineRuntime →
+##       交给 MachineDriver 按固定节拍推进 → 把 Heat 写进状态带读数。
 ## 所属系统：ui
-## 依赖：Palette、Theme、GameFlow、CombatLayout、InputScreen
+## 依赖：Palette、Theme、GameFlow、CombatLayout、InputScreen、MachineRuntime、MachineDriver、BlueprintWorkspace
 ## 禁止：本文件不得调用 change_scene_to_file() —— 场景路由只能由 GameFlow 落地（03 §1.1 R3）；
 ##       不得写任何字面色值（06 §10.7）；
 ##       不得判断任何原始输入事件类型（InputEventMouseButton 等）—— 输入一律经 InputScreen
 ##       归一后的语义事件（03 §8）；
-##       不得出现任何会自动推进的构造（Timer / create_timer / _process / _physics_process，
-##       见 03 §2）—— 敌人生成与推进、CORE 运行、武器执行、伤害结算、Heat / Energy 计算
-##       全部属 Stage 4，本批一条都不实现；
+##       不得自己持有节拍 / 累加器 / 计时构造 —— 时间模型属玩法（03 §2），归 MachineDriver；
+##       本文件只负责「把谁交给它」与「把结果写到哪个 Label 上」；
 ##       不得出现任何需要玩家长按 / 连点的动作控件（00 §5 第 3 条交互硬规则、06 §8）——
-##       这条带是状态与预览，COMBAT 阶段玩家不直接操控任何单位。
+##       这条带是状态与预览，COMBAT 阶段玩家不直接操控任何单位；
+##       不得结算伤害 / 生成敌人 / 判死亡 / 处理 Overheat（PET-65 / PET-66）。
 
 extends InputScreen
 
@@ -22,13 +23,28 @@ const NOTICE_CORE_DESTROYED: String = "CORE 被摧毁后将进入结算场景（
 ## Escape 出口的路由故障提示。与上一条分开：那条讲的是「CORE 被摧毁」，
 ## 而这里玩家按的是 Escape，提示说成 CORE 被摧毁会把人引到错误的方向。
 const NOTICE_ESCAPE: String = "结算场景（RESULT）的路由未就绪，本次留在战斗场景。"
+## 还没有机器可跑。这是**首次进游戏的正常情况**（玩家没拖过节点），不是错误，故只提示不报错。
+const NOTICE_NO_MACHINE: String = "本局还没有机器：先在整备界面拖出 CORE 与武器并连好线，再开始战斗。"
+## 有图但没有信号源。给一句可读的解释，免得玩家对着不动的机器猜是卡了还是没接线。
+const NOTICE_NO_CORE: String = "这台机器里没有 CORE（信号源），不会有信号流动 —— 补一个 CORE 再开战。"
+
+## 机器示意区的高度：24px 网格上的 2 行，贴战场下沿。上方的空档留给占位弹丸上升，
+## 也留给后续卡片（PET-65）的敌人生成区。
+const MACHINE_VIEW_HEIGHT: float = 48.0
 
 @onready var _backdrop: ColorRect = %Backdrop
 @onready var _battlefield: Control = %Battlefield
+@onready var _machine_view: BlueprintWorkspace = %MachineView
+@onready var _driver: MachineDriver = %MachineDriver
 @onready var _status_bar: Control = %StatusBar
 @onready var _status_fill: ColorRect = %StatusFill
 @onready var _status_edge: ColorRect = %StatusEdge
 @onready var _notice_label: Label = %NoticeLabel
+
+## 06 §8.1 的 `热量` 读数格。取的是读数块里那个叫 `Value` 的 Label。
+## **不能**给这个 Label 挂 unique_name：5 个读数块的 Value 同名，`%Value` 只会命中其中一个，
+## 而各用例正是按名字 `Value` 逐块找它的。故唯一名挂在读数块（`Heat`）上，再往下走一级。
+@onready var _heat_value: Label = %Heat.get_node(^"Value") as Label
 
 ## 两块区域容器，下标即 CombatLayout.Region。顺序必须与场景里的节点顺序一致。
 var _regions: Array[Control] = []
@@ -48,6 +64,37 @@ func _ready() -> void:
 	# 折叠由可用区尺寸驱动，不用计时器、也不轮询（03 §2）。
 	resized.connect(_on_resized)
 	apply_layout_for(size)
+	# 布局先落定（示意区要先有尺寸才能给节点落格），再建机器。
+	reload_machine()
+
+
+## 载入工作区落盘的蓝图，重建机器并交给 MachineDriver。_ready() 与「换蓝图后重进战斗」都走这一个入口。
+##
+## 没有机器不是异常：玩家可能一次都没进过整备界面。三种情况各给一句可读提示，
+## 而不是让画面沉默 —— 沉默在验收时和「跑起来了但没画出来」完全分不开。
+func reload_machine() -> void:
+	_machine_view.reload()
+	_driver.bind(null)
+	_notice_label.visible = false
+	_show_heat(0.0)
+	var blueprint: BlueprintData = _machine_view.blueprint()
+	if blueprint == null or blueprint.nodes.is_empty():
+		_show_notice(NOTICE_NO_MACHINE)
+		return
+	# 图由工作区持有并绘制（06 §8 / 03 §4.3：蓝图在 COMBAT 是只读的），运行时只借用它建索引。
+	var machine := MachineRuntime.new(blueprint)
+	_machine_view.runtime = machine
+	machine.heat_changed.connect(_show_heat)
+	# 重绘挂在本拍推进之后，而不是每帧无条件重画：机器不动时画面就一个像素都不重画。
+	machine.ticked.connect(_machine_view.queue_redraw)
+	_driver.bind(machine)
+	if not machine.has_core():
+		_show_notice(NOTICE_NO_CORE)
+
+
+## 06 §8.1 的 `热量` 读数。取整数百分比 —— 读数格只有三位宽（`100%`），小数会被挤掉。
+func _show_heat(heat: float) -> void:
+	_heat_value.text = "%d%%" % roundi(heat)
 
 
 ## 当前是否处于 06 §7.1 的折叠布局。
@@ -66,6 +113,15 @@ func apply_layout_for(viewport_size: Vector2) -> void:
 		else CombatLayout.wide_rects()
 	for index: int in _regions.size():
 		_place(_regions[index], rects[index])
+	_place_machine_view(rects[CombatLayout.Region.BATTLEFIELD])
+
+
+## 机器示意区贴战场**下沿**（06 §8：CORE 运行、武器执行全部可见、可读）。
+## 贴下沿而不是铺满：上方的空档正是占位弹丸上升的地方，也是后续卡片敌人生成区的位置。
+func _place_machine_view(battlefield: Rect2) -> void:
+	var height: float = minf(MACHINE_VIEW_HEIGHT, battlefield.size.y)
+	_place(_machine_view, Rect2(battlefield.position.x, battlefield.end.y - height,
+		battlefield.size.x, height))
 
 
 func _on_resized() -> void:
