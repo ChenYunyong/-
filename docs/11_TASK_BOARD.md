@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.3.1**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.3.2**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -191,8 +191,8 @@
 |---|---|---|---|
 | PET-61 | **ENGINE-4.7.2**：Godot 4.7.1 → 4.7.2 + 新基线（前置） | Claude | `ACCEPTED` |
 | PET-63 | **FP 1/4** 蓝图可编辑：节点拖放 + 连线（CORE→FUNCTION→WEAPON） | Claude | `ACCEPTED`（DSH 独立复核通过，提交 `e40629c`，已推送；证据见本节末注） |
-| PET-64 | **FP 2/4** 机器运行：CORE 信号 + Split/Amplify/Delay + Needle/Bomb/Saw 开火 + 基础 Heat | Claude | `TODO`（2026-10-04 DSH 自 `BACKLOG` 提升） |
-| PET-65 | **FP 3/4** COMBAT 真实：Slime/Runner 生成推进 + 三武器伤害结算 + 死亡 | Claude | `BACKLOG` |
+| PET-64 | **FP 2/4** 机器运行：CORE 信号 + Split/Amplify/Delay + Needle/Bomb/Saw 开火 + 基础 Heat | Claude | `ACCEPTED`（DSH 独立复核通过，提交 `c6e085f`，已推送；证据见本节末注） |
+| PET-65 | **FP 3/4** COMBAT 真实：Slime/Runner 生成推进 + 三武器伤害结算 + 死亡 | Claude | `TODO`（2026-10-04 DSH 自 `BACKLOG` 提升） |
 | PET-66 | **FP 4/4** 循环闭合：3 波 + REWARD 三选一 + 回 PREPARATION + Overheat | Claude | `BACKLOG` |
 | PET-62 | **Visual Batch 01**（并行）：MAIN MENU / PREPARATION / COMBAT UI Kit | Codex | `APPROVED`（有条件批准，见 `13`） |
 | PET-67 | **I18N-MIN** UI 中英可切换：Godot CSV 翻译表（中文原文 = key → en）+ 最小语言开关 + 持久化 | Claude | `BACKLOG`（排 PET-63 之后） |
@@ -232,6 +232,16 @@
 > **2026-10-04 追加裁定**：三张 Kit 批准为 **FIRST PLAYABLE 正式结构基线**（结构 / 组件基线 + 开发期视觉资源，**不是最终美术**）。**不再因 UI Kit 阻塞 Gameplay**。优先级切换为 **`FIRST PLAYABLE Gameplay > UI Kit 继续打磨`**。**下一批主交付目标 = 一个实际可玩的 Godot Build**（PREPARATION → 拖放 → 连线 → 战斗 → 敌人推进 → 武器攻击 → 死亡 → REWARD 三选一 → 返回）。细则见 `13 §9`。
 
 > **2026-10-04 VB-02 组件 Kit 批准**：定义为 PixelFusion **正式基础 UI Component Language v1**（**非最终视觉完成度**）。`Panel` / `Button` 五态 / `Inventory Slot` / `HUD 分级` / `Tooltip` / `Progress Bar` / `Frame` / `Disabled` **全部通过**；**正式产出前 3 个小修**（`Focus` 与 `Selected` 语义区分 · 类型色小面积辅助识别、深蓝卡身不变 · 不得为「更精致」堆 Panel 装饰）见 `13 §10`。可**批量产正式资源**并推进 `_approved/`（PET-71）。**PET-70 仍等 PET-64；UI 不得再打断 FIRST PLAYABLE。**
+
+> **2026-10-04 PET-64 验收（`ACCEPTED`，提交 `c6e085f`，DSH 已推送）** —— DSH **不采信自报**，按卡上写明的 **L1**（`09 §1.1`，未擅自上 L3）在交付树的一份独立副本上逐项复跑，并**另写一份自己的探针**（不复用交付方用例）从零搭蓝图、逐拍驱动 `MachineRuntime`。
+>
+> - **L1 结果（全部 `exit=0` / 失败项 0）**：unit + integration **1773/1773 · 356/356**；COMBAT 场景冒烟 **103/103**；信号流冒烟 **38/38**（**非 headless**，`--resolution 320x180`，真实 GL 渲染）。
+> - **像素取证独立复现**：第 0 拍示意区 `BLUE_050 = 0 px`、第 23 拍 `= 120 px`（信号火花 + 点亮描边），走廊内弹丸芯 `BLUE_050 = 4 px` / 弹丸体 `BLUE_FX_600 = 12 px` —— 与交付方自报**逐位一致**。
+> - **负向对照**：注释掉弹丸那一行 `_draw_spark()` → 冒烟恰好 **36/38**、`EXIT=1`（两条走廊像素断言按名转红）；恢复后文件与交付方原文件 **SHA256 相同**、重跑回绿。像素断言不是恒真断言。
+> - **独立探针（DSH 自写，14/14）**：`CORE→Split→Amplify→Needle` 首发拍号 **22**、此后每 **10** 拍一发；`Heat` 每发 **+2**（第 5 发 = 10.0）；Amplify 出边信号值恒 **2.0**；Split 两条出边**同拍**各送一枚（`w1`/`w2` 同拍开火）；Delay 链首发第 **30** 拍（= 10 + 4 + 12 + 4）；无 CORE 时 50 拍零开火；同蓝图两遍开火序列一致（确定性）；直通节点出边 = 1.0（反向对照）。
+> - **改动面核对**：全部落在 ALLOWED FILES —— `scripts/gameplay/**`（新）· `scripts/data/node_data.gd` · `scripts/ui/blueprint_workspace.gd` · `scripts/ui/combat_screen.gd` · `scenes/combat/combat.tscn` · 两个新测试文件 · `tests/unit/run_tests.gd`（**+1 登记行**）＋引擎 `.gd.uid` 旁挂；`docs/**` · `assets/**` · `preparation.tscn` **未触碰**。
+> - **交付方三点待复核的裁定**：① `scripts/gameplay/` **保留**（`02 §4` 的目录清单是拆分指引而非闭集；`nodes/` 是单节点行为、`combat/` 是伤害与 Heat 结算，本卡是「整机固定节拍仿真 + 时间模型」，新目录职责更清晰）—— DSH 随后把该目录补进 `02 §4`；② 两个新测试文件超 `02 §4` 的 300 行（净 `503` / `316`）**接受**（卡上只允许新建这两个文件，仓库既有测试已有同量级先例）；③ VIEWER 描边在示意区上沿外溢 1px —— **接受，不改**（不影响可读性与判据）。
+> - **环境说明**：本复核 run 的沙箱为 `workspace-write`，`D:\` 与工作区 `.repos` 的写入、`git push` 首先被拒；经**授权的提权重试**后，把交付提交 `061869e` **cherry-pick** 到 `main` 得 **`c6e085f`** 并推送（内容与 `061869e` 逐字节一致），另把交付分支 `agent/claude-lead-developer/7dfe06153c7f` 推至 origin 留档。
 
 ## 5. STAGE 3 — CORE / FUNCTION / WEAPON（未开始）
 
