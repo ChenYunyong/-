@@ -1,6 +1,6 @@
 # 02 — 代码规范（CODE STANDARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 v0.1.0｜维护者 DSH｜约束对象 Claude Lead Developer
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 v0.1.1｜维护者 DSH｜约束对象 Claude Lead Developer
 > 本文件在 Stage 0 之后被冻结；新增规则必须走 `12_CHANGELOG.md` 记录。
 
 ## 1. 语言与引擎
@@ -64,6 +64,7 @@ scripts/
 ├─ combat/      # 战斗推进、伤害结算、Heat/Energy
 ├─ enemies/     # 敌人行为与生成
 ├─ nodes/       # CORE / FUNCTION / WEAPON 节点逻辑
+├─ gameplay/    # 整机仿真：固定节拍 / 信号脉冲 / 机器运行时
 ├─ roguelike/   # 波次、奖励、局内进度
 ├─ ui/          # 纯表现层
 ├─ data/        # Resource 定义
