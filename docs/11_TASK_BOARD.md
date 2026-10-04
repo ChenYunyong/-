@@ -1,7 +1,7 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.3.9**｜维护者 DSH
-> （v0.3.8 的板头漏改已在此版补上 —— `12_CHANGELOG` 的 v0.3.8 条目当时只写了更新说明、未回改本行。）
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.4.0**｜维护者 DSH
+> （v0.4.0：`PET-74` 复核 `ACCEPTED` 并落 `main`；**用户试玩反馈已进板** —— 新增 `PET-75` / `PET-76` 两行。）
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -217,6 +217,9 @@
 | PET-70 | **UI-KIT 接入**（MAIN_MENU + COMBAT 结构）：按批准 Kit 建场景结构，placeholder 资源 | Claude | `ACCEPTED`（DSH 独立复核通过，提交 `1af0c42`，已推送；证据见本节末注 —— 开卡前置 `weapon_kind` 同批落地） |
 | PET-72 | **S4-07 最小版 · 奖励真的生效**：清空一波后的三选一，选中的那一项**真的落到玩家蓝图**（正确的 `function_kind` / `weapon_kind`、画布内第一个空闲格、立即落盘）；跨场景传递走既有载体，不新造全局单例。**不做**掉落池 / 稀有度 / 权重。**顺带结清** R1（`full_loop_smoke` 补 `weapon_kind`）与 R5（仓库槽位名走 `tr()`）—— 三者都落在同一批文件 | Claude | `TODO`（2026-10-04 DSH 自 `BACKLOG` 提升 —— 承接 `PET-37` 交用户亲测时登记的「三选一目前只是『选给你看』」；已挂条件唤醒 `status = in_review`） |
 | PET-73 | **VB-04** VB-03 组件切片收口：Godot 导入设置（`.png.import` 九宫格落点 = `StyleBoxTexture`）+ `_approved/` 流程走完 + 可用清单 | Codex | `ACCEPTED`（2026-10-04 DSH **逐张**复核通过并已推送 `main`，见 §4.1 末注；**未新开 gameplay 方向** —— 下一个玩法里程碑等 `PET-37` 的用户试玩反馈定向） |
+| PET-74 | **BUILD-WIN** 双击可玩的 Windows 调试包：`export_presets.cfg` **仅新增** `Windows Desktop` 段（debug）→ `build\windows\PixelFusion.exe`（产物不入库） | Claude | `ACCEPTED`（2026-10-04 DSH 复核通过并已推送 `main`，见 §4.1 末注；**窗口尺寸实测 1280×720 = 4× 整数放大**） |
+| PET-75 | **PLAY-01 · 用户试玩反馈 #2** 蓝图节点删不掉：删除 / 撤销（`Ctrl+Z`）/ 清空（S2-05 补课） | Claude | `TODO`（2026-10-04 DSH 自 `BACKLOG` 提升 —— 用户亲测反馈；已挂**同款条件唤醒** `status = in_review`） |
+| PET-76 | **PLAY-02 · 用户试玩反馈 #3** 战斗看不懂：武器 / 命中 / 结果 的可读反馈（依 `13 §18` 克制原则） | Claude | `BACKLOG`（**故意压后**：单写手，等 `PET-75` 完成再提 —— `13 §9` / 用户规则） |
 
 | — | 退出期资源清点：`palette.gd` / `palette.tres` 未释放（已复核、非阻塞；随下一张触碰该文件的卡一并修） | Claude | `BACKLOG` |
 | R1 | `tests/integration/full_loop_smoke.gd` 仍按老写法建武器节点（无 `weapon_kind`）→ 每次跑出 5 条 `WeaponData.resolve` 降级 `push_error`，且该用例的武器全部落到 Needle。**一条参数即可消除**（`09 §5` 的 ERROR 零增量） | Claude | `BACKLOG` |
@@ -329,6 +332,15 @@
 > - **未做（刻意的）**：**没有**新开 gameplay 方向。按 `13 §9` 的 `FIRST PLAYABLE Gameplay > UI Kit 继续打磨`，下一个玩法里程碑等 **`PET-37`** 的用户试玩反馈定向；在那之前只清**登记在册**的项（本次清掉的仅是 R3 的 `status` 半条）。
 > - **环境说明（非本卡缺陷）**：交付 run 的编辑器导入日志里有两条**与本批无关**的环境噪声（根证书库读取失败、便携版 `editor_data` 不可写）；`--import` 退出码 0、VB-03 的 `.ctex` 全部落盘，判定为环境噪声而非导入失败。本复核 run 的沙箱无本地 Godot（`tools/godot/` 被 gitignore），故 DSH 用**结构 + 产物 + 像素**三方取证代替重跑编辑器。
 
+
+> **2026-10-04 PET-74 验收（`ACCEPTED`，提交 `3b9f4b1`，DSH 已推送 `main`）+ 用户试玩反馈进板** —— DSH **不采信自报**，直接在这台机器上**等价双击**冷启动交付产物（`D:\GameDev\PixelFusion\build\windows\PixelFusion.exe`），用 Win32 API 量窗口、用自写取帧脚本量像素。
+>
+> - **窗口尺寸（本卡验收重点；用户反馈「分辨率太低」）—— 实测 `1280×720`，不是 320×180 的小窗**：`GetClientRect` = **1280×720 物理像素**（两次独立冷启动一致），`GetWindowRect` 外层 = 1302×776，`GetDpiForWindow` = **144**（窗口为 per-monitor DPI aware）⇒ `display/window/size/window_width_override = 1280` / `window_height_override = 720` **在导出包里确实生效**，**不需要**启动时 `DisplayServer.window_set_size()` 兜底。内容分辨率仍是 `320×180`（本卡未改 `project.godot`），**4× 整数放大**。
+> - **不糊（最近邻）**：DSH 自己在前台抓下运行中的客户区帧，按 4×4 同色块统计 **57590 / 57600 = 99.983%** 完全同色；与交付附件 `PET74-1.png` 逐像素比对差值 **0.01%**（只剩 1280×720 圆角 / 光标的合成痕迹）⇒ 交付截图是**真实渲染帧**，不是重画或事后放大。附件 `PET74-1` vs `PET74-2` 差 **75.43%**，与交付方自报**逐位一致**。
+> - **`export_presets.cfg` 改动面**：交付提交 `3e00c77` = **恰好 1 个文件 / +50 行**，只新增 `[preset.1] Windows Desktop`；Web 预设（`[preset.0]`）**一字未动**。DSH 落 `main` 的提交 `3b9f4b1` 与其 blob **逐字节相同**（`e1068bd5…`）。
+> - **未上 L3 / 不改玩法**：本卡 L1 只要求「双击 → 主菜单 → 开始整备 → PREPARATION」；`scripts/**` · `scenes/**` · `assets/**` · `project.godot` **零改动**（项目里那份窗口设置是上一版既有内容，本卡没碰）。产物 `build/**` 按卡不入库。
+> - **「分辨率太低」的裁定**：**窗口放大没有丢**（见上）。若用户指的是**画面本身颗粒粗**（基础画布 `320×180`），那是**换规格**（抬到 640×360 之类，布局常量要整体重导），属**用户的 GATE 方向决定**，DSH 不代判 —— 已在 `PET-37` 向用户点明这一分支。
+> - **用户试玩反馈已进板**：`PET-75`（PLAY-01 · 删除 / 撤销 / 清空）自 `BACKLOG` 提升为 **`TODO`**，并挂**同款条件唤醒**（`status = in_review`）；`PET-76`（PLAY-02 · 战斗可读性）**保持 `BACKLOG`**，等 `PET-75` 完成后由 DSH 再提 —— **单写手，不并行开第二张 Claude 卡**（用户规则）。依据 `13 §18`（战斗可读性）与 `13 §9`（`FIRST PLAYABLE Gameplay > UI Kit 继续打磨`）。
 
 ## 5. STAGE 3 — CORE / FUNCTION / WEAPON（未开始）
 

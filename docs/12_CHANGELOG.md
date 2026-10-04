@@ -5,6 +5,19 @@
 
 ## [Unreleased]
 
+### PET-74 验收（`ACCEPTED`）：BUILD-WIN 双击可玩的 Windows 调试包 + 用户试玩反馈进板（2026-10-04）
+
+#### Added
+- **`PET-74`（BUILD-WIN）通过 DSH 复核 → `ACCEPTED`**（提交 `3b9f4b1`，DSH 已推送 `main`；内容与交付提交 `3e00c77` **逐字节相同**，blob `e1068bd5…`）：`export_presets.cfg` **仅新增** `[preset.1] Windows Desktop`（debug，`export_path = build/windows/PixelFusion.exe`，`binary_format/architecture = x86_64`，`application/modify_resources = false` 以跳过未配置的 rcedit）；Web 预设 `[preset.0]` **一字未动**。产物 `build/windows/PixelFusion.exe`（+ `.pck` / `.console.exe`）**按卡不入库**。
+- **`PET-75`（PLAY-01 · 试玩反馈 #2：蓝图节点删不掉 —— 删除 / 撤销 / 清空）自 `BACKLOG` 提升为 `TODO`**，并挂**同款条件唤醒**（`status = in_review`）；**`PET-76`（PLAY-02 · 试玩反馈 #3：战斗可读性）保持 `BACKLOG`** —— **单写手**，等 `PET-75` 完成再提（用户规则 + `13 §9`）。依据 `13 §18`（战斗可读性）。
+- **`11_TASK_BOARD.md` → v0.4.0**：§4.1 新增 PET-74 / PET-75 / PET-76 三行并补 PET-74 验收段，记「**用户试玩反馈已进板**」；R1–R5 待办原样保留。
+
+#### Notes
+- **窗口尺寸（本卡验收重点；用户反馈「分辨率太低」）**：DSH 等价双击冷启动交付产物，`GetClientRect` 实测 **1280×720 物理像素**（两次独立冷启动一致）、`GetWindowRect` 外层 1302×776、`GetDpiForWindow` = **144**（per-monitor DPI aware）⇒ `window_width_override = 1280` / `window_height_override = 720` **在导出包里确实生效**，**不需要** `DisplayServer.window_set_size()` 兜底。内容分辨率仍 `320×180`（`project.godot` 本卡未改），**4× 整数放大**。
+- **像素取证（不采信自报）**：DSH 自写取帧脚本抓运行中的前台客户区帧，4×4 同色块占比 **57590 / 57600 = 99.983%**（最近邻，不糊）；与交付附件 `PET74-1.png` 逐像素差 **0.01%**（仅圆角 / 光标合成痕迹）⇒ 截图是**真实渲染帧**，不是重画或事后放大；`PET74-1` vs `PET74-2` 差 **75.43%**，与交付方自报**逐位一致**。
+- **「分辨率太低」的裁定**：**窗口放大没有丢**（见上）。若用户指的是画面本身颗粒粗（基础画布 `320×180`），那属**换规格**（抬到 640×360 之类、布局常量整体重导），是**用户的 GATE 方向决定**，DSH 不代判 —— 已在 `PET-37` 向用户点明这一分支与双击路径。
+- **未上 L3 / 不改玩法**：本卡 L1 只要求「双击 → 主菜单 → 开始整备 → PREPARATION」；`scripts/**` · `scenes/**` · `assets/**` · `project.godot` **零改动**。
+
 ### PET-73 验收（`ACCEPTED`）：VB-04 —— VB-03 组件切片收口（Godot 导入设置 + `_approved/` 流程）（2026-10-04）
 
 #### Added
