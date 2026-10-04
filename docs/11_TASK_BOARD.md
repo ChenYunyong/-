@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.2.2**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.2.3**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -164,7 +164,7 @@
 
 **Stage 1 绝对禁止**：真实战斗、真实伤害、蓝图编辑逻辑、敌人 AI。
 
-## 4. STAGE 2 — BLUEPRINT BASE（未开始）
+## 4. STAGE 2 — BLUEPRINT BASE（进行中：S2-01 已验收，S2-02 起未开始）
 
 | ID | 任务 | 负责人 |
 |---|---|---|
@@ -176,6 +176,8 @@
 | S2-06 | 环路、悬空端口、类型不匹配的处理与提示 | Claude |
 | S2-07 | 蓝图单元测试（空蓝图、删除引用、环路、重载） | Claude |
 | S2-08 | Stage 2 用户验收 | 用户 |
+
+> **进度（2026-10-04）**：**S2-01 `NodeData` / `ConnectionData` 已验收（`ACCEPTED`，L2/L3）** —— Claude 提交 `c769120`（7 files / +132，DSH 已推送）；DSH 独立复跑：基线 `c9421c0` = unit **1338/1338** · integration **356/356**，本提交 = unit **1370/1370**（+32） · integration **356/356**，失败项 0，ERROR 35→35 / WARNING 18→18 **零增量**；负向对照（`kind` 缺省改 `CORE`、`from_port` 缺省改 `"out"`）恰好 **4 条**按名转红（1366/1370）。S2-02 起未开始。
 
 ## 5. STAGE 3 — CORE / FUNCTION / WEAPON（未开始）
 

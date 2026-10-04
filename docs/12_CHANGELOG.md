@@ -5,6 +5,16 @@
 
 ## [Unreleased]
 
+### Stage 2 开工 · S2-01 蓝图数据模型交付并验收（2026-10-04）
+
+#### Added
+- `scripts/data/node_data.gd`、`scripts/data/connection_data.gd`（新建）：蓝图三类节点（`CORE` / `FUNCTION` / `WEAPON`）与有向边（`from_node_id` / `from_port` / `to_node_id` / `to_port`）的 Resource 数据模型，依 `03_ARCHITECTURE.md` §4.1 / §4.2；只做数据，不含 UI、玩法逻辑与图算法。
+- `tests/unit/test_node_data.gd`（新建，32 条断言，含反向对照）；`tests/unit/run_tests.gd` 仅加一行登记。
+- `11_TASK_BOARD.md` → **v0.2.3**：STAGE 2 由「未开始」转「进行中」，登记 S2-01 为 `ACCEPTED`。
+
+#### Notes
+- 提交 `c769120`（7 files / +132）。DSH 独立复跑：基线 `c9421c0` = unit 1338/1338 · integration 356/356；本提交 = unit **1370/1370** · integration **356/356**，失败 0，ERROR/WARNING 零增量；负向对照 4 条按名转红。
+
 ### EXTERNAL RESEARCH GATE 立规（2026-10-04）
 
 #### Added
