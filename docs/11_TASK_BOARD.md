@@ -1,6 +1,6 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.2.1**｜维护者 DSH
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.2.2**｜维护者 DSH
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -95,7 +95,7 @@
 | S1-13 | Web Export 冒烟验证 | Claude | S1-12 | `ACCEPTED`（PET-57 · debug+Threads 导出跑通、「人看清单」齐备） |
 | S1-13R | 测试卫生 + Web 打包排除：夹到 0 覆盖 · 失准文案 · 10 轮泄漏断言 · `exclude_filter` | Claude | S1-13 | `ACCEPTED`（PET-58 · unit 1338 · integration 356 · 产物冒烟 36/36 · 四件各带反向对照） |
 | S1-14 | Stage 1 用户验收（**GATE 9**） | 用户 | S1-13 | `REVIEW`（PET-59 · 验收清单已交用户，等用户 L4 结论；DSH 不得代判） |
-| S1-14C | **Crash Investigation：Godot 原生崩溃（`0xc0000005`，用户报告）** | Claude | S1-14 | `ACCEPTED`（PET-60 · 结论 **未能复现**：16 配置 + 6000 次压力迭代零再现；已**证否** DSH 的最强线索；据 WER 存活 <0.55s 且无日志 → 崩溃早于任何项目代码） |
+| S1-14C | **Crash Investigation：Godot 原生崩溃（`0xc0000005`，用户报告）** | Claude | S1-14 | `ACCEPTED`（PET-60 · **结论已更正**：**已复现（触发条件明确）＋官方已知＋4.7.2 已修复** —— 引擎打不开 `user://logs` → `RotatedFileLogger::rotate_file()` 空指针；fault offset `0x3e15854` 与用户 Event 1000 逐字段＋WER 桶哈希相同；上游 #122437（affected 4.7.1 / `a13da4f`），修复 PR #121926 / commit `2906aa0` 随 **4.7.2** 发布。**本项目仍停在 4.7.1，不得视为已解决**） |
 
 > **已登记待办（S1-05 复核产生）**：`06 §2.2` 的**面板标题栏**（高度 16px / 底色 `NAVY_700` + 1px 底部 `GOLD_600` 分隔线）
 > 在 Theme 与 `scenes/**` 均无落点。Codex 2026-10-03 独立复核裁定：S1-05 的 BOOT 占位面板不必补，**列为 S1-06 验收项**
