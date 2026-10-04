@@ -61,13 +61,24 @@ const HIT_TABLE: Dictionary = {
 		],
 	},
 	PREP_SCENE: {
+		# PET-75：新增「删除 / 撤销 / 清空蓝图」三个按钮（左栏底部，69×24 = 138×48 设备像素），
+		# 且 BlueprintCanvas 开始接 gui_input（点选节点 / 连线）—— 从本卡起它也是可交互元素。
+		# 四个都是本卡的交付物本身，表必须收录，故随卡报备这处偏离（同 PET-67 的 ButtonLang）。
 		"wide": [
 			["ButtonStartCombat", Vector2(64.0, 20.0), Vector2(64.0, 24.0)],
 			["RegionLeft", Vector2(73.0, 124.0), Vector2(73.0, 124.0)],
+			["RegionCenter/BlueprintCanvas", Vector2(124.0, 120.0), Vector2(124.0, 120.0)],
+			["RegionLeft/ButtonDelete", Vector2(69.0, 24.0), Vector2(69.0, 24.0)],
+			["RegionLeft/ButtonUndo", Vector2(69.0, 24.0), Vector2(69.0, 24.0)],
+			["RegionLeft/ButtonClear", Vector2(69.0, 24.0), Vector2(69.0, 24.0)],
 		],
+		# 窄屏：左栏收起成 16px 信息条，三个动作按钮按 §7.1 一并隐藏（0 行）——
+		# 它们随信息条展开（_info_expanded）才回来，那时左栏是 §7 的 73×124 覆盖层，
+		# 尺寸与宽屏一栏相同，故不另立一行。画布在窄屏是 §7.1 的中栏内缩 2px。
 		"narrow": [
 			["ButtonStartCombat", Vector2(44.0, 44.0), Vector2(44.0, 44.0)],
 			["RegionLeft", Vector2(360.0, 16.0), Vector2(360.0, 24.0)],
+			["RegionCenter/BlueprintCanvas", Vector2(340.0, 412.0), Vector2(340.0, 412.0)],
 		],
 	},
 	COMBAT_SCENE: {"wide": [], "narrow": []},

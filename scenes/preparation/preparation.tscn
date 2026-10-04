@@ -1,9 +1,25 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/preparation_screen.gd" id="1_prep"]
 [ext_resource type="Theme" path="res://assets/ui/theme_main.tres" id="2_theme"]
 [ext_resource type="PackedScene" path="res://scenes/components/message_panel.tscn" id="3_notice"]
 [ext_resource type="Script" path="res://scripts/ui/blueprint_workspace.gd" id="4_workspace"]
+
+[sub_resource type="InputEventKey" id="InputEventKey_delete"]
+keycode = 4194312
+
+[sub_resource type="InputEventKey" id="InputEventKey_backspace"]
+keycode = 4194308
+
+[sub_resource type="InputEventKey" id="InputEventKey_undo"]
+keycode = 90
+ctrl_pressed = true
+
+[sub_resource type="Shortcut" id="Shortcut_delete"]
+events = [SubResource("InputEventKey_delete"), SubResource("InputEventKey_backspace")]
+
+[sub_resource type="Shortcut" id="Shortcut_undo"]
+events = [SubResource("InputEventKey_undo")]
 
 [node name="Preparation" type="Control"]
 layout_mode = 3
@@ -109,7 +125,7 @@ anchor_bottom = 1.0
 offset_left = 8.0
 offset_top = 8.0
 offset_right = -8.0
-offset_bottom = -8.0
+offset_bottom = -80.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
@@ -117,6 +133,38 @@ text = "关卡信息"
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 3
+
+[node name="ButtonDelete" type="Button" parent="RegionLeft"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 2.0
+offset_top = 46.0
+offset_right = 71.0
+offset_bottom = 70.0
+theme_type_variation = &"ButtonSecondary"
+text = "删除"
+shortcut = SubResource("Shortcut_delete")
+
+[node name="ButtonUndo" type="Button" parent="RegionLeft"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 2.0
+offset_top = 72.0
+offset_right = 71.0
+offset_bottom = 96.0
+theme_type_variation = &"ButtonSecondary"
+text = "撤销"
+shortcut = SubResource("Shortcut_undo")
+
+[node name="ButtonClear" type="Button" parent="RegionLeft"]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 2.0
+offset_top = 98.0
+offset_right = 71.0
+offset_bottom = 122.0
+theme_type_variation = &"ButtonSecondary"
+text = "清空蓝图"
 
 [node name="RegionCenter" type="Control" parent="."]
 unique_name_in_owner = true

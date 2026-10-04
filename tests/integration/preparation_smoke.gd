@@ -143,14 +143,17 @@ func _check_region(scene: Node, index: int) -> void:
 
 ## 06 §7：「开始战斗」是右下角**唯一**的主动作按钮。这里量的是渲染前的真实矩形，
 ## 并拿它自己报告的最小尺寸回代坐标换算公式 —— 最小尺寸一旦变化，落位必须跟着变。
+##
+## PET-75：判据收窄到**主动作**按钮（无主题变体 = GOLD 填充）。该卡在左栏加了
+## 「删除 / 撤销 / 清空蓝图」三个 ButtonSecondary 辅助按钮，它们不争夺这个位置；
+## 收窄之后本用例测的正是它标题里写的那件事。
 func _check_cta_case() -> void:
 	_ctx.begin_case("PREPARATION 冒烟 · CTA 唯一性与落位（06 §7）")
 	var scene: Node = _scene_root()
 	if not _ctx.check(scene != null, "应已进入 PREPARATION 场景"):
 		return
-	var buttons: Array[Button] = []
-	_collect_buttons(scene, buttons)
-	if not _ctx.check(buttons.size() == 1, "整备界面应只有一个按钮（实际 %d 个）" % buttons.size()):
+	var buttons: Array[Button] = _primary_buttons(scene)
+	if not _ctx.check(buttons.size() == 1, "整备界面应只有一个主动作按钮（实际 %d 个）" % buttons.size()):
 		return
 
 	var button: Button = buttons[0]
@@ -285,9 +288,7 @@ func _run_reentry_case() -> void:
 
 	_ctx.equal(root.get_child_count(), base + 1, "第二次实例化应只多一个节点")
 	_ctx.equal(_state_of_flow(), _state("PREPARATION"), "再次进入 PREPARATION 不得推进状态")
-	var buttons: Array[Button] = []
-	_collect_buttons(second, buttons)
-	_ctx.equal(buttons.size(), 1, "第二份实例同样只应有一个按钮")
+	_ctx.equal(_primary_buttons(second).size(), 1, "第二份实例同样只应有一个主动作按钮")
 
 	root.remove_child(second)
 	second.free()
@@ -321,6 +322,18 @@ func _collect_buttons(node: Node, found: Array[Button]) -> void:
 		found.append(button)
 	for child: Node in node.get_children():
 		_collect_buttons(child, found)
+
+
+## 主动作按钮 = 没挂主题变体的 Button（基础变体 = GOLD 填充，06 §3）。
+## PET-75 的「删除 / 撤销 / 清空蓝图」挂的是 ButtonSecondary（NAVY 填充），不在其列。
+func _primary_buttons(node: Node) -> Array[Button]:
+	var all: Array[Button] = []
+	_collect_buttons(node, all)
+	var primary: Array[Button] = []
+	for candidate: Button in all:
+		if candidate.theme_type_variation == &"":
+			primary.append(candidate)
+	return primary
 
 
 ## 按名字找节点。刻意不用 `%` 唯一名：子场景实例的唯一名作用域挂在各自 owner 上，

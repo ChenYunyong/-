@@ -1,6 +1,11 @@
 ## blueprint_smoke.gd
 ## 职责：FIRST PLAYABLE 1/4 的场景冒烟（09 §1）—— 在**真实场景**里用**合成指针**把节点从仓库拖到画布、
 ##       连成一条 CORE → FUNCTION → WEAPON 链，并核对存档真的落盘、真的能载回。**单独进程**运行。
+##
+## PET-75 追加：删得掉 / 撤得回 / 清得空。试玩反馈「模块装得上去、摘不下来」，
+## 故这一段全部走**真实指针**（触摸点按钮、键盘按 Ctrl+Z），而不是 emit_signal ——
+## 前者能证明按钮在触摸端够得着、没被别的控件盖住、快捷键真的挂对了对象；
+## 后者只证明「信号连对了」，而功能坏掉时它照样全绿。
 ## 所属系统：tests（场景冒烟层）
 ## 依赖：test_context, scenes/preparation/preparation.tscn, scripts/ui/blueprint_workspace.gd
 ## 禁止：本文件不得引用 Autoload 标识符，也不得引用 class_name 全局 —— 它是 --script 入口，
@@ -38,6 +43,10 @@ const GAME_FLOW_PATH: String = "res://scripts/core/game_flow.gd"
 const LOG_PATH: String = "res://tests/output/blueprint_smoke.log"
 ## 交付截图。tests/output 是工程内的合法产物目录（同各冒烟的 .log）。
 const SHOT_PATH: String = "res://tests/output/blueprint_first_playable.png"
+## PET-75 的前后对照截图：同一张图，「摘不下来」的那一版只有拖放，没有任何删除入口。
+const SHOT_SELECTED_PATH: String = "res://tests/output/blueprint_edit_selected.png"
+const SHOT_DELETED_PATH: String = "res://tests/output/blueprint_edit_deleted.png"
+const SHOT_CLEAR_ARMED_PATH: String = "res://tests/output/blueprint_edit_clear_armed.png"
 
 ## 测试专用落盘目录，与正式存档目录刻意分开（同 test_blueprint_data.gd 的理由）。
 const TEST_DIR: String = "user://test_blueprints"
@@ -69,6 +78,8 @@ var _node_script: GDScript = null
 var _flow_script: GDScript = null
 var _lines: Array[String] = []
 var _shot_size: Vector2i = Vector2i.ZERO
+## 本次跑出来的截图，收尾时一并列进报告。
+var _shots: Array[String] = []
 
 
 func _initialize() -> void:
@@ -90,6 +101,13 @@ func _initialize() -> void:
 	await _run_drag_out_case()
 	await _run_connect_case()
 	_run_chain_case()
+	# PET-75 的验收序列接在链路之后：此刻正是「4 个节点 + 2 条连线」，
+	# 而删 / 撤 / 清空三条各自跑完之后都必须回到这个状态，
+	# 后面 _run_persistence_case 的前置（4 节点 2 连线）才仍然成立 —— 它们互为对方的看门狗。
+	await _run_delete_case()
+	await _run_undo_case()
+	await _run_clear_case()
+	await _run_reentry_case()
 	await _run_screenshot_case()
 	_run_persistence_case()
 	_finish()
@@ -253,6 +271,144 @@ func _run_chain_case() -> void:
 						core_id, function_id, weapon_id])
 					found = true
 	_ctx.check(found, "应存在一条 CORE → FUNCTION → WEAPON 链（实际连线 %d 条）" % _connections().size())
+
+
+## 验收第三条（PET-75）：**删得掉**。选中一个节点 → 触摸点「删除」→ 它连同挂在它身上的线一起消失。
+##
+## 删除入口走合成触摸而不是 emit_signal(&"pressed")：本卡明写「触摸端必须够得着」，
+## 而 emit_signal 只证明信号连对了 —— 按钮位置算错、被别的控件盖住、在窄屏被裁掉，
+## 它全都照样绿。真的按下去才把「够得着」也一起证了。
+func _run_delete_case() -> void:
+	_ctx.begin_case("蓝图冒烟 · 删除节点（触摸点按钮，连线连带消失）")
+	var canvas: Control = _canvas()
+	var split_id: StringName = _id_at_kind_index(_node_script.Kind.FUNCTION, 0)
+	if not _ctx.check(not String(split_id).is_empty(), "前置：应有一个 FUNCTION 节点"):
+		return
+	_ctx.equal(_nodes().size(), 4, "前置：应有 4 个节点")
+	_ctx.equal(_connections().size(), 2, "前置：应有 2 条连线")
+
+	# 选中：点卡片中心。点选本身一个节点都不许少 —— 这是「选中与执行分两步」的第一半，
+	# 也是本卡对 06 §10.4 的实现方式（触摸端一下手势只能做一件事，点一下就删等于误触即毁）。
+	await _tap(_card_center(split_id))
+	_ctx.equal(String(canvas.call(&"selected_node_id")), String(split_id), "点卡片应选中它")
+	_ctx.equal(_nodes().size(), 4, "点选不得改图")
+
+	var delete_button: Button = _find(current_scene, "ButtonDelete") as Button
+	var undo_button: Button = _find(current_scene, "ButtonUndo") as Button
+	var clear_button: Button = _find(current_scene, "ButtonClear") as Button
+	if not _ctx.check(delete_button != null and undo_button != null and clear_button != null,
+			"整备界面应有删除 / 撤销 / 清空三个动作按钮"):
+		return
+	_ctx.check(not delete_button.disabled, "选中之后「删除」应可用")
+	_ctx.check(not undo_button.disabled, "已经改过图，「撤销」应可用")
+	_ctx.check(not clear_button.disabled, "图里有内容，「清空」应可用")
+	await _capture(SHOT_SELECTED_PATH, "选中态：三个动作按钮在场，「删除」可用")
+
+	await _tap_control(delete_button)
+	_ctx.equal(_nodes().size(), 3, "删除后应剩 3 个节点")
+	_ctx.equal(_connections().size(), 0, "挂在被删节点上的两条线都应一起消失")
+	_ctx.check(not canvas.call(&"has_selection"), "删除后应清空选中")
+	_ctx.check(delete_button.disabled, "删除后没有选中，「删除」应自己变灰")
+	await _capture(SHOT_DELETED_PATH, "删除后：节点与它的两条线都没了")
+
+	# 删掉的东西必须当场落盘（09 §3.2）：重进场景看到的就是删过之后的图。
+	var loaded: Resource = _blueprint_script.load_from(TEST_PATH)
+	if _ctx.check(loaded != null, "删除后应能载回存档"):
+		_ctx.equal((loaded.get(&"nodes") as Array).size(), 3, "落盘的节点数应是删过之后的")
+		_ctx.equal((loaded.get(&"connections") as Array).size(), 0, "落盘的连线数应是删过之后的")
+
+
+## 验收第四条（PET-75）：**撤得回**。Ctrl+Z 把上一次删除整张还原 —— 节点与它的两条线一起回来。
+##
+## 走真的键盘事件（Input.parse_input_event）而不是直接调 canvas.undo()：键位挂在 .tscn 的
+## Button.shortcut 上，脚本里一个键码都不出现，除了这里没有第二处会走到那条装配。
+func _run_undo_case() -> void:
+	_ctx.begin_case("蓝图冒烟 · Ctrl+Z 撤销（真实键盘事件）")
+	_ctx.equal(_nodes().size(), 3, "前置：上一用例删掉了一个节点")
+	_ctx.equal(_connections().size(), 0, "前置：两条线被连带删掉了")
+
+	await _press_key(KEY_Z, true)
+	_ctx.equal(_nodes().size(), 4, "Ctrl+Z 后应还原被删的节点")
+	_ctx.equal(_connections().size(), 2, "Ctrl+Z 必须把被连带删掉的线一并还原（只还节点就是一次静默的错误撤销）")
+
+	var loaded: Resource = _blueprint_script.load_from(TEST_PATH)
+	if _ctx.check(loaded != null, "撤销后应能载回存档"):
+		_ctx.equal((loaded.get(&"nodes") as Array).size(), 4, "撤销也要落盘：重进场景看到的应是撤回来的图")
+		_ctx.equal((loaded.get(&"connections") as Array).size(), 2, "撤销也要落盘：连线数")
+
+
+## 验收第五条（PET-75）：**清得空**，而且按一下不算数。
+##
+## 06 §10.4 要求破坏性操作要么二次确认要么可撤销；清空两条都给 ——
+## 它是唯一一个一下能毁掉整张图的动作，代价不对称。这里把「按一下就清掉」钉死成失败：
+## 真正危险的实现不是清不掉，而是**一次误触就把玩家的机器拆了**。
+func _run_clear_case() -> void:
+	_ctx.begin_case("蓝图冒烟 · 清空蓝图（二次确认 + 可撤销）")
+	var clear_button: Button = _find(current_scene, "ButtonClear") as Button
+	if not _ctx.check(clear_button != null, "应有「清空蓝图」按钮"):
+		return
+
+	_ctx.equal(_nodes().size(), 4, "前置：撤销之后应有 4 个节点")
+	_ctx.equal(clear_button.text, "清空蓝图", "前置：清空按钮的初始文案")
+
+	await _tap_control(clear_button)
+	_ctx.equal(_nodes().size(), 4, "第一次点「清空」不得真的清空")
+	_ctx.not_equal(clear_button.text, "清空蓝图",
+		"第一次点应把文案换成确认问句（实际 '%s'）" % clear_button.text)
+	await _capture(SHOT_CLEAR_ARMED_PATH, "清空的二次确认：按第二下才真的清")
+
+	await _tap_control(clear_button)
+	_ctx.equal(_nodes().size(), 0, "第二次点「清空」才真的清空")
+	_ctx.equal(_connections().size(), 0, "清空后连线也没了")
+	_ctx.check(clear_button.disabled, "清空之后没内容可清，「清空」应自己变灰")
+	_ctx.equal(clear_button.text, "清空蓝图", "清空之后文案应收回原样")
+	var delete_button: Button = _find(current_scene, "ButtonDelete") as Button
+	if _ctx.check(delete_button != null, "应有「删除」按钮"):
+		_ctx.check(delete_button.disabled, "清空之后没有选中，「删除」应也是灰的")
+
+	await _press_key(KEY_Z, true)
+	_ctx.equal(_nodes().size(), 4, "Ctrl+Z 应能把清空整张还原")
+	_ctx.equal(_connections().size(), 2, "撤销清空后连线也回来")
+
+
+## 验收第六条（PET-75）：**重进场景仍是一致的**。
+##
+## 真的重实例化一份整备界面并让它跑完 _ready()，而不是只调 canvas.reload()：
+## 「重进场景」在玩家那里就是这条路，而 _refresh_actions() 只有在 _ready() 里才跑得到 ——
+## 少了它，玩家回来会看到三个按钮停在场景文件写的初始状态上（删除没灰、清空是亮的）。
+func _run_reentry_case() -> void:
+	_ctx.begin_case("蓝图冒烟 · 重进场景（新实例 + _ready 全跑）")
+	var fresh: Node = _scene.instantiate()
+	var fresh_canvas: Control = _find(fresh, "BlueprintCanvas") as Control
+	if not _ctx.check(fresh_canvas != null, "新实例应有画布"):
+		fresh.free()
+		return
+	# 落盘路径必须在入树**之前**改掉：入树即跑 _ready()，那时它已经去读默认存档了。
+	fresh_canvas.set(&"blueprint_path", TEST_PATH)
+	root.add_child(fresh)
+	await process_frame
+	await process_frame
+
+	var fresh_nodes: Array = (fresh_canvas.call(&"blueprint") as Resource).get(&"nodes")
+	var fresh_links: Array = (fresh_canvas.call(&"blueprint") as Resource).get(&"connections")
+	_ctx.equal(fresh_nodes.size(), 4, "重进场景后应载回 4 个节点")
+	_ctx.equal(fresh_links.size(), 2, "重进场景后应载回 2 条连线")
+	_ctx.equal((fresh_canvas.get(&"_boxes") as Dictionary).size(), 4, "重进场景后每个节点都应重新落格")
+
+	# 选中态与撤销栈**不进存档**：新实例刚进来，两个按钮都该是灰的，哪怕图里有内容。
+	# 这一条反过来钉住了「撤销栈跟着 reload 清空」——留着上一次的栈，第一次 Ctrl+Z
+	# 会把上一张图整张搬回来，比撤不动更难理解。
+	var fresh_delete: Button = _find(fresh, "ButtonDelete") as Button
+	var fresh_undo: Button = _find(fresh, "ButtonUndo") as Button
+	var fresh_clear: Button = _find(fresh, "ButtonClear") as Button
+	if _ctx.check(fresh_delete != null and fresh_undo != null and fresh_clear != null, "新实例应有三个动作按钮"):
+		_ctx.check(fresh_delete.disabled, "新实例没有选中，「删除」应是灰的")
+		_ctx.check(fresh_undo.disabled, "新实例的撤销栈是空的，「撤销」应是灰的（它不进存档）")
+		_ctx.check(not fresh_clear.disabled, "新实例图里有内容，「清空」应是亮的")
+
+	root.remove_child(fresh)
+	fresh.free()
+	await process_frame
 
 
 ## 交付物：一张渲染截图。取的是根视口**真实画出来的**那一帧，不是自己重画的示意图。
@@ -426,6 +582,48 @@ func _drag_with_touch(from: Vector2, to: Vector2) -> void:
 	await _parse_touch(to, false)
 
 
+## 一次触摸**点按**（按下即抬起，中途不动）。
+##
+## 与拖放分开写是有意的：拖放必须在按下后**移动**才启动，而点按不能移动 ——
+## 一动就成了「从这张卡拉一根线出去」，选中的是别的意思。两条路径各自只做一件事。
+func _tap(at: Vector2) -> void:
+	await _warp(at)
+	await _parse_touch(at, true)
+	await _parse_touch(at, false)
+
+
+## 点一个控件（合成触摸）。走的是引擎真实的触摸 → 鼠标合成路径，
+## 于是「这个按钮在触摸端够得着」也被一并证了 —— 只发 pressed 信号是证不到的。
+func _tap_control(control: Control) -> void:
+	await _tap(_to_window(control.global_position + control.size * 0.5))
+
+
+## 按一次键（含修饰键）。走 Input.parse_input_event，与操作系统输入层同一个入口。
+##
+## 键位本身不在任何脚本里：它挂在 .tscn 的 Button.shortcut 上（03 §8），
+## 故这里按下的是**玩家真的会按的那个键**，而不是绕过装配直接调方法。
+func _press_key(keycode: int, ctrl: bool) -> void:
+	for pressed: bool in [true, false]:
+		var event := InputEventKey.new()
+		event.keycode = keycode
+		event.ctrl_pressed = ctrl
+		event.pressed = pressed
+		Input.parse_input_event(event)
+		await process_frame
+		await process_frame
+
+
+## 存一张当前帧的截图（取的是根视口真实画出来的那一帧，同 _run_screenshot_case）。
+func _capture(path: String, label: String) -> void:
+	await process_frame
+	await process_frame
+	var image: Image = root.get_texture().get_image()
+	if not _ctx.check(image != null, "应能取到渲染结果（%s）" % label):
+		return
+	if _ctx.check(image.save_png(path) == OK, "截图应能写入 %s" % path):
+		_shots.append("%s（%s）" % [path.get_file(), label])
+
+
 ## 把**真实光标**移到合成指针将要使用的同一点。这一步不是可选的，见文件头「落点判定跟随真实光标」。
 func _warp(point: Vector2) -> void:
 	# 窗口没在前台时系统会忽略 warp，那样光标状态就不会更新 —— 先挪到前台再挪光标。
@@ -516,7 +714,10 @@ func _finish() -> void:
 	_lines.append("- 集成测试：见 unit_tests.log")
 	_lines.append("- 场景冒烟：%d/%d" % [_ctx.passed, _ctx.passed + _ctx.failed])
 	_lines.append("- 手动场景：PREPARATION 经路由进入 · 鼠标×3 + 触摸×1 拖出 4 个节点 · 鼠标+触摸各连 1 条 · CORE→FUNCTION→WEAPON 链 · 存档落盘与重载")
+	_lines.append("- 手动场景（PET-75）：触摸点「删除」删节点（连线连带消失）· 真实 Ctrl+Z 还原 · 「清空」二次确认 · 重进场景一致")
 	_lines.append("- 截图：%s（%dx%d）" % [SHOT_PATH, _shot_size.x, _shot_size.y])
+	for shot: String in _shots:
+		_lines.append("- 截图：%s" % shot)
 	if _ctx.failures.is_empty():
 		_lines.append("- 失败项：无")
 	else:

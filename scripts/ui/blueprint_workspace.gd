@@ -1,17 +1,23 @@
 ## blueprint_workspace.gd
 ## 职责：整备界面的蓝图工作区（FIRST PLAYABLE 1/4）—— 节点仓库拖出、画布网格吸附与连线、存 / 读；
+##       外加**选中与删改**（S2-05 补课）—— 选中节点 / 连线、删除（连带清掉挂在节点上的线）、
+##       撤销栈、清空整张图，改动即落盘；
 ##       外加战斗界面的**只读机器视图**（FIRST PLAYABLE 2/4）—— 把机器画出来、把运行时状态画成可见反馈；
 ##       外加把 REWARD 选中的奖励落到画布（S4-07 最小版，见 add_reward_node）。
 ## 所属系统：ui
-## 依赖：Palette、Settings（只订阅语言变化，用于重画）、BlueprintData / NodeData / ConnectionData、
-##       SignalPulse、MachineRuntime（只读，仅 VIEWER 角色）
-## 禁止：不得判断任何原始输入事件类型 —— 拖放一律交给 Godot 原生 drag-and-drop
+## 依赖：Palette、Settings（只订阅语言变化，用于重画）、InputNormalizer / SemanticInput（仅归一指针，
+##       用于选中）、BlueprintData / NodeData / ConnectionData、SignalPulse、MachineRuntime（只读，仅 VIEWER 角色）
+## 禁止：不得判断任何原始输入事件类型 —— 拖放交给 Godot 原生 drag-and-drop
 ##       （_get_drag_data / _can_drop_data / _drop_data 都不接 InputEvent），
+##       选中交给 gui_input **信号** + InputNormalizer.from_event（与 preparation_screen.gd 的窄屏
+##       信息条同一条已批准路径：本文件不出现任何 InputEvent* 类型名），
 ##       于是鼠标与触摸天然走同一条代码路径，03 §8「原始事件只在 input_normalizer.gd 翻译」不被破坏；
+##       键盘（Delete / Backspace / Ctrl+Z）**不在本文件** —— 它落在场景侧那两个按钮的
+##       Button.shortcut 上（见 preparation.tscn），因此键位不必在本层再开一个出口；
 ##       不得写任何字面色值（06 §10.7）；不得出现任何会自动推进的构造（Timer / _process，03 §2）——
 ##       机器由 MachineDriver 推进，本文件只画，不推；
-##       不得实现信号传播 / 数值 / 战斗 / 类型校验 / 环路检测 / 删除 / 撤销 —— 传播与数值在
-##       scripts/gameplay/machine_runtime.gd，校验属 S2-06 及以后。
+##       不得实现信号传播 / 数值 / 战斗 / 类型校验 / 环路检测 —— 传播与数值在
+##       scripts/gameplay/machine_runtime.gd，校验属 S2-06 及以后（本卡明确不做）。
 ##
 ## 一个脚本担三个角色（ALLOWED FILES 只给了两个界面文件，故不再拆新文件）：
 ##   Area.CANVAS    挂 RegionCenter —— 持有蓝图数据、画节点与连线、接收落点；
@@ -27,6 +33,11 @@
 
 class_name BlueprintWorkspace
 extends Control
+
+## 图或选中态变了。宿主界面（preparation_screen.gd）据此刷新三个动作按钮的可用性 ——
+## 不订阅的话，「选中一个节点后删除按钮才可用」这件事就没有触发点：选中发生在画布内部的
+## gui_input 与拖放里，宿主看不到。
+signal blueprint_changed()
 
 ## 本节点的角色。三个值分别对应 .tscn 里的 BlueprintCanvas / NodeWarehouse / MachineView。
 ## VIEWER 追加在末尾：枚举值会被 .tscn 按整数写死（`area = 1`），插在中间会静默把仓库变成视图。
@@ -51,6 +62,15 @@ const MARKER_INSET: float = 2.0
 const SPARK: float = 6.0
 ## 占位弹丸升起的高度（像素）。升到顶即消失，不留轨迹。
 const SHOT_RISE: float = 48.0
+
+## 选中辉光的落笔位置：卡片**外侧** 1px。06 §2.1 把 BLUE_300 定为选中态判据色（四边整圈），
+## 画在卡片边长上会把卡片自己那圈 BROWN_600 描边盖掉 —— 两种状态要能同时读出来。
+const SELECT_GROW: float = 1.0
+## 连线的命中走廊半宽。1px 的线在触摸端抓不住，所以要一条走廊；但也不能再宽：
+## 网格步长只有 24px，走廊一宽就会把「点空白处取消选中」整个吃掉。卡片永远优先于连线。
+const LINK_HIT: float = 8.0
+## 撤销栈的深度上限（本卡只要求一步，多步是顺带做的）。见 _push_history 的快照说明。
+const HISTORY_MAX: int = 20
 
 ## 拖拽载荷的类型标签。
 const PAYLOAD_NODE: StringName = &"node"
@@ -99,6 +119,13 @@ var _boxes: Dictionary = {}
 var _blueprint: BlueprintData = null
 ## 新节点 id 的自增序号。见 _next_id 的防撞说明。
 var _counter: int = 0
+## 选中态：至多一个有效。&"" / -1 表示没有选中。连线的下标会随数组增删而失效，
+## 故每一处改动连线数组的地方都必须同时清理它（本文件里都收敛在 _clear_selection 上）。
+var _selected_node: StringName = &""
+var _selected_link: int = -1
+## 撤销栈：每项是一次改动**之前**的快照。快照的代价随图的规模走，不随改动种类走 ——
+## 反向操作则每多一种改法就要多写一条反向路径，漏写一条就是一次静默的错误撤销。
+var _history: Array[Dictionary] = []
 ## 载入的节点还在等一个有效尺寸才能落格（见 _on_resized）。
 var _awaiting_size: bool = false
 
@@ -127,6 +154,11 @@ func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 		return
 	_load_blueprint()
+	# 选中：按下经 gui_input **信号**进本文件，再交给 InputNormalizer 归一 —— 本文件因此只认
+	# POINTER_PRESS 这个语义动作，不认「按的是鼠标还是手指」（03 §8）。
+	# **不调 accept_event()**：本文件只记选中、不改图，事件该继续上浮给宿主
+	# （点画布也该能关掉提示面板），拦下来是多余的。
+	gui_input.connect(_on_canvas_gui_input)
 
 
 ## 本节点入树时尺寸还是 0 —— 落位由 preparation_screen 在 _ready() 之后调 apply_layout_for。
@@ -156,6 +188,11 @@ func reload() -> void:
 	_boxes.clear()
 	_counter = 0
 	_awaiting_size = false
+	# 撤销栈与选中态都是**本次会话**的状态，跟着重载一起清空：留着上一次实验的栈，
+	# 下一次撤销会把上一张图整张搬回来 —— 那比撤不动更难理解。
+	_history.clear()
+	_selected_node = &""
+	_selected_link = -1
 	_load_blueprint()
 	queue_redraw()
 
@@ -167,6 +204,7 @@ func _draw() -> void:
 	_draw_connections()
 	for node_id: StringName in _boxes:
 		_draw_card(_boxes[node_id], _kind_of(node_id))
+	_draw_selection()
 	_draw_effects()
 
 
@@ -247,13 +285,29 @@ func _kind_color(kind: int) -> Color:
 			return Palette.get_color(Palette.Key.BLUE_400)
 
 
+## 连线一律 1px（06 §4）；**选中的那条**换成 BLUE_050 并加粗到 2px。
+## 只换颜色不够：320×180 上 1px 的线，两个蓝之间的差别读不出来，而「这条线现在可以删」
+## 正是本卡要交付的信息。
 func _draw_connections() -> void:
 	var color: Color = Palette.get_color(Palette.Key.BLUE_300)
-	for link: ConnectionData in _blueprint.connections:
+	var picked: Color = Palette.get_color(Palette.Key.BLUE_050)
+	for index: int in _blueprint.connections.size():
+		var link: ConnectionData = _blueprint.connections[index]
 		if not (_boxes.has(link.from_node_id) and _boxes.has(link.to_node_id)):
 			continue
+		var selected: bool = index == _selected_link
 		draw_line(_anchor(_boxes[link.from_node_id], false), _anchor(_boxes[link.to_node_id], true),
-			color, 1.0)
+			picked if selected else color, 2.0 if selected else 1.0)
+
+
+## 选中辉光：卡片**外侧** 1px 整圈 BLUE_300（06 §2.1 的选中判据色）。至多画一件。
+## VIEWER 角色不画 —— COMBAT 期间没有选中这回事（06 §10：战斗里玩家不操控任何东西）。
+func _draw_selection() -> void:
+	if area != Area.CANVAS:
+		return
+	if not String(_selected_node).is_empty() and _boxes.has(_selected_node):
+		draw_rect((_boxes[_selected_node] as Rect2).grow(SELECT_GROW),
+			Palette.get_color(Palette.Key.BLUE_300), false, 1.0)
 
 
 ## 输出锚点在卡片右缘、输入锚点在左缘，都取纵向中点（06 §4：输出在右、输入在左）。
@@ -336,6 +390,7 @@ func _drop_data(at: Vector2, data: Variant) -> void:
 func _add_node(kind: int, display_name: String, at: Vector2,
 		function_kind: int = NodeData.Function.NONE,
 		weapon_kind: int = NodeData.WeaponKind.NONE) -> void:
+	_push_history()
 	var node := NodeData.new()
 	node.id = _next_id(kind)
 	node.display_name = display_name
@@ -344,8 +399,7 @@ func _add_node(kind: int, display_name: String, at: Vector2,
 	node.weapon_kind = weapon_kind
 	_blueprint.nodes.append(node)
 	_boxes[node.id] = _snapped(at)
-	_save_blueprint()
-	queue_redraw()
+	_after_change()
 
 
 ## 把一项奖励落到画布（S4-07 最小版：三选一**真的生效**）。返回落下的节点，没落则 null。
@@ -407,11 +461,41 @@ func _snapped(at: Vector2) -> Rect2:
 	return Rect2(top_left, Vector2(CARD, CARD))
 
 
-## 新节点 id。序号只增不减且从「当前节点数」起算，加上类型前缀，
-## 不会与存档里既有的 id 撞车（既有 id 是同一套规则生成的，序号必 ≤ 节点数）。
+## 新节点 id：类型前缀 + 全局自增序号。序号起点由 _max_ordinal() 从**既有 id** 里取，
+## 且逐个跳过已占用的 id —— 见那两处的说明。
 func _next_id(kind: int) -> StringName:
-	_counter += 1
-	return StringName("%s_%d" % [String(NodeData.Kind.find_key(kind)).to_lower(), _counter])
+	var prefix: String = String(NodeData.Kind.find_key(kind)).to_lower()
+	var candidate: StringName = &""
+	var taken: bool = true
+	while taken:
+		_counter += 1
+		candidate = StringName("%s_%d" % [prefix, _counter])
+		taken = _has_id(candidate)
+	return candidate
+
+
+## 既有 id 里出现过的最大序号。**不能取节点数**（删改之前就是这么写的）：
+## 删掉中间几个节点后节点数会小于既有序号，新节点于是拿到一个**已经在用**的 id ——
+## 而 _boxes 是按 id 索引的，撞车等于两张卡悄悄共用一格：其中一张再也点不到，也就删不掉。
+## 手改过的存档可能压根不按本文件的命名规则，故这里只作起点，真正的保证在 _next_id 的跳过上。
+func _max_ordinal() -> int:
+	var highest: int = 0
+	for node: NodeData in _blueprint.nodes:
+		var text: String = String(node.id)
+		var cut: int = text.rfind("_")
+		if cut < 0:
+			continue
+		var tail: String = text.substr(cut + 1)
+		if tail.is_valid_int():
+			highest = maxi(highest, tail.to_int())
+	return highest
+
+
+func _has_id(node_id: StringName) -> bool:
+	for node: NodeData in _blueprint.nodes:
+		if node.id == node_id:
+			return true
+	return false
 
 
 func _card_at(at: Vector2) -> StringName:
@@ -446,13 +530,247 @@ func _connect(from_id: StringName, to_id: StringName) -> bool:
 	link.from_port = PORT_OUT
 	link.to_node_id = to_id
 	link.to_port = PORT_IN
+	# 快照压在 append **之前**，且压在全部回绝之后：被回绝的那一次没有改动任何东西，
+	# 记进撤销栈只会让玩家按一次 Ctrl+Z 却什么都没变。
+	_push_history()
 	_blueprint.connections.append(link)
-	_save_blueprint()
+	_after_change()
 	return true
 
 
 func _save_blueprint() -> void:
 	_blueprint.save_to(blueprint_path)
+
+
+## 一次改动收尾：落盘 + 重画 + 通知宿主。三件事必须绑在一起发生 ——
+## 落盘漏一次，重进场景就少一个节点；通知漏一次，三个动作按钮的可用性就停在旧状态上。
+func _after_change() -> void:
+	_save_blueprint()
+	queue_redraw()
+	blueprint_changed.emit()
+
+
+# ─────────────────────── 选中与删改（S2-05 补课）───────────────────────
+#
+# 为什么「选中」与「执行」分成两步：触摸端没有右键菜单，一个手势只能有一件事。
+# 若点一下就删，那么拖动节点、点空白处、误触边缘全都是删机器 —— 而 06 §10.4 要的是
+# 破坏性操作必须可挽回（二次确认或撤销）。分两步之后，「点」永远是安全的，
+# 破坏只发生在按了删除按钮之后，而删除本身还进撤销栈。
+#
+# 为什么选中态不进 BlueprintData：与 _boxes 同理 —— 它是界面状态，不是图的一部分。
+# 进存档的话，「上次选中了哪个节点」会被持久化，重进游戏时三个按钮的可用性就由存档决定，
+# 而不是由玩家眼前的画面决定。
+
+
+## 画布上的按下：只改选中，不改图。位置直接可用 —— 实测 godot 交给 gui_input 的事件，
+## 鼠标与触摸都**已经换算成控件局部坐标**（探针：视口 (162,70) 落在 (100,10) 的控件上，
+## 归一后读到 (62,60)），与 _boxes 同一坐标系，不必再减一次 global_position。
+func _on_canvas_gui_input(event: InputEvent) -> void:
+	if area != Area.CANVAS:
+		return
+	var semantic: SemanticInput = InputNormalizer.from_event(event)
+	if semantic == null or semantic.action != SemanticInput.Action.POINTER_PRESS:
+		return
+	select_at(semantic.position)
+
+
+## 点选。卡片优先于连线（见 _link_at 的说明），两样都没点到就取消选中 ——
+## 没有「点空白处取消」这条路，选中态就没有出口。
+func select_at(at: Vector2) -> void:
+	var node_id: StringName = _card_at(at)
+	if not String(node_id).is_empty():
+		_set_selection(node_id, -1)
+		return
+	_set_selection(&"", _link_at(at))
+
+
+## 改选中并广播。宿主（preparation_screen）据此刷新三个动作按钮的可用性 ——
+## 不广播的话「选中之后删除按钮才可用」这件事就没有触发点：选中发生在画布内部，
+## 宿主看不到，而 03 §2 又不许轮询。
+func _set_selection(node_id: StringName, link: int) -> void:
+	if _selected_node == node_id and _selected_link == link:
+		return
+	_selected_node = node_id
+	_selected_link = link
+	queue_redraw()
+	blueprint_changed.emit()
+
+
+func _clear_selection() -> void:
+	_set_selection(&"", -1)
+
+
+## 命中的连线下标，没有则 -1。走廊半宽 LINK_HIT：1px 的线在触摸端抓不住，必须有一条走廊。
+##
+## 调用点**已经先查过卡片**，所以这里不必再给卡片让路；走廊 8px 也正因此不能再宽 ——
+## 网格步长只有 24px，走廊再宽就会把两张卡之间那点空隙吃光，「点空白处取消选中」随之失效。
+func _link_at(at: Vector2) -> int:
+	for index: int in _blueprint.connections.size():
+		var link: ConnectionData = _blueprint.connections[index]
+		if not (_boxes.has(link.from_node_id) and _boxes.has(link.to_node_id)):
+			continue
+		var from: Vector2 = _anchor(_boxes[link.from_node_id], false)
+		var to: Vector2 = _anchor(_boxes[link.to_node_id], true)
+		if _distance_to_segment(at, from, to) <= LINK_HIT:
+			return index
+	return -1
+
+
+## 点到线段的最短距离。两端锚点重合时退化成点距 —— 不这么写，span 是零向量，
+## 除法会得到 NaN，比较恒为 false，那条线就永远选不中（而它恰恰是最该能删的自环状残线）。
+func _distance_to_segment(point: Vector2, a: Vector2, b: Vector2) -> float:
+	var span: Vector2 = b - a
+	var length_squared: float = span.length_squared()
+	if length_squared <= 0.0:
+		return point.distance_to(a)
+	var t: float = clampf((point - a).dot(span) / length_squared, 0.0, 1.0)
+	return point.distance_to(a + span * t)
+
+
+## 当前选中的节点 id；没选中节点时空串。
+func selected_node_id() -> StringName:
+	return _selected_node
+
+
+## 当前选中的连线下标；没选中连线时 -1。
+func selected_link_index() -> int:
+	return _selected_link
+
+
+## 有没有选中东西。宿主据此决定「删除」按钮可不可用（06 §10.4：不可用的操作要看得出来）。
+func has_selection() -> bool:
+	return not String(_selected_node).is_empty() or _selected_link >= 0
+
+
+## 图里有没有内容。宿主据此决定「清空」按钮可不可用 —— 空图再清一次是空操作，
+## 留着可点只会让人怀疑自己点错了。
+func has_content() -> bool:
+	return not _blueprint.nodes.is_empty() or not _blueprint.connections.is_empty()
+
+
+## 还能不能撤销。宿主据此决定「撤销」按钮可不可用。
+func can_undo() -> bool:
+	return not _history.is_empty()
+
+
+## 删除当前选中。没选中就是什么都没发生，返回 false —— 不记一次什么都不改的「撤销」。
+func delete_selection() -> bool:
+	if not String(_selected_node).is_empty():
+		return delete_node(_selected_node)
+	if _selected_link >= 0:
+		return delete_connection(_selected_link)
+	return false
+
+
+## 删一个节点，**连带删掉挂在它身上的每一条线**（本卡明确要求）。
+##
+## 只删节点不删线的话，存档里会留下一条指向不存在节点的边：数据合法、画面上什么都不显示 ——
+## 这是最难查的一类坏数据，因为没有任何一处会报错，只有等到信号传播（S2-06 之后）踩上去才炸。
+## 线的两端都要查：from 是它、to 也是它，少查一端就漏一半。
+func delete_node(node_id: StringName) -> bool:
+	if String(node_id).is_empty() or not _has_id(node_id):
+		return false
+	_push_history()
+	var kept_links: Array[ConnectionData] = []
+	for link: ConnectionData in _blueprint.connections:
+		if link.from_node_id != node_id and link.to_node_id != node_id:
+			kept_links.append(link)
+	_blueprint.connections = kept_links
+	var kept_nodes: Array[NodeData] = []
+	for node: NodeData in _blueprint.nodes:
+		if node.id != node_id:
+			kept_nodes.append(node)
+	_blueprint.nodes = kept_nodes
+	_boxes.erase(node_id)
+	_clear_selection()
+	_after_change()
+	return true
+
+
+func delete_connection(index: int) -> bool:
+	if index < 0 or index >= _blueprint.connections.size():
+		return false
+	_push_history()
+	_blueprint.connections.remove_at(index)
+	_clear_selection()
+	_after_change()
+	return true
+
+
+## 清空整张图。**二次确认不在这里** —— 那是界面的交互（按钮改文案、再点一次才算数），
+## 归 preparation_screen.gd；本函数是确认之后的那一下，只做数据。
+##
+## 清空仍然先压一次快照，于是它也能撤销：06 §10.4 把「二次确认」与「撤销」并列为两条路，
+## 这里两条都有 —— 因为「清空」是唯一一个一次能毁掉整张图的动作，代价不对称。
+func clear_blueprint() -> bool:
+	if not has_content():
+		return false
+	_push_history()
+	var no_nodes: Array[NodeData] = []
+	var no_links: Array[ConnectionData] = []
+	_blueprint.nodes = no_nodes
+	_blueprint.connections = no_links
+	_boxes.clear()
+	_clear_selection()
+	_after_change()
+	return true
+
+
+## 撤销一步：把整张图换成改动**之前**的那一份快照。
+##
+## 为什么是快照而不是反向操作：放置 / 连线 / 删除 / 清空四种改法各要一条反向路径，
+## 其中删节点那条还得把**被连带删掉的线**一并还原 —— 漏还原一条就是一次静默的错误撤销，
+## 玩家看到的是「撤销完我的线少了一根」，而这类 bug 不会报错、只会慢慢被发现。
+## 快照法把这个坑从「每条反向路径都要写对」压缩成「只有 _snapshot / _restore 一处要写对」。
+##
+## 代价诚实写明：每一份快照都是整张图的一份拷贝，栈深 HISTORY_MAX 份。
+## 本卡的图是几十个节点量级，代价可忽略；真到了上千节点，该换的是增量记录，不是撤销本身。
+func undo() -> bool:
+	if _history.is_empty():
+		return false
+	_restore(_history.pop_back())
+	_clear_selection()
+	_after_change()
+	return true
+
+
+## 一份**改动之前**的图与摆位。节点 / 连线是 Resource，必须 duplicate() ——
+## 存引用的话，_add_node 往数组里 append 的那一下会让「之前」的快照也一起多出一个节点，
+## 撤销就成了空操作（而删除走的是重建数组，反而看不出问题：这种一半对一半错最难发现）。
+func _snapshot() -> Dictionary:
+	var nodes: Array[NodeData] = []
+	for node: NodeData in _blueprint.nodes:
+		nodes.append(node.duplicate() as NodeData)
+	var links: Array[ConnectionData] = []
+	for link: ConnectionData in _blueprint.connections:
+		links.append(link.duplicate() as ConnectionData)
+	return {
+		"nodes": nodes,
+		"connections": links,
+		"boxes": _boxes.duplicate(),
+		"counter": _counter,
+	}
+
+
+func _push_history() -> void:
+	_history.append(_snapshot())
+	# 深度上限：撤到几十步以前的那张图不是玩家要的，而每一份快照都是一整张图。
+	while _history.size() > HISTORY_MAX:
+		_history.pop_front()
+
+
+func _restore(snapshot: Dictionary) -> void:
+	var nodes: Array[NodeData] = snapshot["nodes"]
+	var links: Array[ConnectionData] = snapshot["connections"]
+	_blueprint.nodes = nodes
+	_blueprint.connections = links
+	# 摆位不进存档，但快照里要带上：撤销之后卡片回到原来那一格。
+	# 不带的话 _restore 只能退回按数组顺序重排，玩家看到的是「撤销把整张图重摆了一遍」。
+	_boxes = snapshot["boxes"]
+	# 序号也一起回退。它只增不减本身不会撞车，但回退之后新节点会填回被删掉的那个号，
+	# 于是「撤销一次再放一个同类节点」拿到的 id 与撤销前完全一致 —— 可复现，测试才好钉。
+	_counter = int(snapshot["counter"])
+	queue_redraw()
 
 
 ## 载入存档。文件不存在是**首次进游戏的正常情况**，故先查存在性 ——
@@ -464,7 +782,7 @@ func _load_blueprint() -> void:
 	if loaded == null:
 		return
 	_blueprint = loaded
-	_counter = _blueprint.nodes.size()
+	_counter = _max_ordinal()
 	_awaiting_size = size.x <= 0.0 or size.y <= 0.0
 	if _awaiting_size:
 		return

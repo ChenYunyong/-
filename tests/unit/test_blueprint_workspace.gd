@@ -65,6 +65,12 @@ func run(ctx: RefCounted, _tree: SceneTree) -> void:
 	# 必须排在 _run_persistence_checks 之后：它会清掉 SAVE_PATH，而那个文件是上一条用例的物证。
 	_run_weapon_kind_checks(ctx)
 	_run_reward_landing_checks(ctx)
+	_run_selection_checks(ctx)
+	_run_delete_checks(ctx)
+	_run_undo_checks(ctx)
+	_run_clear_checks(ctx)
+	_run_id_after_delete_checks(ctx)
+	_run_action_ui_checks(ctx)
 
 
 ## 04 §6 / 06 §10.7 / 03 §2 / 03 §8 的静态纪律。顺带钉一条编译检查：
@@ -84,6 +90,11 @@ func _run_source_checks(ctx: RefCounted) -> void:
 		ctx.check(not code.contains(token), "代码中不得出现 `%s`（不得有自动推进的构造）" % token)
 	for token: String in BANNED_EVENT_TOKENS:
 		ctx.check(not code.contains(token), "代码中不得出现 `%s`（原始输入事件只在 InputNormalizer 翻译）" % token)
+	# 反向核对：画布接住的点击必须**经归一再看语义**。上面那串禁令只管「不许自己判事件类型」，
+	# 一个把事件原样丢掉、或自己拿 event.position 当语义用的实现同样能全绿 ——
+	# 而那样写出来的点选在触摸端会整体偏一个父级偏移（preparation_screen._place 的同一课）。
+	ctx.check(code.contains("InputNormalizer.from_event"),
+		"画布接住的事件必须经 InputNormalizer.from_event 归一（03 §8）")
 	# 反向核对：拖放必须靠原生虚拟方法，而不是别的机制。
 	for method: StringName in [&"_get_drag_data", &"_can_drop_data", &"_drop_data"]:
 		ctx.check(_script_has_method(script, method),
@@ -513,6 +524,426 @@ func _run_reward_landing_checks(ctx: RefCounted) -> void:
 		ctx.equal(bombs, expected.size(), "载回的炸弹节点数应与落地数一致（weapon_kind 没丢）")
 		fresh.free()
 	ws.free()
+
+
+# ─────────────────── S2-05 补课：选中 / 删除 / 撤销 / 清空 ───────────────────
+#
+# 这一段逐条对着 06 §10.4：破坏性操作必须可挽回。「可挽回」有两半 ——
+# 撤销要真的把图还原（而不是还原一半），删掉的东西也不许在重进场景后复活。
+# 前者靠 undo()，后者靠每次改动立即落盘；两半缺一，玩家都会在下一次进场景时发现问题。
+
+
+## 选中：两种可删的东西各有选中，且**点选本身不改图**。
+##
+## 「选中与执行分两步」是本卡对 06 §10.4 的实现方式：触摸端没有右键菜单，一个手势只能做一件事；
+## 若点一下就删，那么拖动节点、点空白处、误触卡片边缘全都是拆自己的机器。
+## 这条用例钉的正是第一步必须是无害的 —— 它一个字节都不许改，包括不落盘。
+func _run_selection_checks(ctx: RefCounted) -> void:
+	ctx.begin_case("BlueprintWorkspace · 选中（点选不改图）")
+	var ws: Control = _empty_canvas(ctx)
+	if ws == null:
+		return
+	var kinds: GDScript = load(NODE_DATA_PATH)
+	# 落格以卡片中心给出、且中心本身就是网格点，故 _snapped 的取整不产生歧义：
+	# 格 (col,row) 的中心 = (col*GRID + CARD/2, row*GRID + CARD/2)。
+	var core: NodeData = _place(ws, kinds.Kind.CORE, "核心", _cell_center(0, 0))
+	var gun: NodeData = _place(ws, kinds.Kind.WEAPON, "针", _cell_center(4, 0))
+	ctx.check(_link(ws, core.id, gun.id) == 0, "前置：两个节点之间应能连一条边")
+	var blueprint: BlueprintData = ws.call(&"blueprint")
+	var core_box: Rect2 = _box_of(ws, core.id)
+	var gun_box: Rect2 = _box_of(ws, gun.id)
+	ctx.equal(core_box, Rect2(Vector2.ZERO, Vector2(CARD, CARD)), "核心应落在左上角那一格")
+	ctx.equal(gun_box, Rect2(Vector2(GRID * 4.0, 0.0), Vector2(CARD, CARD)), "武器应落在第 5 列")
+
+	# 三个判据互不同源，宿主据此分别置灰三个按钮：没有选中但有可撤销的一步（刚才那两次放置
+	# 与一次连线），且图里有内容。混成一个判据就会出现「删不掉却撤得动」这类说不通的状态。
+	ctx.check(not bool(ws.call(&"has_selection")), "初始不应有选中")
+	ctx.check(bool(ws.call(&"can_undo")), "放置与连线之后应可撤销")
+	ctx.check(bool(ws.call(&"has_content")), "有节点就应报告「有内容」（清空按钮据此点亮）")
+
+	var picked: Array = []
+	ws.connect(&"blueprint_changed", func() -> void: picked.append(true))
+	var before: String = FileAccess.get_file_as_string(SAVE_PATH)
+	var depth_before: int = _history_of(ws).size()
+
+	ws.call(&"select_at", core_box.get_center())
+	ctx.check(bool(ws.call(&"has_selection")), "点卡片应选中它")
+	ctx.equal(String(ws.call(&"selected_node_id")), String(core.id), "选中的应是点到的那个节点")
+	ctx.equal(int(ws.call(&"selected_link_index")), -1, "选中节点时不应同时选中连线")
+
+	# 卡片优先于连线：这个点在卡片里，同时也在连线的命中走廊里（离线的起点锚点 1px）。
+	# 不优先的话，贴着卡片边缘点会选中一条穿过去的线 —— 而玩家想删的是那张卡。
+	var anchor: Vector2 = ws.call(&"_anchor", core_box, false)
+	var hot: Vector2 = Vector2(core_box.end.x - 1.0, anchor.y)
+	ctx.check(hot.distance_to(anchor) <= 8.0,
+		"取的点应同时落在连线的命中走廊内（否则本条不在考「卡片优先」）")
+	ws.call(&"select_at", hot)
+	ctx.equal(String(ws.call(&"selected_node_id")), String(core.id),
+		"卡片与连线走廊重叠时必须选卡片")
+
+	ws.call(&"select_at", _link_midpoint(ws, 0))
+	ctx.equal(int(ws.call(&"selected_link_index")), 0, "点连线中段应选中那条连线")
+	ctx.check(String(ws.call(&"selected_node_id")).is_empty(), "选中连线时不应同时选中节点")
+
+	# 点空白处取消选中 —— 没有这条出口，选中态就只能靠删掉东西来解除。
+	ws.call(&"select_at", Vector2(CANVAS_SIZE.x - 1.0, CANVAS_SIZE.y - 1.0))
+	ctx.check(not bool(ws.call(&"has_selection")), "点空白处应取消选中")
+
+	ctx.equal(blueprint.nodes.size(), 2, "点选不得增删节点")
+	ctx.equal(blueprint.connections.size(), 1, "点选不得增删连线")
+	ctx.equal(FileAccess.get_file_as_string(SAVE_PATH), before, "点选不得改动存档")
+	# 恰好三次：选中节点、选中连线、取消选中。中间那次「再点一遍同一张卡」刻意**不**广播 ——
+	# 每次都广播的话宿主会跟着重排一遍按钮，而玩家的选中其实一点没变。
+	ctx.equal(picked.size(), 3, "选中**变化**才广播 blueprint_changed（实际 %d 次）" % picked.size())
+	# 点选也不许进撤销栈：进了的话，玩家选中看两眼再按 Ctrl+Z，撤掉的是那两次「看一眼」，
+	# 而他以为会撤掉自己刚放下的节点 —— 撤销键于是变成「按几次都没反应」。
+	ctx.equal(_history_of(ws).size(), depth_before, "点选不得进撤销栈")
+	ws.free()
+
+
+## 删除：节点连带它身上所有的线，连线只删自己，两者都立即落盘。
+##
+## 「连带」是本卡最要紧的一条。只删节点不删线会留下一条指向不存在节点的边：
+## 存档合法、画面上什么都不显示、没有任何一处会报错 ——
+## 只有等到信号传播（S2-06 之后）踩上去才炸，那时早已查不出是谁留下的。
+func _run_delete_checks(ctx: RefCounted) -> void:
+	ctx.begin_case("BlueprintWorkspace · 删节点（连带线）与删连线")
+	var ws: Control = _empty_canvas(ctx)
+	if ws == null:
+		return
+	var kinds: GDScript = load(NODE_DATA_PATH)
+	var core: NodeData = _place(ws, kinds.Kind.CORE, "核心", _cell_center(0, 0))
+	var mid: NodeData = _place(ws, kinds.Kind.FUNCTION, "分流", _cell_center(2, 0))
+	var gun: NodeData = _place(ws, kinds.Kind.WEAPON, "针", _cell_center(4, 0))
+	ctx.equal(_link(ws, core.id, mid.id), 0, "前置：core → mid")
+	ctx.equal(_link(ws, mid.id, gun.id), 1, "前置：mid → gun")
+	var blueprint: BlueprintData = ws.call(&"blueprint")
+	ctx.equal(blueprint.connections.size(), 2, "前置：应有两条连线")
+
+	# 删中间那个：进它的线（core→mid）与出它的线（mid→gun）都必须一起消失 ——
+	# 只查一端就只删一半。
+	var mid_id: StringName = mid.id
+	ws.call(&"select_at", _box_of(ws, mid_id).get_center())
+	ctx.check(bool(ws.call(&"delete_selection")), "选中节点后应能删除")
+	ctx.equal(blueprint.nodes.size(), 2, "删一个节点后的节点数")
+	ctx.equal(blueprint.connections.size(), 0, "挂在被删节点上的两条线都应一起消失（两端都要查）")
+	ctx.check(not _boxes_of(ws).has(mid_id), "被删节点的落位矩形也应清掉")
+	ctx.check(not bool(ws.call(&"has_selection")), "删完应清空选中（否则删除键会对着空气再按一次）")
+	ctx.check(not bool(ws.call(&"delete_selection")), "没有选中时删除应什么都不做")
+	ctx.check(bool(ws.call(&"can_undo")), "删除应进撤销栈")
+
+	# 立即落盘：另起一个实例读同一份存档，看到的是删过之后的那张图。
+	var reloaded: BlueprintData = _reload(ctx)
+	if reloaded != null:
+		ctx.equal(reloaded.nodes.size(), 2, "重进场景后的节点数（删除必须立即落盘）")
+		ctx.equal(reloaded.connections.size(), 0, "重进场景后不应有指向已删节点的残留连线")
+		for node: NodeData in reloaded.nodes:
+			ctx.not_equal(String(node.id), String(mid_id), "被删的节点不得在重载后复活")
+
+	# 删连线：只删那一根，两端节点都还在。
+	ctx.equal(_link(ws, core.id, gun.id), 0, "前置：重新连一条 core → gun")
+	ws.call(&"select_at", _link_midpoint(ws, 0))
+	ctx.equal(int(ws.call(&"selected_link_index")), 0, "点线中段应选中它")
+	ctx.check(bool(ws.call(&"delete_selection")), "选中连线后应能删除")
+	ctx.equal(blueprint.connections.size(), 0, "删一条连线后的连线数")
+	ctx.equal(blueprint.nodes.size(), 2, "删连线不得动节点")
+	reloaded = _reload(ctx)
+	if reloaded != null:
+		ctx.equal(reloaded.connections.size(), 0, "删连线同样必须立即落盘")
+		ctx.equal(reloaded.nodes.size(), 2, "删连线不得连累节点落盘")
+	ws.free()
+
+
+## 撤销：放置 / 连线 / 删除 / 清空四种改法各撤一次，且撤销本身也落盘。
+##
+## 用快照而不是反向操作的理由见 undo() 的说明；这里钉的是**结果**：
+## 撤销之后内存里的图与磁盘上的图必须一致 —— 否则重进场景会看到撤销根本没生效。
+## 其中「撤销一次删除」最要紧：它要连同被连带删掉的线一起还原，漏一条就是一次静默的错误撤销。
+func _run_undo_checks(ctx: RefCounted) -> void:
+	ctx.begin_case("BlueprintWorkspace · 撤销（放置 / 连线 / 删除）")
+	var ws: Control = _empty_canvas(ctx)
+	if ws == null:
+		return
+	var kinds: GDScript = load(NODE_DATA_PATH)
+
+	# 空栈时撤销是空操作，不得假装成功（否则按钮点亮了却什么都没发生）。
+	ctx.check(not bool(ws.call(&"undo")), "没有可撤销的一步时 undo() 应返回 false")
+
+	# 撤「放置」。
+	var core: NodeData = _place(ws, kinds.Kind.CORE, "核心", _cell_center(0, 0))
+	ctx.check(bool(ws.call(&"can_undo")), "放置后应可撤销")
+	ctx.check(bool(ws.call(&"undo")), "撤掉一次放置")
+	var blueprint: BlueprintData = ws.call(&"blueprint")
+	ctx.equal(blueprint.nodes.size(), 0, "撤销放置后的节点数")
+	ctx.equal(_boxes_of(ws).size(), 0, "撤销放置后落位矩形也应清掉")
+	ctx.check(not bool(ws.call(&"has_content")), "撤到空图后应报告「没有内容」")
+	ctx.check(not bool(ws.call(&"can_undo")), "撤到栈底后不应再有可撤销的一步")
+
+	# 撤「连线」：两个节点都还在，只是那根线没了。
+	core = _place(ws, kinds.Kind.CORE, "核心", _cell_center(0, 0))
+	var gun: NodeData = _place(ws, kinds.Kind.WEAPON, "针", _cell_center(4, 0))
+	ctx.check(_link(ws, core.id, gun.id) == 0, "前置：连一条边")
+	ctx.check(bool(ws.call(&"undo")), "撤掉一次连线")
+	ctx.equal(blueprint.connections.size(), 0, "撤销连线后的连线数")
+	ctx.equal(blueprint.nodes.size(), 2, "撤销连线不得动节点")
+	ctx.equal(_boxes_of(ws).size(), 2, "撤销连线后两个节点都应还在原位")
+	ctx.check(bool(ws.call(&"can_undo")), "还应能继续撤掉第二个节点的放置")
+
+	# 撤「删除」：节点连同它的两条线一起回来，且回来的就是原来那两个 id。
+	var mid: NodeData = _place(ws, kinds.Kind.FUNCTION, "分流", _cell_center(2, 0))
+	ctx.equal(_link(ws, core.id, mid.id), 0, "前置：core → mid")
+	ctx.equal(_link(ws, mid.id, gun.id), 1, "前置：mid → gun")
+	var mid_id: StringName = mid.id
+	var mid_box: Rect2 = _box_of(ws, mid_id)
+	ctx.check(bool(ws.call(&"delete_node", mid_id)), "删掉中间那个节点")
+	ctx.equal(blueprint.connections.size(), 0, "前置：两条线应被连带删掉")
+	ctx.check(bool(ws.call(&"undo")), "撤掉这次删除")
+	ctx.equal(blueprint.nodes.size(), 3, "撤销删除后的节点数")
+	ctx.equal(blueprint.connections.size(), 2, "撤销删除必须把被连带删掉的线一并还原")
+	ctx.check(_boxes_of(ws).has(mid_id), "还原的节点应拿回它的 id（否则卡片与图对不上）")
+	ctx.equal(_box_of(ws, mid_id), mid_box, "还原的节点应回到原来那一格")
+	var ends: Array[String] = []
+	for link: ConnectionData in blueprint.connections:
+		ends.append("%s→%s" % [link.from_node_id, link.to_node_id])
+	for expected: String in ["%s→%s" % [core.id, mid_id], "%s→%s" % [mid_id, gun.id]]:
+		ctx.check(expected in ends, "还原的连线端点应含 %s（实际 %s）" % [expected, ends])
+
+	# 撤销也要落盘：重进场景看到的必须是撤销之后的那张图，而不是撤销之前。
+	var reloaded: BlueprintData = _reload(ctx)
+	if reloaded != null:
+		ctx.equal(reloaded.nodes.size(), 3, "重进场景后的节点数（撤销必须落盘）")
+		ctx.equal(reloaded.connections.size(), 2, "重进场景后的连线数（撤销必须落盘）")
+
+	# 一路撤到底：撤到栈空为止，终点必须是那张空图 —— 中间任何一份快照漏存了落位矩形，
+	# 都会在这里留下一张拿不回格子的卡。次数只给出下限，好让将来加改动不必改这条用例。
+	var steps: int = 0
+	while bool(ws.call(&"can_undo")) and steps < 64:
+		ctx.check(bool(ws.call(&"undo")), "第 %d 次撤销应成功" % (steps + 1))
+		steps += 1
+	ctx.check(steps >= 5, "从 5 次改动之后应至少能连撤 5 步（实际 %d）" % steps)
+	ctx.equal(blueprint.nodes.size(), 0, "撤到底后的节点数")
+	ctx.equal(blueprint.connections.size(), 0, "撤到底后的连线数")
+	ctx.equal(_boxes_of(ws).size(), 0, "撤到底后不应残留落位矩形")
+	ctx.check(not bool(ws.call(&"undo")), "撤到栈底后再撤应返回 false")
+
+	# 栈深有上限：每一份快照都是一整张图，无上限地攒下去是内存泄漏的另一种写法。
+	var script: GDScript = load(WORKSPACE_SCRIPT_PATH)
+	ctx.check(int(script.HISTORY_MAX) >= 1, "撤销栈深至少应为 1 步（本卡的下限要求）")
+	for index: int in int(script.HISTORY_MAX) + 3:
+		_place(ws, kinds.Kind.WEAPON, "w%d" % index, _cell_center(index % 4, index / 4))
+	var depth: int = _history_of(ws).size()
+	ctx.check(depth <= int(script.HISTORY_MAX),
+		"撤销栈不得超过 %d 步（实际 %d）" % [script.HISTORY_MAX, depth])
+	ctx.check(depth >= 1, "连续改动之后撤销栈不应是空的")
+	ws.free()
+
+
+## 清空：整张图归零、立即落盘，而且**撤得回来**。
+##
+## 06 §10.4 把「二次确认」与「撤销」并列为两条路，清空是唯一两条都给了的动作 ——
+## 因为它是唯一一个一下能毁掉整张图的动作，代价不对称。
+## 「二次确认」在界面上（preparation_screen 的两步按钮），这里钉的是数据侧那一半：能撤销。
+func _run_clear_checks(ctx: RefCounted) -> void:
+	ctx.begin_case("BlueprintWorkspace · 清空（可撤销、立即落盘）")
+	var ws: Control = _empty_canvas(ctx)
+	if ws == null:
+		return
+	var kinds: GDScript = load(NODE_DATA_PATH)
+	# 空图清空是空操作：留着可点只会让人怀疑自己点错了（宿主据此置灰按钮）。
+	ctx.check(not bool(ws.call(&"clear_blueprint")), "空图清空应返回 false")
+	ctx.check(not bool(ws.call(&"has_content")), "空图应报告「没有内容」")
+
+	var core: NodeData = _place(ws, kinds.Kind.CORE, "核心", _cell_center(0, 0))
+	var gun: NodeData = _place(ws, kinds.Kind.WEAPON, "针", _cell_center(4, 0))
+	ctx.check(_link(ws, core.id, gun.id) == 0, "前置：连一条边")
+	var blueprint: BlueprintData = ws.call(&"blueprint")
+	ctx.check(bool(ws.call(&"clear_blueprint")), "有内容的图应能清空")
+	ctx.equal(blueprint.nodes.size(), 0, "清空后的节点数")
+	ctx.equal(blueprint.connections.size(), 0, "清空后的连线数")
+	ctx.equal(_boxes_of(ws).size(), 0, "清空后落位矩形也应清掉")
+	ctx.check(not bool(ws.call(&"has_content")), "清空后应报告「没有内容」")
+	ctx.check(not bool(ws.call(&"clear_blueprint")), "清空过的图再清一次应返回 false")
+
+	var reloaded: BlueprintData = _reload(ctx)
+	if reloaded != null:
+		ctx.equal(reloaded.nodes.size(), 0, "重进场景后应仍是空图（清空必须立即落盘）")
+		ctx.equal(reloaded.connections.size(), 0, "重进场景后不应有残留连线")
+
+	ctx.check(bool(ws.call(&"undo")), "清空应能撤销")
+	ctx.equal(blueprint.nodes.size(), 2, "撤销清空后的节点数")
+	ctx.equal(blueprint.connections.size(), 1, "撤销清空后的连线数")
+	reloaded = _reload(ctx)
+	if reloaded != null:
+		ctx.equal(reloaded.nodes.size(), 2, "撤销清空同样要落盘")
+	ws.free()
+
+
+## 删改之后再落盘 / 重载，新节点的 id 不得与既有 id 撞车。
+##
+## 旧实现把自增序号取成「节点数」，删过节点之后这个数会小于既有序号 ——
+## 于是重进场景后连加几个节点就会拿到一个**已经在用**的 id。而 _boxes 以 id 为键，
+## 撞车等于两张卡共用一格：其中一张点不到、也就删不掉，画面上却两处都「看着正常」。
+## 删除功能上线之前这个洞踩不到（图只增不减），上线之后它就成了必然。
+func _run_id_after_delete_checks(ctx: RefCounted) -> void:
+	ctx.begin_case("BlueprintWorkspace · 删改后的 id 续号（不得撞车）")
+	# 直接摆一份「已经删过一轮」的存档：6 个节点只留最后两个，序号 5、6 在用，1–4 空着。
+	# 手写这份文件而不是用删除操作做出来 —— 它要模拟的是**上一局留下的**存档，
+	# 那时本实例的 _counter 还没被任何一次操作抬起来。
+	_cleanup()
+	var staged := BlueprintData.new()
+	for ordinal: int in range(1, 7):
+		var node := NodeData.new()
+		node.id = StringName("core_%d" % ordinal)
+		node.display_name = "核心"
+		node.kind = NodeData.Kind.CORE
+		staged.nodes.append(node)
+	for _drop: int in 4:
+		staged.nodes.remove_at(0)
+	if not ctx.check(staged.save_to(SAVE_PATH), "前置存档应能写入"):
+		return
+
+	var script: GDScript = load(WORKSPACE_SCRIPT_PATH)
+	var ws: Control = _workspace(ctx, script.Area.CANVAS, CANVAS_SIZE)
+	if ws == null:
+		return
+	var blueprint: BlueprintData = ws.call(&"blueprint")
+	ctx.equal(blueprint.nodes.size(), 2, "前置：应载回 2 个节点")
+	ctx.equal(int(ws.get(&"_counter")), 6, "重载后的自增序号应取既有 id 的最大序号，而不是节点数")
+
+	var kinds: GDScript = load(NODE_DATA_PATH)
+	for index: int in 4:
+		_place(ws, kinds.Kind.CORE, "核心%d" % index, _cell_center(index, 1))
+	var seen: Dictionary = {}
+	for node: NodeData in blueprint.nodes:
+		ctx.check(not seen.has(String(node.id)), "新增节点的 id 不得与既有 id 重复（'%s'）" % node.id)
+		seen[String(node.id)] = true
+	ctx.equal(blueprint.nodes.size(), 6, "应能继续加节点")
+	ctx.equal(_boxes_of(ws).size(), blueprint.nodes.size(),
+		"落位矩形数应与节点数一致（id 撞车会让两张卡共用一格，其中一张点不到）")
+	ws.free()
+
+
+## 「删除 / 撤销」的键盘入口落在 .tscn 的 Button.shortcut 上（03 §8：键位不进脚本）。
+## 这条用例是那处装配的**唯一**证词 —— 脚本里一个键码都不出现，别的用例都看不到它，
+## 而 shortcut 挂错对象 / 挂错键位时，功能在触摸端完全正常，只有键盘党按下去没反应。
+func _run_action_ui_checks(ctx: RefCounted) -> void:
+	ctx.begin_case("PREPARATION · 三个动作按钮的装配与快捷键（06 §10.4）")
+	var packed: PackedScene = load(PREP_SCENE_PATH)
+	if not ctx.check(packed is PackedScene, "preparation.tscn 应能加载为 PackedScene"):
+		return
+	var scene: Node = packed.instantiate()
+	if not ctx.check(scene != null, "preparation.tscn 应能实例化"):
+		return
+	var left: Control = _find(scene, "RegionLeft") as Control
+	var delete_button: Button = _find(scene, "ButtonDelete") as Button
+	var undo_button: Button = _find(scene, "ButtonUndo") as Button
+	var clear_button: Button = _find(scene, "ButtonClear") as Button
+	if not ctx.check(left != null and delete_button != null and undo_button != null and clear_button != null,
+			"场景应有三动作按钮且挂在左栏"):
+		scene.free()
+		return
+
+	for button: Button in [delete_button, undo_button, clear_button]:
+		ctx.equal(button.get_parent(), left,
+			"「%s」应挂在左栏（本卡唯一两种宽高比下都在场的分区）" % button.name)
+		# 06 §3：金色只留给「开始战斗」。辅助动作挂 ButtonSecondary，06 §7 的像素探针据此
+		# 断言「主动作只有一块金色」—— 挂错变体等于在画面上又开了一个主入口。
+		ctx.equal(button.theme_type_variation, &"ButtonSecondary",
+			"「%s」是辅助动作，必须挂 ButtonSecondary 变体" % button.name)
+		# 06 §1：24 逻辑像素在 2× 下折合 48 设备像素，够得着。
+		ctx.check(button.offset_bottom - button.offset_top >= 24.0,
+			"「%s」的高度应 ≥ 24 逻辑像素（实际 %.1f）" % [button.name, button.offset_bottom - button.offset_top])
+
+	_check_shortcut(ctx, delete_button, [KEY_DELETE, KEY_BACKSPACE], false)
+	_check_shortcut(ctx, undo_button, [KEY_Z], true)
+	# 清空刻意**不挂**快捷键：一下就能毁掉整张图的动作，必须走二次确认那一按，
+	# 而快捷键的每一次触发都等价于一次按下 —— 挂上它就等于给了一条绕过确认的路。
+	ctx.check(clear_button.shortcut == null,
+		"「清空蓝图」不得挂单键快捷键（否则它会绕过二次确认）")
+	scene.free()
+
+
+## 快捷键的事件集合必须**恰好**是给定的键位：少一个等于没挂，多一个就是多一条误触路径。
+func _check_shortcut(ctx: RefCounted, button: Button, keys: Array, needs_ctrl: bool) -> void:
+	if not ctx.check(button.shortcut != null, "「%s」应挂快捷键" % button.text):
+		return
+	var found: Array[int] = []
+	for event: InputEvent in button.shortcut.events:
+		var key: InputEventKey = event as InputEventKey
+		if not ctx.check(key != null, "「%s」的快捷键事件应是按键（实际 %s）" % [button.text, event]):
+			continue
+		ctx.equal(key.ctrl_pressed, needs_ctrl, "「%s」快捷键的 Ctrl 修饰" % button.text)
+		found.append(key.keycode)
+	for code: int in keys:
+		ctx.check(code in found, "「%s」的快捷键应含 %s（实际 %s）"
+			% [button.text, OS.get_keycode_string(code), found])
+	ctx.equal(found.size(), keys.size(), "「%s」的快捷键事件数（多挂一个就多一条误触路径）" % button.text)
+
+
+## 建一个**空图**的画布工作区：先清测试目录，免得沿用上一条用例剩下的图。
+func _empty_canvas(ctx: RefCounted) -> Control:
+	_cleanup()
+	var script: GDScript = load(WORKSPACE_SCRIPT_PATH)
+	if not ctx.check(script != null and script.can_instantiate(), "blueprint_workspace.gd 应能编译"):
+		return null
+	return _workspace(ctx, script.Area.CANVAS, CANVAS_SIZE)
+
+
+## 网格格 (column,row) 的中心。以中心给出落点，_snapped 的取整就不产生歧义 ——
+## 期望的落位矩形因此可以写成格子本身的坐标，而不必复算一遍吸附算术。
+func _cell_center(column: int, row: int) -> Vector2:
+	return Vector2(float(column) * GRID + CARD * 0.5, float(row) * GRID + CARD * 0.5)
+
+
+## 落一个节点并把它交出来。_add_node 不返回节点，它只往数组尾部 append。
+func _place(ws: Control, kind: int, display_name: String, at: Vector2) -> NodeData:
+	ws.call(&"_add_node", kind, display_name, at)
+	var blueprint: BlueprintData = ws.call(&"blueprint")
+	return blueprint.nodes[blueprint.nodes.size() - 1]
+
+
+## 连一条边并返回它的下标；被回绝（重复边 / 自环 / 空端点）时返回 -1。
+func _link(ws: Control, from_id: StringName, to_id: StringName) -> int:
+	if not bool(ws.call(&"_connect", from_id, to_id)):
+		return -1
+	return (ws.call(&"blueprint") as BlueprintData).connections.size() - 1
+
+
+## 一条连线两端锚点的中位，即线上一点（06 §4：输出在右缘、输入在左缘，都取纵向中点）。
+func _link_midpoint(ws: Control, index: int) -> Vector2:
+	var blueprint: BlueprintData = ws.call(&"blueprint")
+	var link: ConnectionData = blueprint.connections[index]
+	var from: Vector2 = ws.call(&"_anchor", _box_of(ws, link.from_node_id), false)
+	var to: Vector2 = ws.call(&"_anchor", _box_of(ws, link.to_node_id), true)
+	return (from + to) * 0.5
+
+
+func _box_of(ws: Control, node_id: StringName) -> Rect2:
+	return _boxes_of(ws)[node_id]
+
+
+func _boxes_of(ws: Control) -> Dictionary:
+	var boxes: Dictionary = ws.get(&"_boxes")
+	return boxes
+
+
+func _history_of(ws: Control) -> Array:
+	var history: Array = ws.get(&"_history")
+	return history
+
+
+## 另起一个实例读同一份存档并交回那份图 —— 「重进场景 / 重启游戏还是一致的」就靠它证。
+## 工作区实例只是读取通道，交回图之后即可释放（BlueprintData 是独立的 Resource）。
+func _reload(ctx: RefCounted) -> BlueprintData:
+	var script: GDScript = load(WORKSPACE_SCRIPT_PATH)
+	if not ctx.check(script != null and script.can_instantiate(), "blueprint_workspace.gd 应能编译"):
+		return null
+	var ws: Control = _workspace(ctx, script.Area.CANVAS, CANVAS_SIZE)
+	if ws == null:
+		return null
+	var blueprint: BlueprintData = ws.call(&"blueprint")
+	ws.free()
+	return blueprint
 
 
 ## 装配：两个工作区节点各挂到 06 §7 的分区上，且都是**同级最后一个子节点**。

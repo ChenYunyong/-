@@ -216,18 +216,29 @@ func _check_region_literals(ctx: RefCounted, scene: Node, index: int) -> void:
 
 
 ## 06 §7：「开始战斗」是右下角**唯一**的主动作按钮，也是 PREPARATION → COMBAT 的唯一入口。
+##
+## PET-75：判据收窄到**主动作**按钮（无主题变体 = 基础 Button = GOLD 填充）。
+## 该卡在左栏加了「删除 / 撤销 / 清空蓝图」三个 ButtonSecondary 辅助按钮 ——
+## 它们不争夺「右下角唯一主动作」这个位置，而本函数原先按 `is Button` 全数计数，
+## 会把辅助按钮一起算成主动作。收窄之后这条断言测的正是它注释里写的那件事；
+## 同时把「辅助按钮必须挂变体」这条反向要求也钉上，否则它们会跟 CTA 一样是金色。
 func _check_cta(ctx: RefCounted, scene: Node) -> void:
-	var buttons: Array[Button] = []
-	_collect_buttons(scene, buttons)
-	if not ctx.check(buttons.size() == 1, "整备界面应只有一个按钮（实际 %d 个）" % buttons.size()):
+	var all: Array[Button] = []
+	_collect_buttons(scene, all)
+	var primary: Array[Button] = []
+	for candidate: Button in all:
+		if candidate.theme_type_variation == &"":
+			primary.append(candidate)
+	if not ctx.check(primary.size() == 1, "整备界面应只有一个主动作按钮（实际 %d 个）" % primary.size()):
 		return
 
-	var button: Button = buttons[0]
-	ctx.equal(button.name, "ButtonStartCombat", "那唯一的按钮应是「开始战斗」")
+	var button: Button = primary[0]
+	ctx.equal(button.name, "ButtonStartCombat", "那唯一的主动作按钮应是「开始战斗」")
 	ctx.equal(button.text, "开始战斗", "CTA 文案")
-	# 主动作按钮用基础 Button 变体（GOLD 填充）；ButtonSecondary（NAVY 填充）是辅助按钮，
-	# 一旦这里挂上辅助变体，「唯一主动作」的视觉含义就没了。
-	ctx.equal(button.theme_type_variation, &"", "CTA 不得挂辅助按钮变体（06 §3）")
+	for candidate: Button in all:
+		if candidate != button:
+			ctx.equal(candidate.theme_type_variation, &"ButtonSecondary",
+				"%s 是辅助按钮，必须挂 ButtonSecondary 变体（06 §3）" % candidate.name)
 	ctx.check(not button.disabled, "CTA 不得为 Disabled")
 
 	var action: Rect2 = EXPECTED_WIDE[4]

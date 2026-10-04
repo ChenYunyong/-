@@ -1,19 +1,23 @@
 ## preparation_screen.gd
 ## 职责：PREPARATION 场景 —— 06 §7 的五分区占位布局、06 §7.1 的窄屏折叠，
-##       以及右下角「开始战斗」这个进入 COMBAT 的唯一入口。
-##       **本批只做骨架与布局，不含任何蓝图玩法。**
+##       右下角「开始战斗」这个进入 COMBAT 的唯一入口，
+##       以及编辑蓝图的三件事的**界面侧**（S2-05 补课）：删除 / 撤销 / 清空。
 ## 所属系统：ui
 ## 依赖：Palette、Theme、GameFlow、RunState、PreparationLayout、MessagePanel、InputScreen、
 ##       InputNormalizer、BlueprintWorkspace
 ## 禁止：本文件不得调用 change_scene_to_file() —— 场景路由只能由 GameFlow 落地（03 §1.1 R3）；
 ##       不得写任何字面色值（06 §10.7）；
 ##       不得判断任何原始输入事件类型（InputEventMouseButton 等）—— 输入一律经 InputScreen
-##       归一后的语义事件（03 §8）；
+##       归一后的语义事件（03 §8）；三个动作按钮的**键盘**键位也不在本文件判 ——
+##       它落在 .tscn 的 Button.shortcut 上（Delete / Backspace / Ctrl+Z），
+##       于是本文件连键码都不出现；
 ##       不得出现任何会自动推进的构造（Timer / create_timer / _process / _physics_process，
 ##       见 03 §2 与 06 §10.1 R1）—— 进入 PREPARATION 后永远等玩家，
 ##       停留任意时长都不会自行进入 COMBAT；
-##       本文件不得自己实现节点放置 / 连线 / 存档 —— 那些在 blueprint_workspace.gd 里，
-##       这里只负责把两个工作区节点摆到 06 §7 的分区矩形上；信号传播 / 校验 / 删除 / 撤销仍属 Stage 3。
+##       本文件不得自己实现节点放置 / 连线 / 存档 / 删除 / 撤销 —— 那些在 blueprint_workspace.gd 里，
+##       这里只做两件事：把两个工作区节点摆到 06 §7 的分区矩形上，
+##       再把三个动作按钮按「当前选中了什么」置灰 / 点亮（判据全在画布，本文件不自算）；
+##       信号传播 / 类型校验 / 环路检测属 S2-06 及以后，本卡明确不做。
 
 extends InputScreen
 
@@ -28,6 +32,18 @@ const NOTICE_DISMISS: String = "点击任意处关闭"
 const NOTICE_COMBAT: String = "战斗场景（COMBAT）的路由未就绪，本次留在整备场景。"
 const NOTICE_RESULT: String = "结算场景（RESULT）的路由未就绪，本次留在整备场景。"
 
+## 三个动作按钮的文案。清空是**二次确认**（06 §10.4）：第一下只把文案换成问句，
+## 第二下才真的清 —— 于是「误触一次」最多让人多看一眼，而不是把整张图删掉。
+const LABEL_DELETE: String = "删除"
+const LABEL_UNDO: String = "撤销"
+const LABEL_CLEAR: String = "清空蓝图"
+const LABEL_CLEAR_ARMED: String = "确认清空？"
+
+## 动作列每行的高度与行间距（逻辑像素）。24 是 06 §1 的触摸下限（2× 下 48 设备像素），
+## 间距 2 让相邻两行不至于看成一整块。
+const ACTION_ROW_HEIGHT: float = 24.0
+const ACTION_ROW_GAP: float = 2.0
+
 @onready var _backdrop: ColorRect = %Backdrop
 @onready var _region_left: Control = %RegionLeft
 @onready var _region_center: Control = %RegionCenter
@@ -36,14 +52,19 @@ const NOTICE_RESULT: String = "结算场景（RESULT）的路由未就绪，本�
 @onready var _region_action: Control = %RegionAction
 @onready var _button_start_combat: Button = %ButtonStartCombat
 @onready var _notice_panel: MessagePanel = %NoticePanel
-@onready var _blueprint_canvas: Control = %BlueprintCanvas
+@onready var _blueprint_canvas: BlueprintWorkspace = %BlueprintCanvas
 @onready var _node_warehouse: Control = %NodeWarehouse
+@onready var _button_delete: Button = %ButtonDelete
+@onready var _button_undo: Button = %ButtonUndo
+@onready var _button_clear: Button = %ButtonClear
 
 ## 五个分区容器，下标即 PreparationLayout.Region。顺序必须与场景里的节点顺序一致。
 var _regions: Array[Control] = []
 var _viewport_size: Vector2 = Vector2.ZERO
 var _is_narrow: bool = false
 var _info_expanded: bool = false
+## 「清空」的二次确认是否已经举起来（见 _on_clear_pressed）。
+var _clear_armed: bool = false
 
 
 func _ready() -> void:
@@ -59,12 +80,21 @@ func _ready() -> void:
 	# 两个都不能靠改 size 补（前者会打红像素基线，后者是布局常量、不归本卡改）。
 	install_hit_minimum(_button_start_combat)
 	install_hit_minimum(_region_left)
-	# 提示面板可点任意处关闭；键盘导航从 CTA 起步（本场景唯一的可用按钮）。
+	# 三个动作按钮。判据全在画布（选中了什么 / 还剩什么 / 能不能撤），本文件只做转交 ——
+	# 于是「选中之后删除才可用」这条规则只有一处实现，不会界面一份、画布一份地走偏。
+	_button_delete.pressed.connect(_on_delete_pressed)
+	_button_undo.pressed.connect(_on_undo_pressed)
+	_button_clear.pressed.connect(_on_clear_pressed)
+	# 画布改了图或改了选中就重算可用性。不订阅的话，玩家选中一个节点后删除按钮仍是灰的 ——
+	# 而画布不可能自己知道按钮长什么样。
+	_blueprint_canvas.blueprint_changed.connect(_on_blueprint_changed)
+	# 提示面板可点任意处关闭；键盘导航从 CTA 起步（本场景唯一的主动作按钮）。
 	register_dismissible_notice(_notice_panel)
 	register_focus_root(_button_start_combat)
 	# 折叠由可用区尺寸驱动，不用计时器、也不轮询（03 §2）。
 	resized.connect(_on_resized)
 	apply_layout_for(size)
+	_refresh_actions()
 	# 必须排在 apply_layout_for 之后：落格要按画布**已经拿到手**的尺寸算。
 	_apply_pending_reward()
 
@@ -84,8 +114,7 @@ func _apply_pending_reward() -> void:
 	var reward: Dictionary = RunState.pending_reward()
 	if reward.is_empty():
 		return
-	var canvas: BlueprintWorkspace = _blueprint_canvas as BlueprintWorkspace
-	if canvas == null or canvas.add_reward_node(reward) == null:
+	if _blueprint_canvas == null or _blueprint_canvas.add_reward_node(reward) == null:
 		return
 	RunState.clear_pending_reward()
 
@@ -126,10 +155,90 @@ func apply_layout_for(viewport_size: Vector2) -> void:
 	# 放在 CTA 之后：仓库要让开 CTA，得先知道 CTA 落在哪。
 	_place(_blueprint_canvas, _inset(rects[PreparationLayout.Region.CENTER]))
 	_place(_node_warehouse, _warehouse_rect(rects[PreparationLayout.Region.WAREHOUSE]))
+	_place_actions()
+	# 三个动作按钮在窄屏**收起时**跟着左栏一起藏起来：那时左栏只剩 16px 高，
+	# 按 24px 的行高摆进去会被裁掉一半，只剩一条看得见点不着的边 —— 那不是「不可用」，是坏的。
+	# 展开后左栏变成覆盖层，位置够了，它们就回来。宽屏则一直在。
+	var actions_visible: bool = not _is_narrow or _info_expanded
+	for button: Button in [_button_delete, _button_undo, _button_clear]:
+		button.visible = actions_visible
 
 
 func _on_resized() -> void:
 	apply_layout_for(size)
+
+
+# ─────────────────── 删除 / 撤销 / 清空的界面侧（S2-05 补课）───────────────────
+
+
+## 画布改了图、或改了选中。判据一律问画布，本文件不自算 ——
+## 「有选中才能删」这件事只有一个答案来源，界面与画布不可能各说各话。
+##
+## 顺手把「清空」的二次确认收回：举着确认的时候去点别处，就是一个明确的「算了」。
+## 不收回的话确认态会一直挂着，下一次无关的改动之后再点一下就整张清掉 ——
+## 那正是二次确认要防的事故。而「举着的时候再点同一个按钮」不经过这里（它不发信号），
+## 所以确认照样点得下去。
+func _on_blueprint_changed() -> void:
+	_clear_armed = false
+	_refresh_actions()
+
+
+## 三个按钮的可用性与文案。**不可用而不是隐藏**（06 §10.4）：隐藏会让人以为这功能不存在，
+## 置灰才是「现在还不能用」。文案要经 tr()（06 §11）—— 本文件在代码里改它，静态翻译不会自动生效，
+## 与 blueprint_workspace.warehouse_label() 是同一条做法。
+func _refresh_actions() -> void:
+	if _blueprint_canvas == null:
+		return
+	_button_delete.disabled = not _blueprint_canvas.has_selection()
+	_button_undo.disabled = not _blueprint_canvas.can_undo()
+	_button_clear.disabled = not _blueprint_canvas.has_content()
+	_button_clear.text = TranslationServer.translate(LABEL_CLEAR_ARMED if _clear_armed else LABEL_CLEAR)
+
+
+## 删除当前选中。删的是节点还是连线由画布决定 —— 它才知道玩家选中了什么。
+func _on_delete_pressed() -> void:
+	_blueprint_canvas.delete_selection()
+
+
+func _on_undo_pressed() -> void:
+	_blueprint_canvas.undo()
+
+
+## 清空：**按两下才算**（06 §10.4 的二次确认）。第一下只把文案换成问句，
+## 第二下才真清。清空进撤销栈，所以确认过也还撤得回来 ——
+## 二次确认与撤销是并列的两条路，这里两条都有，因为清空是唯一一个一下能毁掉整张图的动作。
+##
+## 刷新交给画布的信号，这里不重复调：本函数结束时 clear_blueprint() 已经发过一轮。
+func _on_clear_pressed() -> void:
+	if not _clear_armed:
+		_clear_armed = true
+		_refresh_actions()
+		return
+	_clear_armed = false
+	_blueprint_canvas.clear_blueprint()
+
+
+## 三个动作按钮贴左栏**底部**排列，自下而上：清空 / 撤销 / 删除。
+##
+## 为什么是左栏（06 §7 把左栏定为「关卡信息」）：其余四块都腾不出地方 ——
+## 中栏整块是画布；底条宽屏只剩约 35px 余量，窄屏还要让开 CTA；右栏在窄屏根本不显示。
+## 而本卡要求触摸端也够得着，左栏是唯一**两种宽高比下都在场**的分区：宽屏是整块侧栏，
+## 窄屏点一下信息条即展开成覆盖层（§7.1 既有交互，本卡没有新增任何折叠机制）。
+## 这是对 13 §4 信息架构的一处偏离，已在交付报告里逐条声明。
+##
+## 自下而上、以底边为基准：底边不随标题长短变，于是这三个按钮的位置与标题内容无关，
+## 换文案 / 换语言都不会把它们顶出面板。
+##
+## 这里直接给 position/size 而**不经 _place()**：_place 收的是场景根坐标、要减掉父级偏移，
+## 而这几个按钮的父级就是 RegionLeft，本函数算出来的已经是 RegionLeft 局部坐标。
+func _place_actions() -> void:
+	var body: Rect2 = _inset(Rect2(Vector2.ZERO, _region_left.size))
+	var rows: Array[Button] = [_button_clear, _button_undo, _button_delete]
+	var step: float = ACTION_ROW_HEIGHT + ACTION_ROW_GAP
+	for index: int in rows.size():
+		var bottom: float = body.end.y - float(index) * step
+		rows[index].position = Vector2(body.position.x, bottom - ACTION_ROW_HEIGHT)
+		rows[index].size = Vector2(body.size.x, ACTION_ROW_HEIGHT)
 
 
 ## 06 §7.1：窄屏下左栏收起为 16px 信息条，**点击展开为覆盖层**。
