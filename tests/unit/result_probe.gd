@@ -28,10 +28,16 @@ const SCENE_PATH: String = "res://scenes/result/result.tscn"
 const WIDE: Vector2i = Vector2i(320, 180)
 const NARROW: Vector2i = Vector2i(180, 320)
 
-## 扫描窗口：避开最外圈的面板框。外框是 PanelFrame（3px BROWN_500 描边 + BROWN_600 填充）
-## 再叠 1px PanelHighlight 左高光，所以 [4, 316) 里除了本界面自己的描边不该有第二种 BROWN_600。
+## 扫描窗口：避开最外圈的面板框。外框是 PanelFrame（3px 木质描边 + BROWN_600 内带）
+## 再叠 1px GOLD_200 左高光，所以 [4, 316) 里除了本界面自己的描边不该有第二种 BROWN_600。
 const SCAN_LEFT: int = 4
 const SCAN_RIGHT: int = 316
+
+## PET-77：外框换成已批准切片后，窗口外那几列里也有 BROWN_600 —— 那是**框自己**的木质带。
+## 逐像素读数（`ui_panel_frame_main_96x64`）：左带 4px = x0 BROWN_500 / x1..x2 BROWN_600 / x3 GOLD_200 高光；
+## 右带 3px = x317..x318 BROWN_600 / x319 BROWN_500。窗口边界那两条断言据此改钉「只许这两条、且在此位置」。
+const FRAME_LEFT_BAND: Array[int] = [1, 2]
+const FRAME_RIGHT_BAND: Array[int] = [317, 318]
 const SCAN_TOP: int = 4
 const SCAN_BOTTOM: int = 316
 
@@ -55,10 +61,19 @@ const WIDE_MENU_LEFT: int = 8
 const WIDE_MENU_RIGHT: int = 155
 const WIDE_RETRY_LEFT: int = 164
 const WIDE_RETRY_RIGHT: int = 311
-## 描边内缩 1px 后的实心块：x165..310（146）、y129..170（42）。
-const WIDE_RETRY_GOLD: Rect2i = Rect2i(165, 129, 146, 42)
+## 描边内缩 1px 后的实心块：x165..310（146）、y130..169（40）。
+## PET-77：主按钮改用已批准切片 `ui_button_primary_*_64x20`，切片在 GOLD_500 填充之上
+## 还各占 1px（上 = GOLD_600 描边之内的 GOLD_200 高光；下 = GOLD_600 描边之下的烘焙投影），
+## 故填充块由 42 行收到 40 行 —— 按钮**盒子**仍是同一个 44px，见 BUTTON_CHROME。
+const WIDE_RETRY_GOLD: Rect2i = Rect2i(165, 130, 146, 40)
 ## 描边内缩 1px 后的实心块上沿（两个出口同高）。
-const BUTTON_FILL_TOP: int = 129
+const BUTTON_FILL_TOP: int = 130
+## 按钮盒子在填充之上额外占的行数（每侧 2：1px 描边 + 1px 高光 / 投影）。
+## 总高 = 填充 40 + 2×2 = 44，正好是 06 §1 的触摸下限；这条换算就是 _probe_actions_wide() 末段的依据。
+const BUTTON_CHROME: int = 2
+## 出口按钮盒子的上下沿（屏幕坐标）：按钮区在 y=128、整高 44。
+const BUTTON_BOX_TOP: int = 128
+const BUTTON_BOX_BOTTOM: int = 171
 ## 两个出口之间那道 8px 空隙必须露出主面板底色。
 const WIDE_GAP_LEFT: int = 156
 const WIDE_GAP_RIGHT: int = 164
@@ -70,12 +85,11 @@ const NARROW_READOUT_BOTTOM: int = 207
 const NARROW_READOUT_RIGHT: int = 171
 const NARROW_MENU_TOP: int = 216
 const NARROW_RETRY_TOP: int = 268
-const NARROW_RETRY_GOLD: Rect2i = Rect2i(9, 269, 162, 42)
+const NARROW_RETRY_GOLD: Rect2i = Rect2i(9, 270, 162, 40)
 const NARROW_MENU_SCAN_ROW: int = 240
 
-## 06 §1：可点击区域下限（设备像素）。实测填充块加两侧 1px 描边即按钮整高。
+## 06 §1：可点击区域下限（设备像素）。实测填充块加两侧 BUTTON_CHROME 即按钮整高。
 const MIN_TOUCH_SIZE: int = 44
-const BUTTON_BORDER: int = 1
 
 ## 反向对照的位移量。
 const SHIFT: float = 4.0
@@ -150,12 +164,24 @@ func _probe_readout_wide() -> void:
 	_h.check(_h.count_row(image, TITLE_GOLD_ROW - 1, 0, WIDE.x, _gold_edge) == 0
 			and _h.count_row(image, TITLE_GOLD_ROW + 1, 0, WIDE.x, _gold_edge) == 0,
 		"分隔线上下各一行都不许有金像素（厚 1px）")
-	# 钉住扫描窗口的两条边界：窗口外（最外圈面板框那一带）不得混进读数区描边色，
-	# 否则上面那条「恰好 2 个」随时可能被外框的像素顶掉而失去判别力。
-	_h.check(_h.count_row(image, READOUT_SCAN_ROW, 0, SCAN_LEFT, _border) == 0,
-		"扫描窗口左侧（x< %d）不得有读数区描边色" % SCAN_LEFT)
-	_h.check(_h.count_row(image, READOUT_SCAN_ROW, SCAN_RIGHT, WIDE.x, _border) == 0,
-		"扫描窗口右侧（x>= %d）不得有读数区描边色" % SCAN_RIGHT)
+	# 钉住扫描窗口的两条边界：窗口外（最外圈面板框那一带）只许出现**外框切片自己**那两条
+	# BROWN_600 木质带，且必须落在固定列上 —— 否则上面那条「恰好 2 个」随时可能被外框顶掉。
+	#
+	# 原来钉：窗口外命中 0（旧外框是 StyleBoxFlat：3px 描边 + BROWN_500 填充，
+	#         而窗口外那几列恰好落在填充上，所以当时确实是 0）。
+	# 现在钉：命中数 == 2，且命中列 == 外框自带的那两条（左 x1/x2、右 x317/x318）。
+	# 为什么是同一件事：这条要证的是「窗口外那几列只属于外框，不掺本界面自己的任何描边」。
+	#   外框改用已批准切片后，切片在描边内侧多了一条 BROWN_600（旧 StyleBoxFlat 那里是填充），
+	#   于是「0」这个数字不再成立；改钉「恰好 2 且位置固定」把同一件事证得更死 ——
+	#   数量或位置任一变化（多一条、挪一列、本界面有描边漏出窗口）都会转红。
+	var left_out: Array[int] = _row_hits(image, READOUT_SCAN_ROW, 0, SCAN_LEFT, _border)
+	_h.check(left_out == FRAME_LEFT_BAND,
+		"扫描窗口左侧（x< %d）应恰好是外框自带的那两条木质带 %s（实际 %s）" % [
+			SCAN_LEFT, FRAME_LEFT_BAND, left_out])
+	var right_out: Array[int] = _row_hits(image, READOUT_SCAN_ROW, SCAN_RIGHT, WIDE.x, _border)
+	_h.check(right_out == FRAME_RIGHT_BAND,
+		"扫描窗口右侧（x>= %d）应恰好是外框自带的那两条木质带 %s（实际 %s）" % [
+			SCAN_RIGHT, FRAME_RIGHT_BAND, right_out])
 
 
 ## 组 11b：两个出口按钮的实心块 —— 主按钮 GOLD_500、次按钮 NAVY_700，各 148×44，
@@ -205,13 +231,22 @@ func _probe_actions_wide() -> void:
 	_h.check(WIDE_MENU_LEFT == 8, "首个出口的左安全边距应为 8px（06 §1）")
 	_h.check(WIDE.x - 1 - WIDE_RETRY_RIGHT == 8, "末个出口的右安全边距应为 8px（06 §1）")
 
-	# 触摸下限：实测填充块高 42，加上下各 1px 描边即按钮整高，必须 ≥ 44。
-	var button_height: int = WIDE_RETRY_GOLD.size.y + BUTTON_BORDER * 2
+	# 触摸下限：实测填充块高 40，加上下各 2px（描边 + 高光 / 投影）即按钮整高，必须 ≥ 44。
+	# 原来用 `+ BUTTON_BORDER * 2`；PET-77 主按钮换成切片后非填充部分由 2px 变 4px，
+	# 判据仍是「盒子整高 ≥ 44」，算式跟着换成 BUTTON_CHROME。
+	var button_height: int = WIDE_RETRY_GOLD.size.y + BUTTON_CHROME * 2
 	_h.check(button_height >= MIN_TOUCH_SIZE,
 		"出口按钮实测整高 %dpx 不得低于 06 §1 的 %d 触摸下限" % [button_height, MIN_TOUCH_SIZE])
-	_h.check(_h.count_col(image, WIDE_MENU_LEFT + 1, BUTTON_FILL_TOP,
-			BUTTON_FILL_TOP + WIDE_RETRY_GOLD.size.y, _secondary) == WIDE_RETRY_GOLD.size.y,
-		"次按钮的实心块高应与主按钮一致")
+	# 原来钉：次按钮的 NAVY_700 填充块高 == 主按钮 GOLD_500 填充块高（两者都是 StyleBoxFlat，各 1px 描边）。
+	# 现在钉：次按钮填充纵向**恰好比主按钮各多一行**（[129,170] vs [130,169]）—— 用首末命中表达。
+	# 为什么是同一件事：这条要证的是「两个出口是同一个尺寸的盒子，没有一高一矮」。
+	#   主按钮切片自带上下各 1px 的高光 / 投影，填充自然比次按钮矮 2px；盒子本身仍是同一个 44px。
+	#   若两个盒子真的不等高，这个「各多一行」的关系会当场破裂，比原来的「相等」判别力更强。
+	var menu_fill: Array = _span_col(image, WIDE_MENU_LEFT + 1, BUTTON_BOX_TOP,
+		BUTTON_BOX_BOTTOM + 1, _secondary)
+	_h.check(menu_fill == [WIDE_RETRY_GOLD.position.y - 1, WIDE_RETRY_GOLD.end.y],
+		"次按钮的填充块应恰好比主按钮上下各多一行（期望 %s，实际 %s）" % [
+			[WIDE_RETRY_GOLD.position.y - 1, WIDE_RETRY_GOLD.end.y], menu_fill])
 
 
 ## 组 11c：180×320 竖屏下两个出口改竖排 —— 同处一列、自上而下、仍贴底部安全线。

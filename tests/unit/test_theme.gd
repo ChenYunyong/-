@@ -14,6 +14,10 @@ const EXPECTED_BODY_FONT_SIZE: int = 8
 const EXPECTED_BORDER_WIDTH: int = 1
 const EXPECTED_FRAME_BORDER_WIDTH: int = 3
 
+## PET-77：VB-03 已批准切片的落盘目录。按钮五态与两种面板框改由切片装配，
+## 它们的底色 / 描边色从此只存在于素材里，本文件改为钉「哪一个槽接了哪一张已批准切片」。
+const SLICE_DIR: String = "res://assets/ui/vb03_component_language/"
+
 
 func run(ctx: RefCounted, _tree: SceneTree) -> void:
 	var theme_resource: Resource = ResourceLoader.load(THEME_PATH)
@@ -67,11 +71,22 @@ func _run_button_checks(ctx: RefCounted, theme: Theme, theme_script: GDScript) -
 	ctx.equal(theme.get_color(&"font_disabled_color", &"Button"), Palette.get_color(Palette.Key.GREY_500), "Disabled 文字")
 	ctx.equal(theme.get_color(&"font_focus_color", &"Button"), Palette.get_color(Palette.Key.NAVY_900), "Selected 文字")
 
-	_check_box(ctx, theme.get_stylebox(&"normal", &"Button"), Palette.Key.GOLD_500, Palette.Key.GOLD_600, "Button Normal", EXPECTED_BORDER_WIDTH)
-	_check_box(ctx, theme.get_stylebox(&"hover", &"Button"), Palette.Key.GOLD_400, Palette.Key.GOLD_500, "Button Hover", EXPECTED_BORDER_WIDTH)
-	_check_box(ctx, theme.get_stylebox(&"pressed", &"Button"), Palette.Key.GOLD_600, Palette.Key.GOLD_600, "Button Pressed", EXPECTED_BORDER_WIDTH)
-	_check_box(ctx, theme.get_stylebox(&"disabled", &"Button"), Palette.Key.NAVY_800, Palette.Key.NAVY_600, "Button Disabled", EXPECTED_BORDER_WIDTH)
-	_check_box(ctx, theme.get_stylebox(&"focus", &"Button"), Palette.Key.GOLD_400, Palette.Key.BLUE_400, "Button Selected", EXPECTED_BORDER_WIDTH)
+	# —— PET-77 接入说明（五态改钉法）——
+	# 原来钉：五态各是一个 StyleBoxFlat，且底色 / 描边分别等于 GOLD_500+GOLD_600 / GOLD_400+GOLD_500 /
+	#         GOLD_600+GOLD_600 / NAVY_800+NAVY_600 / GOLD_400+BLUE_400。
+	# 现在钉：五态各自解析到**自己那一张**已批准切片（StyleBoxTexture + 该切片的资源路径 + 非零九宫格边距）。
+	# 为什么是同一件事：这五条要证的是「五个状态各有各的外观，且都真的挂在了 Theme 的对应槽上」。
+	#   接入前那套色值就是**照着这五张切片写的占位实现**（PET-70），接入后色值的唯一来源回到切片本身，
+	#   于是「底色/描边等于某个 Token」这句话不再有落点 —— 抄一份色值进来反而会变成第二份真相。
+	#   判别力不降反升：原来五态只要颜色不同就能过，现在还必须指向五张**不同**的切片文件，
+	#   且九宫格边距必须非零（边距为零 = 描边会被拉伸，正是本次接入最容易踩的坑）。
+	_check_slice_box(ctx, theme.get_stylebox(&"normal", &"Button"), "ui_button_primary_normal_64x20.png", "Button Normal")
+	_check_slice_box(ctx, theme.get_stylebox(&"hover", &"Button"), "ui_button_primary_hover_64x20.png", "Button Hover")
+	_check_slice_box(ctx, theme.get_stylebox(&"pressed", &"Button"), "ui_button_primary_pressed_64x20.png", "Button Pressed")
+	_check_slice_box(ctx, theme.get_stylebox(&"disabled", &"Button"), "ui_button_primary_disabled_64x20.png", "Button Disabled")
+	# 标签从「Button Selected」改成「Button Focus」：这一槽本就是焦点环，13 §10.1 三修之一起
+	# 「选中」另有落点（ButtonSelected 变体），沿用旧名会把两种语义又粘回一起。
+	_check_slice_box(ctx, theme.get_stylebox(&"focus", &"Button"), "ui_button_primary_focus_64x20.png", "Button Focus")
 
 	ctx.check(theme.get_type_variation_list(&"Button").has(theme_script.TYPE_BUTTON_SECONDARY), "应注册辅助按钮变体")
 	ctx.equal(theme.get_color(&"font_color", theme_script.TYPE_BUTTON_SECONDARY), Palette.get_color(Palette.Key.GREY_300), "辅助按钮文字色")
@@ -86,9 +101,30 @@ func _run_panel_checks(ctx: RefCounted, theme: Theme, theme_script: GDScript) ->
 	ctx.check(variations.has(theme_script.TYPE_PANEL_CORE), "应注册面板内芯变体")
 	ctx.check(variations.has(theme_script.TYPE_PANEL_SECONDARY), "应注册次级面板变体")
 
-	_check_box(ctx, theme.get_stylebox(&"panel", theme_script.TYPE_PANEL_FRAME), Palette.Key.BROWN_600, Palette.Key.BROWN_500, "主面板外框", EXPECTED_FRAME_BORDER_WIDTH)
+	# 原来钉：主面板外框 = StyleBoxFlat，4 边 3px BROWN_600 描边 + BROWN_500 底。
+	# 现在钉：主面板外框 = 已批准切片 `ui_panel_frame_main_96x64.png`，且九宫格上边距
+	#         **必须盖住「3px 木质外框 + 16px 标题栏」**（≥ FRAME_BORDER_WIDTH + TITLE_BAR_HEIGHT）。
+	# 为什么是同一件事：这条要证的是「06 §2.2 的主面板 = 3px 木质外框 + 16px 标题栏」，
+	#   接入前它由 StyleBoxFlat 的 border_width 表达，接入后由切片的纹素带表达。
+	#   上边距这条是本卡最容易出错的地方：`asset_manifest.json` 写的是 16（少了外框那 3 行），
+	#   照抄会把标题栏底下那条 1px 金线拉成 3 行（违反 06 §1「描边统一 1px」）；
+	#   这里把它钉死，将来谁改回 16 都会当场转红。
+	_check_slice_box(ctx, theme.get_stylebox(&"panel", theme_script.TYPE_PANEL_FRAME),
+		"ui_panel_frame_main_96x64.png", "主面板外框")
+	var frame: StyleBoxTexture = theme.get_stylebox(&"panel", theme_script.TYPE_PANEL_FRAME) as StyleBoxTexture
+	var frame_top: float = frame.texture_margin_top if frame != null else 0.0
+	var frame_left: float = frame.texture_margin_left if frame != null else 0.0
+	ctx.check(frame_top >= float(EXPECTED_FRAME_BORDER_WIDTH + theme_script.TITLE_BAR_HEIGHT),
+		"主面板外框的九宫格上边距应盖住「%dpx 木质外框 + %dpx 标题栏」= %d（实际 %.0f）—— 少一行就会把金线拉粗"
+			% [EXPECTED_FRAME_BORDER_WIDTH, theme_script.TITLE_BAR_HEIGHT,
+				EXPECTED_FRAME_BORDER_WIDTH + theme_script.TITLE_BAR_HEIGHT, frame_top])
+	ctx.check(frame_left >= float(EXPECTED_FRAME_BORDER_WIDTH),
+		"主面板外框的九宫格左边距应盖住 %dpx 木质外框（实际 %.0f）"
+			% [EXPECTED_FRAME_BORDER_WIDTH, frame_left])
 	_check_box(ctx, theme.get_stylebox(&"panel", theme_script.TYPE_PANEL_CORE), Palette.Key.NAVY_800, Palette.Key.NAVY_600, "面板内芯", EXPECTED_BORDER_WIDTH)
-	_check_box(ctx, theme.get_stylebox(&"panel", theme_script.TYPE_PANEL_SECONDARY), Palette.Key.NAVY_800, Palette.Key.BROWN_600, "次级面板", EXPECTED_BORDER_WIDTH)
+	# 次级面板同理：原来钉 StyleBoxFlat 的 NAVY_800 底 + 1px BROWN_600 描边，现钉切片身份。
+	_check_slice_box(ctx, theme.get_stylebox(&"panel", theme_script.TYPE_PANEL_SECONDARY),
+		"ui_panel_frame_secondary_64x40.png", "次级面板")
 
 
 ## 06 §2.1 v0.1.6：第三层「高光」必须有可被场景引用的落点；
@@ -230,6 +266,25 @@ func _run_label_checks(ctx: RefCounted, theme: Theme, theme_script: GDScript) ->
 
 ## 06 §1：像素直角、无抗锯齿；06 §2.2 v0.1.5：面板自身不带阴影
 ## （硬阴影由 PanelShadow 叠层承载，见 _run_shadow_checks）。
+## PET-77：切片装配的槽位判据。切片自带的底色 / 描边色不写在代码里，故本 helper **不比色值** ——
+## 比三件事：① 是 StyleBoxTexture（九宫格边距只有它能承载）；② 纹理是**指定的那一张**已批准切片；
+## ③ 九宫格四边距都非零（为零 = 那一侧的描边落进中心区，会被拉伸成糊带）。
+##
+## 为什么不比色值也算「同一件事」：接入前那套色值是照着切片写的占位实现，色值的唯一来源
+## 从此回到素材（07 §1 的已批准产物）；再抄一份 Token 进来，等于给同一件事留第二份真相。
+func _check_slice_box(ctx: RefCounted, box: StyleBox, slice_file: String, label: String) -> void:
+	if not ctx.check(box is StyleBoxTexture, "%s 应为 StyleBoxTexture（九宫格边距靠它承载）" % label):
+		return
+	var slice: StyleBoxTexture = box
+	var path: String = "" if slice.texture == null else slice.texture.resource_path
+	ctx.equal(path, SLICE_DIR + slice_file, "%s 应接已批准切片" % label)
+	ctx.check(slice.texture_margin_left > 0.0 and slice.texture_margin_top > 0.0
+			and slice.texture_margin_right > 0.0 and slice.texture_margin_bottom > 0.0,
+		"%s 的九宫格四边距都应非零（实际 %s）—— PNG 的 .import 不承载边距，缺一边就会拉伸描边"
+			% [label, str([slice.texture_margin_left, slice.texture_margin_top,
+				slice.texture_margin_right, slice.texture_margin_bottom])])
+
+
 func _check_box(ctx: RefCounted, box: StyleBox, fill: Palette.Key, border: Palette.Key, label: String, border_width: int) -> void:
 	if not ctx.check(box is StyleBoxFlat, "%s 应为 StyleBoxFlat" % label):
 		return

@@ -52,7 +52,6 @@ enum Area {
 const GRID: float = 24.0
 const CARD: float = 24.0
 const MARKER: float = 4.0
-const PORT: float = 3.0
 const SLOT_PITCH_MAX: float = 28.0
 const SLOT_GAP_MIN: float = 1.0
 const DRAG_ALPHA: float = 0.7
@@ -78,9 +77,19 @@ const CUE_SAW: Vector2 = Vector2(11.0, 4.0)
 ## 于是反馈贴在卡片上缘那一小段里，不会与弹道混成一片。
 const CUE_RISE: float = 8.0
 
+## VB-03 已批准节点卡切片（PET-77 接入）。固定 24×24，**直接当 Texture2D 用，不走 StyleBox** ——
+## 九宫格是给「会被拉伸的框」用的，而卡片永远画在自己的 24×24 格子上，没有中间那一段要拉。
+const CARD_SLICE_DIR: String = "res://assets/ui/vb03_component_language/"
+const CARD_SLICE_NORMAL: Array[String] = [
+	"ui_node_card_core_24.png",
+	"ui_node_card_function_24.png",
+	"ui_node_card_weapon_24.png",
+]
+## 选中态另有一张：卡片的三段式（底 / 描边 / 标识）整张换了色，不是叠一个环。
+const CARD_SLICE_SELECTED: String = "ui_node_card_selected_24.png"
+
 ## 选中辉光的落笔位置：卡片**外侧** 1px。06 §2.1 把 BLUE_300 定为选中态判据色（四边整圈），
 ## 画在卡片边长上会把卡片自己那圈 BROWN_600 描边盖掉 —— 两种状态要能同时读出来。
-const SELECT_GROW: float = 1.0
 ## 连线的命中走廊半宽。1px 的线在触摸端抓不住，所以要一条走廊；但也不能再宽：
 ## 网格步长只有 24px，走廊一宽就会把「点空白处取消选中」整个吃掉。卡片永远优先于连线。
 const LINK_HIT: float = 8.0
@@ -143,6 +152,9 @@ var _selected_link: int = -1
 var _history: Array[Dictionary] = []
 ## 载入的节点还在等一个有效尺寸才能落格（见 _on_resized）。
 var _awaiting_size: bool = false
+
+## 切片纹理缓存（路径 → Texture2D）。见 _texture()。
+var _textures: Dictionary = {}
 
 ## 仅 Area.VIEWER 用：由 combat_screen 交进来的机器运行时。为 null 时只画静态的图与连线。
 ## 它是**只读**引用 —— 本文件只调它的 pulses / is_lit / shot_age 这些取数方法，不调 tick()。
@@ -278,16 +290,32 @@ static func warehouse_label(entry: Dictionary) -> String:
 	return String(TranslationServer.translate(String(entry["name"])))
 
 
-## 06 §4：底色 NAVY_700、外框 1px BROWN_600、左上 4×4 类型标识、左右各一个 3×3 端口。
+## 06 §4 的节点卡：底色 NAVY_700、外框 1px BROWN_600、左上 4×4 类型标识、左右各一个端口 ——
+## 这四件事**全部烘焙在已批准的 24×24 切片里**，故本函数只把切片贴上去，不再逐笔画。
+## 这也正是 06 §10.7「不得写死像素色」想要的结果：卡片的颜色从此只在切片里有一份。
 func _draw_card(rect: Rect2, kind: int) -> void:
-	draw_rect(rect, Palette.get_color(Palette.Key.NAVY_700), true)
-	draw_rect(rect, Palette.get_color(Palette.Key.BROWN_600), false, 1.0)
-	draw_rect(Rect2(rect.position + Vector2(MARKER_INSET, MARKER_INSET), Vector2(MARKER, MARKER)),
-		_kind_color(kind), true)
-	var port_color: Color = Palette.get_color(Palette.Key.BROWN_300)
-	var port_y: float = rect.position.y + (CARD - PORT) * 0.5
-	draw_rect(Rect2(Vector2(rect.position.x, port_y), Vector2(PORT, PORT)), port_color, true)
-	draw_rect(Rect2(Vector2(rect.end.x - PORT, port_y), Vector2(PORT, PORT)), port_color, true)
+	draw_texture_rect(_card_texture(kind), rect, false)
+
+
+## 类型 → 切片文件的映射。下标与 NodeData.Kind 同序（CORE / FUNCTION / WEAPON），
+## 越界或认不出的取值落到 FUNCTION 那一张 —— 与 _kind_color() 的兜底方向一致，
+## 「认不出」在任何一处都不得变成一种新的类型。
+func _card_file(kind: int) -> String:
+	if kind < 0 or kind >= CARD_SLICE_NORMAL.size():
+		return CARD_SLICE_NORMAL[NodeData.Kind.FUNCTION]
+	return CARD_SLICE_NORMAL[kind]
+
+
+## 切片纹理缓存。`load()` 本身有资源缓存，但**每张卡每帧调一次 load()** 仍要走一遍查找，
+## 而仓库一行 7 张卡 + 画布上任意张都会经过这里。视图每帧重画，故缓存一次。
+func _card_texture(kind: int) -> Texture2D:
+	return _texture(CARD_SLICE_DIR + _card_file(kind))
+
+
+func _texture(path: String) -> Texture2D:
+	if not _textures.has(path):
+		_textures[path] = load(path)
+	return _textures[path]
 
 
 func _kind_color(kind: int) -> Color:
@@ -315,14 +343,25 @@ func _draw_connections() -> void:
 			picked if selected else color, 2.0 if selected else 1.0)
 
 
-## 选中辉光：卡片**外侧** 1px 整圈 BLUE_300（06 §2.1 的选中判据色）。至多画一件。
+## 选中态：整张卡片换成 `ui_node_card_selected_24`（GOLD_500 外圈 + GOLD_200 内圈，
+## 见 13 §10.1 三修之一「Selected = GOLD 主强调」）。至多画一件。
 ## VIEWER 角色不画 —— COMBAT 期间没有选中这回事（06 §10：战斗里玩家不操控任何东西）。
+##
+## 这里从前画的是卡片**外侧** 1px 整圈 BLUE_300 —— 那是 13 §10.1 明令不得混用的**焦点**色
+## （「键盘 / 指针指到这儿了」），拿它表达「这一项被真正选中了」会让两种语义在画面上同形。
+## BLUE_300 仍留在 Theme 的 PanelSelected 变体上，供将来真正的焦点态使用，只是不再冒充选中。
+##
+## 类型标识要补回来：选中片是一张**通用**的选中示意，它左上那 4×4 是 GOLD_400（CORE 色），
+## 直接贴上去会把武器 / 功能节点一律画成核心色。故选中片之上再按真实 kind 盖一枚 4×4 标识。
 func _draw_selection() -> void:
 	if area != Area.CANVAS:
 		return
-	if not String(_selected_node).is_empty() and _boxes.has(_selected_node):
-		draw_rect((_boxes[_selected_node] as Rect2).grow(SELECT_GROW),
-			Palette.get_color(Palette.Key.BLUE_300), false, 1.0)
+	if String(_selected_node).is_empty() or not _boxes.has(_selected_node):
+		return
+	var box: Rect2 = _boxes[_selected_node]
+	draw_texture_rect(_texture(CARD_SLICE_DIR + CARD_SLICE_SELECTED), box, false)
+	draw_rect(Rect2(box.position + Vector2(MARKER_INSET, MARKER_INSET), Vector2(MARKER, MARKER)),
+		_kind_color(_kind_of(_selected_node)), true)
 
 
 ## 输出锚点在卡片右缘、输入锚点在左缘，都取纵向中点（06 §4：输出在右、输入在左）。
@@ -331,23 +370,15 @@ func _anchor(box: Rect2, is_input: bool) -> Vector2:
 	return Vector2(box.position.x if is_input else box.end.x, y)
 
 
-## 拖动预览：06 §4 要求拖动时 70% 半透明。
+## 拖动预览：06 §4 要求拖动时 70% 半透明。预览就是**被拖走的那张卡本身** ——
+## 逐块拼一张近似的（旧做法）会在拖起来的一瞬间露出「跟原位长得不一样」的破绽。
 func _make_preview(kind: int) -> Control:
-	var preview := Control.new()
+	var preview := TextureRect.new()
+	preview.texture = _card_texture(kind)
 	preview.size = Vector2(CARD, CARD)
 	preview.modulate.a = DRAG_ALPHA
-	_add_swatch(preview, Vector2.ZERO, Vector2(CARD, CARD), Palette.get_color(Palette.Key.NAVY_700))
-	_add_swatch(preview, Vector2(MARKER_INSET, MARKER_INSET), Vector2(MARKER, MARKER), _kind_color(kind))
+	preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return preview
-
-
-func _add_swatch(parent: Control, at: Vector2, box: Vector2, color: Color) -> void:
-	var swatch := ColorRect.new()
-	swatch.color = color
-	swatch.position = at
-	swatch.size = box
-	swatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	parent.add_child(swatch)
 
 
 func _get_drag_data(at: Vector2) -> Variant:

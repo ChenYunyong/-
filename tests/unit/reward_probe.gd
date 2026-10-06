@@ -30,11 +30,17 @@ const SCENE_PATH: String = "res://scenes/reward/reward.tscn"
 const WIDE: Vector2i = Vector2i(320, 180)
 const NARROW: Vector2i = Vector2i(180, 320)
 
-## 卡片描边的扫描窗口：避开最外圈的面板框。外框是 PanelFrame（3px BROWN_500 描边 + BROWN_600 填充）
-## 再叠 1px PanelHighlight 左高光，所以 [4, 316) 里除了卡片描边不该有第二种 BROWN_600。
+## 卡片描边的扫描窗口：避开最外圈的面板框。外框是 PanelFrame（3px 木质描边 + BROWN_600 内带）
+## 再叠 1px GOLD_200 左高光，所以 [4, 316) 里除了卡片描边不该有第二种 BROWN_600。
 ## 这两条边界由 _probe_wide() 末尾的断言钉住 —— 窗口一旦挪进外框，那两条会先红。
 const SCAN_LEFT: int = 4
 const SCAN_RIGHT: int = 316
+
+## PET-77：外框换成已批准切片后，窗口外那几列里也有 BROWN_600 —— 那是**框自己**的木质带。
+## 逐像素读数（`ui_panel_frame_main_96x64`）：左带 4px = x0 BROWN_500 / x1..x2 BROWN_600 / x3 GOLD_200 高光；
+## 右带 3px = x317..x318 BROWN_600 / x319 BROWN_500。窗口边界那两条断言据此改钉「只许这两条、且在此位置」。
+const FRAME_LEFT_BAND: Array[int] = [1, 2]
+const FRAME_RIGHT_BAND: Array[int] = [317, 318]
 const SCAN_TOP: int = 4
 const SCAN_BOTTOM: int = 316
 
@@ -152,12 +158,24 @@ func _probe_wide() -> void:
 	_h.check(_h.count_row(image, TITLE_GOLD_ROW + 1, 0, WIDE.x, _gold) == 0,
 		"第 %d 行不得有金像素（标题栏到此为止）" % (TITLE_GOLD_ROW + 1))
 
-	# 钉住扫描窗口的两条边界：窗口外（最外圈面板框那一带）不得混进卡片描边色，
-	# 否则上面那条「恰好 6 个」随时可能被外框的像素顶掉而失去判别力。
-	_h.check(_h.count_row(image, WIDE_SCAN_ROW, 0, SCAN_LEFT, _border) == 0,
-		"扫描窗口左侧（x< %d）不得有卡片描边色" % SCAN_LEFT)
-	_h.check(_h.count_row(image, WIDE_SCAN_ROW, SCAN_RIGHT, WIDE.x, _border) == 0,
-		"扫描窗口右侧（x>= %d）不得有卡片描边色" % SCAN_RIGHT)
+	# 钉住扫描窗口的两条边界：窗口外（最外圈面板框那一带）只许出现**外框切片自己**那两条
+	# BROWN_600 木质带，且必须落在固定列上 —— 否则上面那条「恰好 6 个」随时可能被外框顶掉。
+	#
+	# 原来钉：窗口外命中 0（旧外框是 StyleBoxFlat：3px 描边 + BROWN_500 填充，
+	#         而窗口外那几列恰好落在填充上，所以当时确实是 0）。
+	# 现在钉：命中数 == 2，且命中列 == 外框自带的那两条（左 x1/x2、右 x317/x318）。
+	# 为什么是同一件事：这条要证的是「窗口外那几列只属于外框，不掺本界面自己的任何描边」。
+	#   外框改用已批准切片后，切片在描边内侧多了一条 BROWN_600（旧 StyleBoxFlat 那里是填充），
+	#   于是「0」这个数字不再成立；改钉「恰好 2 且位置固定」把同一件事证得更死 ——
+	#   数量或位置任一变化（多一条、挪一列、本界面有描边漏出窗口）都会转红。
+	var left_out: Array[int] = _row_hits(image, WIDE_SCAN_ROW, 0, SCAN_LEFT, _border)
+	_h.check(left_out == FRAME_LEFT_BAND,
+		"扫描窗口左侧（x< %d）应恰好是外框自带的那两条木质带 %s（实际 %s）" % [
+			SCAN_LEFT, FRAME_LEFT_BAND, left_out])
+	var right_out: Array[int] = _row_hits(image, WIDE_SCAN_ROW, SCAN_RIGHT, WIDE.x, _border)
+	_h.check(right_out == FRAME_RIGHT_BAND,
+		"扫描窗口右侧（x>= %d）应恰好是外框自带的那两条木质带 %s（实际 %s）" % [
+			SCAN_RIGHT, FRAME_RIGHT_BAND, right_out])
 
 
 ## 组 10b：06 §4 的类型标识色 —— 三张卡片各有一块 16×16 的实心图标，

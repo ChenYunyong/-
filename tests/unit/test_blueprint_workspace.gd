@@ -27,7 +27,6 @@ const SAVE_PATH: String = SAVE_DIR + "/_workspace_01.tres"
 const GRID: float = 24.0
 const CARD: float = 24.0
 const MARKER: float = 4.0
-const PORT: float = 3.0
 const SLOT_PITCH: float = 28.0
 const DRAG_ALPHA: float = 0.7
 const LABEL_FONT_SIZE: int = 8
@@ -120,7 +119,31 @@ func _run_constant_checks(ctx: RefCounted) -> void:
 	ctx.equal(script.GRID, GRID, "网格步长")
 	ctx.equal(script.CARD, CARD, "卡片边长")
 	ctx.equal(script.MARKER, MARKER, "类型标识边长")
-	ctx.equal(script.PORT, PORT, "端口标记边长")
+	# —— PET-77 接入说明（原「端口标记边长」一条）——
+	# 原来钉：`script.PORT == 3.0` —— 06 §4 卡片记法里那个**代码手绘**的插座点边长。
+	# 现在钉：卡片面整张取自 VB-03 已批准切片，且① 取自批准目录、② 三种类型各一张、
+	#         ③ 切片与卡片格子 **1:1**（24×24，不被缩放）、④ 类型→切片文件的对应不串位。
+	# 为什么是同一件事：这条要证的是「卡片上的记法元素都画在自己的像素格上」。
+	#   接入前插座点是代码画的，所以它的边长是个常量；接入后插座点烘焙进 `ui_node_card_*_24`，
+	#   常量本身随之消失（`PORT` 已从 blueprint_workspace.gd 删除，因为它不再有落点）。
+	#   判据于是从「某一个手绘元素的边长」升级为「整张卡片面与格子同尺寸」—— 覆盖了原来那个点，
+	#   也覆盖了新接进来的整张图。③ 是新的风险点：换一张 32×32 的切片进来，非整数缩放会把
+	#   卡片上那圈 1px 描边糊掉；④ 则钉住我这次新引入的 `CARD_SLICE_NORMAL[kind]` 下标关系。
+	ctx.check(String(script.CARD_SLICE_DIR).begins_with("res://assets/ui/vb03_component_language/"),
+		"卡片切片应取自 VB-03 已批准目录（实际 '%s'）" % script.CARD_SLICE_DIR)
+	ctx.equal(script.CARD_SLICE_NORMAL.size(), 3, "三种节点类型应各有一张卡片切片")
+	var kind_script: GDScript = load(NODE_DATA_PATH)
+	for kind: int in [kind_script.Kind.CORE, kind_script.Kind.FUNCTION, kind_script.Kind.WEAPON]:
+		var kind_name: String = String(kind_script.Kind.find_key(kind))
+		var file_name: String = String(script.CARD_SLICE_NORMAL[kind])
+		ctx.check(file_name.contains(kind_name.to_lower()),
+			"%s 应对应同名的切片（实际 '%s'）—— 串位会让玩家看到错误的类型标识" % [kind_name, file_name])
+		var card_slice: Texture2D = load(String(script.CARD_SLICE_DIR) + file_name)
+		if not ctx.check(card_slice != null, "卡片切片应能加载：%s" % file_name):
+			continue
+		ctx.equal(card_slice.get_size(), Vector2(CARD, CARD),
+			"%s 应与卡片格子 1:1（不缩放，否则 1px 描边会被糊掉）" % file_name)
+	ctx.check(not String(script.CARD_SLICE_SELECTED).is_empty(), "选中态应也有一张切片")
 	ctx.equal(script.SLOT_PITCH_MAX, SLOT_PITCH, "仓库槽位间距上限")
 	ctx.equal(script.DRAG_ALPHA, DRAG_ALPHA, "拖动预览的不透明度")
 	ctx.equal(script.LABEL_FONT_SIZE, LABEL_FONT_SIZE, "仓库名称字号（06 §1 的正文字号下限）")

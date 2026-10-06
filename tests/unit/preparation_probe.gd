@@ -34,6 +34,13 @@ const PANEL_BOXES: Array[Rect2] = [
 
 ## 06 §7 的 CTA 区块（64×14）装不下按钮，落位取「右下角照抄、高度向上长」→ 64×20。
 const CTA_BOX: Rect2 = Rect2(246.0, 142.0, 64.0, 20.0)
+## PET-77：CTA 的**按钮面**。已批准的 `ui_button_primary_normal_64x20` 在 64×20 里
+## 自带一行烘焙投影（y19，半透明暗色），故 20px 的控件画出来是「19px 面 + 1px 投影」。
+const CTA_FACE_BOX: Rect2 = Rect2(246.0, 142.0, 64.0, 19.0)
+
+## 蓝图工作区的两个宿主：PREPARATION 的画布与底部仓库。节点卡切片（已批准素材）
+## 自带 GOLD_500 类型标识，故金色的「唯一性」断言必须把它们排除在外 —— 见 _probe_cta()。
+const BLUEPRINT_HOSTS: PackedStringArray = ["BlueprintCanvas", "NodeWarehouse"]
 
 var _h: RefCounted = null
 var _tree: SceneTree = null
@@ -152,17 +159,39 @@ func _probe_cta() -> void:
 	var live: Rect2 = button.get_global_rect()
 	_h.check(live.is_equal_approx(CTA_BOX),
 		"CTA 的实机矩形应是 §7 区块换算出的 %s（实际 %s）" % [CTA_BOX, live])
-	_assert_edges(image, CTA_BOX, "CTA", _gold_edge)
+	# —— PET-77 接入说明（本节四条改动的统一理由）——
+	# 原来钉：「CTA 的 64×20 整块 = GOLD_600 描边圈 + GOLD_500 填充」，四边各占满 20 / 64。
+	# 现在钉：同一条描边圈，但量的是**按钮面** 64×19；第 20 行（y161）是切片自带的投影，
+	#         单独反向断言它既不是金边也不是金填充。
+	# 为什么是同一件事：这四条要证的从来是「CTA 是一块金色按钮、边缘整圈同色、内部是填充」。
+	#   已批准的切片在它自己的 64×20 里烘焙了一行投影（y19，alpha 200 的暗色），
+	#   于是控件仍是 64×20（§7 的区块换算不变，上面那条 live 断言照旧），
+	#   画出来的金色部分只剩 19 行 —— 少的是**投影像素**，不是描边像素。
+	#   判别力不降反升：除四边外另加了「y161 必须不是金色」这一条，
+	#   若哪天投影被抹掉、按钮退化成 20 行纯金，这一条会立刻转红。
+	_assert_edges(image, CTA_FACE_BOX, "CTA", _gold_edge)
+	_h.check(_h.count_row(image, CTA_FACE_BOX.end.y, int(CTA_FACE_BOX.position.x),
+			int(CTA_FACE_BOX.end.x), _gold_edge) == 0
+		and _h.count_row(image, CTA_FACE_BOX.end.y, int(CTA_FACE_BOX.position.x),
+			int(CTA_FACE_BOX.end.x), _gold) == 0,
+		"CTA 按钮面之下那一行 y=%d 应是切片烘焙的投影，不是金边也不是金填充" % int(CTA_FACE_BOX.end.y))
 
-	_h.check(_count_rect(image, CTA_BOX, _gold) > 0,
-		"CTA 矩形内应有 GOLD_500 填充（实际 %d px）" % _count_rect(image, CTA_BOX, _gold))
-	# 「唯一」：整幅画面上除了这一块，不许再有第二个 GOLD_500 区域。
-	_h.check(_count_outside(image, CTA_BOX, _gold) == 0,
-		"CTA 之外不得出现 GOLD_500（实际 %d px）—— 主动作按钮只能有一个" % _count_outside(image, CTA_BOX, _gold))
+	_h.check(_count_rect(image, CTA_FACE_BOX, _gold) > 0,
+		"CTA 矩形内应有 GOLD_500 填充（实际 %d px）" % _count_rect(image, CTA_FACE_BOX, _gold))
+	# 「唯一」：除了 CTA 与**蓝图工作区**（画布 + 仓库），画面上不许再有第三个 GOLD_500 区域。
+	# 原来钉：CTA 之外全图 GOLD_500 == 0。
+	# 现在钉：CTA ∪ BlueprintCanvas ∪ NodeWarehouse 之外 GOLD_500 == 0。
+	# 为什么是同一件事：这条要证的是「主动作按钮只能有一个 —— 别处不许再冒出一块金色」。
+	#   接入 VB-03 后，已批准的节点卡切片自带 GOLD_500 类型标识（武器卡，24px/张，
+	#   见 `asset_manifest.json` 的 tokens），那属于 13 §10.1 允许的「小面积类型标识」，
+	#   且只可能出现在蓝图工作区这两块宿主矩形里。工作区之外仍是零容忍。
+	var stray: int = _count_gold_outside_hosts(image, _gold)
+	_h.check(stray == 0,
+		"CTA 与蓝图工作区之外不得出现 GOLD_500（实际 %d px）—— 主动作按钮只能有一个" % stray)
 	# 边与填充同源同矩：四条边必须是 GOLD_600 而中心是 GOLD_500，两者不得串位。
-	_h.check(_ring_pixels(image, CTA_BOX, _gold_edge) == _expected_ring(CTA_BOX),
-		"CTA 四周应整圈是 GOLD_600 描边（期望 %d px，实际 %d）" % [
-			_expected_ring(CTA_BOX), _ring_pixels(image, CTA_BOX, _gold_edge)])
+	_h.check(_ring_pixels(image, CTA_FACE_BOX, _gold_edge) == _expected_ring(CTA_FACE_BOX),
+		"CTA 按钮面四周应整圈是 GOLD_600 描边（期望 %d px，实际 %d）" % [
+			_expected_ring(CTA_FACE_BOX), _ring_pixels(image, CTA_FACE_BOX, _gold_edge)])
 
 	# 反向对照：换成辅助按钮变体（NAVY_700 底 + NAVY_600 描边），金色必须一像素不剩 ——
 	# 归零失败就说明组 7 数的金色并非来自「主动作按钮」这个变体。
@@ -172,11 +201,36 @@ func _probe_cta() -> void:
 	var control: Image = (await _h.settle())["image"]
 	if control == null:
 		return
-	_h.check(_count_rect(control, CTA_BOX, _gold) == 0,
-		"反向对照：换成辅助变体后 CTA 内 GOLD_500 应归零（实际 %d）" % _count_rect(control, CTA_BOX, _gold))
-	_h.check(_ring_pixels(control, CTA_BOX, _gold_edge) == 0,
+	_h.check(_count_rect(control, CTA_FACE_BOX, _gold) == 0,
+		"反向对照：换成辅助变体后 CTA 内 GOLD_500 应归零（实际 %d）" % _count_rect(control, CTA_FACE_BOX, _gold))
+	_h.check(_ring_pixels(control, CTA_FACE_BOX, _gold_edge) == 0,
 		"反向对照：换成辅助变体后 CTA 的 GOLD_600 描边应归零（实际 %d）"
-			% _ring_pixels(control, CTA_BOX, _gold_edge))
+			% _ring_pixels(control, CTA_FACE_BOX, _gold_edge))
+
+
+## CTA 与蓝图工作区（画布 + 仓库）之外，判据色的像素总数。
+## 工作区矩形**从场景实时取**，不写死坐标 —— 写死就等于把「这两块是本探针允许的金色来源」
+## 变成一句口号；取实机矩形才真的把它们排除在外。
+func _count_gold_outside_hosts(image: Image, wanted: Color) -> int:
+	var allowed: Array[Rect2] = [CTA_FACE_BOX]
+	for host_name: String in BLUEPRINT_HOSTS:
+		var host: Control = _scene.find_child(host_name, true, false) as Control
+		if host != null:
+			allowed.append(host.get_global_rect())
+	var total: int = 0
+	var extent: Vector2i = image.get_size()
+	for y: int in extent.y:
+		for x: int in extent.x:
+			if not _h.near(image.get_pixel(x, y), wanted):
+				continue
+			var inside: bool = false
+			for box: Rect2 in allowed:
+				if box.has_point(Vector2(float(x), float(y))):
+					inside = true
+					break
+			if not inside:
+				total += 1
+	return total
 
 
 ## 把 preparation.tscn 挂上画布、按 320×180 落一次布局，再取像素。
@@ -222,13 +276,3 @@ func _count_rect(image: Image, box: Rect2, wanted: Color) -> int:
 	return total
 
 
-## 矩形之外的判据色像素数。「唯一」这类断言靠它 —— 只数内部数不出「别处还有一块」。
-func _count_outside(image: Image, box: Rect2, wanted: Color) -> int:
-	var total: int = 0
-	for y: int in image.get_size().y:
-		for x: int in image.get_size().x:
-			if box.has_point(Vector2(x, y)):
-				continue
-			if _h.near(image.get_pixel(x, y), wanted):
-				total += 1
-	return total

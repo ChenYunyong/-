@@ -204,9 +204,33 @@ func _run_readout_case() -> void:
 		var button: Button = _find(screen, ACTION_NAMES[index]) as Button
 		if button == null:
 			continue
-		var disabled: StyleBox = button.get_theme_stylebox(&"disabled")
-		_ctx.check(disabled != null and disabled.bg_color == navy_800,
-			"%s 的 Disabled 底色应解析为 NAVY_800（06 §3 / 04 §5.1）" % ACTION_NAMES[index])
+		var fill: Variant = _resolved_fill(button.get_theme_stylebox(&"disabled"))
+		_ctx.check(fill != null and Color(fill) == navy_800,
+			"%s 的 Disabled 底色应解析为 NAVY_800（06 §3 / 04 §5.1，实际 %s）"
+				% [ACTION_NAMES[index], "取不到" if fill == null else Color(fill).to_html(false)])
+
+
+## 取一个主题样式**实际会画出来的中心底色**。
+##
+## 原来这里直接读 `StyleBoxFlat.bg_color`。PET-77 把按钮底色搬进了已批准切片，
+## 槽位解析出来的是 StyleBoxTexture —— 它在 Godot 里**没有** bg_color 属性，
+## 于是这一行会在运行时抛 SCRIPT ERROR，而 GDScript 的错误只中断当前函数：
+## 后面几条断言会**静默消失**，报告照样是「4 条失败」看不出少测了什么（实测踩过）。
+##
+## 判据没变，仍是「Disabled 底色 = NAVY_800」这颗颜色；只是它现在住在素材里，
+## 故改为读切片正中的那颗像素。两种样式盒都覆盖，将来换回任一种都不会再炸。
+func _resolved_fill(box: StyleBox) -> Variant:
+	if box is StyleBoxFlat:
+		return (box as StyleBoxFlat).bg_color
+	if box is StyleBoxTexture:
+		var texture: Texture2D = (box as StyleBoxTexture).texture
+		if texture == null:
+			return null
+		var image: Image = texture.get_image()
+		if image == null:
+			return null
+		return image.get_pixel(image.get_width() / 2, image.get_height() / 2)
+	return null
 
 
 ## 验收第 2 条：两个出口的矩形必须是实测值。量的是入树后 layout 出来的真实矩形，

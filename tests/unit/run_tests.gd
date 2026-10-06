@@ -18,6 +18,8 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 	{"path": "res://tests/unit/test_blueprint_data.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_settings.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_theme.gd", "layer": "unit"},
+	# VB-03 切片接入运行时（PET-77）。纯资源查询，不入场景、不写 user://，紧挨 test_theme 放。
+	{"path": "res://tests/unit/test_vb03_wiring.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_boot_check.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_main_menu.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_preparation.gd", "layer": "unit"},

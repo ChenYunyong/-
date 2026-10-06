@@ -12,7 +12,9 @@
 ## 判别力（09 §4：每条断言都要能被一次「故意改坏」打红）：
 ##   反向对照一 —— 把状态带整体上移 4px，分界必须跟着移到 y=131、y=135 必须不再是上沿。
 ##                 量不到这个位移，就说明断言只是在「某处找一条深色线」，证明不了它落在 135。
-##   反向对照二 —— 藏掉 StatusEdge，全图 NAVY_600 必须归零。
+##   反向对照二 —— 藏掉 StatusEdge，状态带区内的 NAVY_600 必须归零、且全图不再有整行结构线。
+##                 （PET-77 起战场区的节点卡切片自带 NAVY_600 卡面像素，故判据由「全图归零」
+##                  改为「带内归零 + 全图无整行同色结构线」，判别力不变，见 _probe_band()。）
 ##   反向对照三 —— 藏掉 StatusFill，状态带内的 NAVY_800 必须归零。
 ##
 ## 分工：本探针只量**宽屏**（06 §8 的实测档）。窄屏折叠是布局问题，
@@ -79,10 +81,22 @@ func _probe_band() -> void:
 		"分界上一行 y=%d 不得是 NAVY_600（上沿只占一行）" % (BAND_TOP - 1))
 	_h.check(_h.count_row(image, BAND_FILL_TOP, 0, CANVAS.x, _band_edge) == 0,
 		"分界下一行 y=%d 不得是 NAVY_600（上沿只占一行）" % BAND_FILL_TOP)
-	# 「只有这一条」——整幅画面上别处不许再漏出 NAVY_600。
-	_h.check(_count_all(image, _band_edge) == CANVAS.x,
-		"整幅画面的 NAVY_600 应恰好等于这条上沿的长度 %d（实际 %d）" % [
-			CANVAS.x, _count_all(image, _band_edge)])
+	# 「只有这一条」。
+	# 原来钉：整幅画面的 NAVY_600 == 320（= 上沿长度）—— 当时战场区一个 NAVY_600 像素都没有。
+	# 现在钉：① 状态带区（y ≥ BAND_TOP）内 NAVY_600 == 320；
+	#         ② 全图不存在第二条**整行 320px** 的 NAVY_600。
+	# 为什么是同一件事：这条要证的是「分界线只有一条，别处不再有同色的结构线」。
+	#   接入 VB-03 后，蓝图节点卡切片（已批准素材，`asset_manifest.json` 的 tokens 列有 NAVY_600）
+	#   自带卡面描边像素，落在战场区的 MachineView 里 —— 那是 24×24 的**卡面**，不是结构线。
+	#   ① 把「带内唯一」钉得和原来一样死；② 比原来更精确地把「别处没有同色结构线」钉死
+	#   （结构线 = 整行 320px；卡面单张最多 24px 连续，越不过这条判据）。
+	_h.check(_count_range(image, BAND_TOP, CANVAS.y, _band_edge) == CANVAS.x,
+		"状态带区（y %d–%d）的 NAVY_600 应恰好等于上沿长度 %d（实际 %d）" % [
+			BAND_TOP, BAND_BOTTOM, CANVAS.x, _count_range(image, BAND_TOP, CANVAS.y, _band_edge)])
+	var full_rows: Array[int] = _full_width_rows(image, _band_edge)
+	_h.check(full_rows == [BAND_TOP],
+		"全图应只有第 %d 行是整行 %dpx 的 NAVY_600 —— 别处不得再有同色结构线（实际 %s）" % [
+			BAND_TOP, CANVAS.x, full_rows])
 
 	# 战场侧：状态带的两种色一点都不能越界到 y<135。
 	_h.check(_count_range(image, 0, BAND_TOP, _band_fill) == 0,
@@ -140,8 +154,16 @@ func _probe_layers() -> void:
 	var control: Image = (await _h.settle())["image"]
 	if control == null:
 		return
-	_h.check(_count_all(control, _band_edge) == 0,
-		"反向对照：藏掉上沿后全图 NAVY_600 应归零（实际 %d）" % _count_all(control, _band_edge))
+	# 原来钉：藏掉 StatusEdge 后全图 NAVY_600 归零。
+	# 现在钉：状态带区内 NAVY_600 归零 **且** 全图不再有任何整行 320px 的 NAVY_600。
+	# 为什么是同一件事：这条要证的是「组 8 数到的那些像素确实来自 StatusEdge 这一层」。
+	#   带内那 320 个像素与那条整行结构线同属上沿，两层判据一起看，来源仍是唯一的一层。
+	_h.check(_count_range(control, BAND_TOP, CANVAS.y, _band_edge) == 0,
+		"反向对照：藏掉上沿后状态带区内的 NAVY_600 应归零（实际 %d）"
+			% _count_range(control, BAND_TOP, CANVAS.y, _band_edge))
+	_h.check(_full_width_rows(control, _band_edge).is_empty(),
+		"反向对照：藏掉上沿后全图不该再有整行 %dpx 的 NAVY_600（实际 %s）" % [
+			CANVAS.x, _full_width_rows(control, _band_edge)])
 	edge.set(&"visible", true)
 
 	fill.set(&"visible", false)
@@ -359,8 +381,15 @@ func _open_scene() -> Image:
 	return (await _h.settle())["image"]
 
 
-func _count_all(image: Image, wanted: Color) -> int:
-	return _count_range(image, 0, image.get_size().y, wanted)
+## 整行铺满判据色的那些行号 —— 即画面上**横贯全宽的结构线**。
+## 「别处不得再有同色结构线」这条判据靠它：卡面 / 图标那类小色块最多几十像素连续，
+## 凑不满一整行，于是它们不会污染这条断言，而一条真的漏出来的分界线一定跑不掉。
+func _full_width_rows(image: Image, wanted: Color) -> Array[int]:
+	var rows: Array[int] = []
+	for y: int in image.get_size().y:
+		if _h.count_row(image, y, 0, image.get_size().x, wanted) == image.get_size().x:
+			rows.append(y)
+	return rows
 
 
 ## 逐行累计判据色像素数。[from_y, to_y) 半开区间。

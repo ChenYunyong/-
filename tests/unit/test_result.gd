@@ -329,12 +329,40 @@ func _run_button_theme_checks(ctx: RefCounted) -> void:
 	var disabled: StyleBox = theme_resource.get_stylebox(&"disabled", &"Button")
 	if not ctx.check(disabled != null, "Theme 应为 Button 定义 Disabled 态"):
 		return
-	ctx.equal(disabled.bg_color, palette.get_color(palette.Key.NAVY_800), "Disabled 底色（06 §3）")
-	ctx.equal(theme_resource.get_stylebox(&"normal", &"Button").bg_color,
+	# —— PET-77 接入说明（原两条 `.bg_color` 断言）——
+	# 原来钉：Disabled / Normal 两个槽的 `StyleBoxFlat.bg_color` 分别等于 NAVY_800 / GOLD_500。
+	# 现在钉：这两个槽解析到的**已批准切片**，其**填充像素**分别等于 NAVY_800 / GOLD_500。
+	# 为什么是同一件事：上面那句「Disabled 底色必须落在 NAVY_800 上」是 04 §5.1 对比度结论的
+	#   全部依据（GREY_500 在 NAVY_800 上 4.80:1 达标、在 NAVY_700 上 3.84:1 不达标）——
+	#   要证的从来不是「某个字段叫什么」，而是「底色**实际是** NAVY_800」。
+	#   接入 VB-03 后底色的载体从 Theme 字段搬进了素材，判据就跟着搬进素材的像素：
+	#   期望值仍写成 Palette.get_color(...)，色值的唯一来源不变；把素材改成别的底色照样当场转红。
+	_check_slice_fill(ctx, disabled, palette.get_color(palette.Key.NAVY_800),
+		"Disabled 底色（06 §3 / 04 §5.1）")
+	_check_slice_fill(ctx, theme_resource.get_stylebox(&"normal", &"Button"),
 		palette.get_color(palette.Key.GOLD_500), "Normal 底色（06 §3）")
 	# 次要按钮**不得**另设 Disabled 底色：一旦另设，就会绕开 06 §3 钉死的 NAVY_800。
 	ctx.check(not theme_resource.has_stylebox(&"disabled", theme_script.TYPE_BUTTON_SECONDARY),
 		"次要按钮不得覆盖 Disabled 态（否则会绕开 04 §5.1 的 NAVY_800 结论）")
+
+
+## PET-77：按钮态改接 VB-03 已批准切片后，底色不再由 `StyleBoxFlat.bg_color` 承载，
+## 而是切片纹理里的一颗像素。取纹理**正中**那颗来问色 —— 切片只画框架、不烘焙文字
+## （按钮文字由 Button 自己画），于是 64×20 的中心必定落在填充区
+## （x0/x63 与 y0/y18 是描边、y19 是烘焙投影，中心都够不着）。
+## 期望值由调用方从 Palette 取：本 helper 不比「哪个 Token」，只比「像素是不是那个色」。
+func _check_slice_fill(ctx: RefCounted, box: StyleBox, expected: Color, label: String) -> void:
+	if not ctx.check(box is StyleBoxTexture,
+			"%s：应解析到 StyleBoxTexture（底色已随 PET-77 搬进切片素材）" % label):
+		return
+	var texture: Texture2D = (box as StyleBoxTexture).texture
+	if not ctx.check(texture != null, "%s：切片应有纹理" % label):
+		return
+	var image: Image = texture.get_image()
+	if not ctx.check(image != null, "%s：应能读到切片像素" % label):
+		return
+	var center: Color = image.get_pixel(image.get_width() / 2, image.get_height() / 2)
+	ctx.equal(center, expected, "%s（读切片正中那颗像素，实际 %s）" % [label, center.to_html(false)])
 
 
 func _run_structure_checks(ctx: RefCounted, packed: PackedScene) -> void:
