@@ -3,6 +3,8 @@
 ##       一波敌人由 MachineDriver 按固定节拍真的生成、真的推进，武器真的命中、敌人真的消失，
 ##       一波全灭真的走到 REWARD 出口，敌人抵达终点真的把 CORE 读数打下去 ——
 ##       并且这些事在画面上**真的看得见**（敌人判据色的像素证据 + 截图）。
+##       本卡（PET-76）再补一段**可读反馈**的取证：枪口反馈 / 弹道 / 命中闪光 / 击杀描边 / 血条，
+##       以及「三把武器的反馈长得不一样」—— 同样对着同一份 combat.tscn 的真实渲染量像素。
 ## 所属系统：tests（场景冒烟层）
 ## 依赖：test_context, render_probe_harness, Palette, assets/ui/theme_main.tres,
 ##       scenes/combat/combat.tscn, scripts/ui/combat_screen.gd,
@@ -31,6 +33,10 @@
 ##               于是「量到了」与「整块画布上都有」分得开 —— 像素确实跟着敌人走。
 ##   拍号绝对值 —— 清空在第 82 拍、漏怪在第 80 拍，都是算得出的绝对值，不是「跑够了就算过」：
 ##               生成间隔、推进速度、武器伤害、尸体停留、CORE 血量任一环改了都会转红。
+##   反馈的负对照 —— 开火之前（第 12 拍）四样反馈一个都不该有，开火那一帧三样必须**同帧**齐到：
+##               于是「量到了反馈」与「整块画布上一直有这些颜色」分得开。
+##   三把可区分 —— 三张卡上方的反馈包围盒必须是「细高 / 方正 / 扁宽」三种形状：
+##               三把若画成同一块（只是挪了位置），这一条会转红 —— 位置不同救不了形状相同。
 
 extends SceneTree
 
@@ -52,6 +58,8 @@ const TEST_DIR: String = "user://test_blueprints"
 const CLEAR_PATH: String = TEST_DIR + "/_combat_loop_clear.tres"
 ## 验收机器乙：只有 CORE。它一把武器都没有，于是敌人只会一路走到终点 —— 用来取「漏怪扣血」的证据。
 const BARE_PATH: String = TEST_DIR + "/_combat_loop_bare.tres"
+## 验收机器丙：CORE → 分流 → 针 / 炸弹 / 锯。三把武器同一拍开火，用来取「三把反馈长得不一样」的证据。
+const KIT_PATH: String = TEST_DIR + "/_combat_loop_kit.tres"
 
 ## 画布 = 06 §1 的 320×180 基准，于是「第几个像素」可以直接读。
 const CANVAS: Vector2i = Vector2i(320, 180)
@@ -86,6 +94,44 @@ const SAMPLE_SPAWN: int = 20
 ##   第 74 拍：第 3 只（Slime，第 68 拍被打死）已在第 72 拍退场，第 0 道空；第 4 只（Runner）还在。
 const SAMPLE_KILLED: int = 74
 const MAX_CATCH_UP: int = 5
+
+## PET-76 可读反馈的取样区域，坐标以**战场局部**为准（敌人层原点与战场重合，故可直接读像素）。
+## 机器视图贴战场下沿、高 48px，故它的上缘就是战场 y 87；卡片、卡片之间的连线与火花
+## 全部画在 y ≥ 87，于是**卡片上方那一段空档里只有开火反馈**。
+##
+## 取这三段而不是「整块战场」：判据色会被别处的绘制污染，量到的就不再是「这条反馈出现了」。
+const CUE_REGION: Rect2 = Rect2(46.0, 70.0, 52.0, 16.0)
+## 弹道横穿的那一段。上界 70 卡在开火反馈能升到的最低点（战场 y 71）之下，故这一段里只有弹道。
+const TRACER_REGION: Rect2 = Rect2(0.0, 40.0, 320.0, 31.0)
+## 两条敌人泳道合起来的那一段。命中闪光与击杀描边都落在这里。
+const BAND_REGION: Rect2 = Rect2(0.0, 32.0, 320.0, 48.0)
+## 第 1 条道（Runner 走的那条）那一段。「命中闪光落在哪条道上」据此判 —— 落在第 0 道就不算。
+const LANE_ONE_REGION: Rect2 = Rect2(0.0, ENEMY_BAND_TOP + ENEMY_ROW_HEIGHT, 320.0, ENEMY_ROW_HEIGHT)
+## 敌人身体顶边到 HP 条上沿的距离（表现层常数：缝 3px + 条厚 2px，独立复写）。
+## HP 条就画在身体**上方**这两行里，故这两行里数到的 RED_500 只可能是血条，不会混进身体。
+const ENEMY_HP_ROW_OFFSET: float = 5.0
+const ENEMY_HP_HEIGHT: float = 2.0
+
+## 「三把可区分」量的是卡片上缘往上第 1..7 行（战场 y 71..77）。
+## 上界 77 是有意的：再往下就有弹道斜穿而过了，那一段量到的会变成「反馈 + 恰好路过的一根线」。
+const CUE_ROW_TOP: int = 71
+const CUE_ROW_BOTTOM: int = 78
+## 卡片列宽（BlueprintWorkspace.GRID 的独立复写）与三把武器所在的列号。
+## 机器丙 = CORE / 分流 / 针 / 炸弹 / 锯 依次落格，故武器在第 2 / 3 / 4 列。
+const CARD_COLUMN: int = 24
+const KIT_FIRST_WEAPON_COLUMN: int = 2
+## 三把武器的反馈每拍上升 1px，存活 8 拍。取满这 8 拍，才能保证量到的是长满的那一帧。
+const KIT_WINDOW: int = 8
+
+## 可读反馈的取样拍号（全部算得出，不是「跑够了就算过」）：
+##   第 1 次齐射在第 18 拍（CORE 第 10 拍发脉冲 + 两条边各 4 拍）；
+##   第 1 只（Slime，第 0 道）在第 28 拍被打死，第 2 只（Runner，第 1 道）在第 38 拍被打死。
+## 取 12 / 18 / 26 / 34：前两个分别落在「还没开火」与「齐射当拍」上，
+## 后两个只用来起头 —— 真正的取样点是逐帧找到那一帧，不是「到了这一拍就取」。
+const READ_BEFORE_TICK: int = 12
+const READ_FIRE_TICK: int = 18
+const READ_KILL_TICK: int = 26
+const READ_LANE_TICK: int = 34
 ## 墙钟上限：用例不得挂死（同 run_tests.gd 的兜底）。判据是节拍号，不是这个数。
 const WALL_CLOCK_BUDGET_MS: int = 30_000
 
@@ -106,11 +152,21 @@ var _slime: Color = Color.BLACK
 var _runner: Color = Color.BLACK
 var _backdrop: Color = Color.BLACK
 
+## PET-76 可读反馈的判据色（同样一律取自 Palette）：
+##   开火反馈与弹道 = FX 体色 BLUE_FX_600；命中闪光 = WHITE；击杀描边 = FX 芯色 BLUE_050。
+## 三者与敌人身体的红、战场底 NAVY_900 都不同；WHITE 在整幕 COMBAT 里更是**只**由命中闪光画出来
+## （Label 的正文色是 BLUE_100），故「量到白点」与「打中了」之间没有第二种解释。
+var _cue: Color = Color.BLACK
+var _flash: Color = Color.BLACK
+var _kill: Color = Color.BLACK
+
 ## 蓝图里用到的枚举值。在 _initialize 里取自被测脚本，不在这里写死整数。
 var _kind_core: int = 0
 var _kind_function: int = 0
 var _kind_weapon: int = 0
 var _weapon_needle: int = 0
+var _weapon_bomb: int = 0
+var _weapon_saw: int = 0
 var _fn_none: int = 0
 var _fn_split: int = 0
 
@@ -136,10 +192,15 @@ func _initialize() -> void:
 	_slime = _palette.get_color(_palette.Key.RED_600)
 	_runner = _palette.get_color(_palette.Key.RED_500)
 	_backdrop = _palette.get_color(_palette.Key.NAVY_900)
+	_cue = _palette.get_color(_palette.Key.BLUE_FX_600)
+	_flash = _palette.get_color(_palette.Key.WHITE)
+	_kill = _palette.get_color(_palette.Key.BLUE_050)
 	_kind_core = int(_node_script.Kind.CORE)
 	_kind_function = int(_node_script.Kind.FUNCTION)
 	_kind_weapon = int(_node_script.Kind.WEAPON)
 	_weapon_needle = int(_node_script.WeaponKind.NEEDLE)
+	_weapon_bomb = int(_node_script.WeaponKind.BOMB)
+	_weapon_saw = int(_node_script.WeaponKind.SAW)
 	_fn_none = int(_node_script.Function.NONE)
 	_fn_split = int(_node_script.Function.SPLIT)
 
@@ -161,6 +222,7 @@ func _initialize() -> void:
 	_cleanup()
 	var clear_written: bool = _write_clear_blueprint()
 	var bare_written: bool = _write_bare_blueprint()
+	var kit_written: bool = _write_kit_blueprint()
 	await process_frame
 	# 顺序是有意的：漏怪那一局（机器乙，没有武器）不会分出胜负，场景留在 COMBAT；
 	# 清空那一局（机器甲）会把场景路由去 REWARD，故它必须排在最后 —— 它之后就没有 COMBAT 场景了。
@@ -168,6 +230,8 @@ func _initialize() -> void:
 	await _run_spawn_case(clear_written)
 	await _run_clear_case()
 	await _run_pixel_case(clear_written)
+	# 可读反馈那一段自带离屏场景（机器甲 + 机器丙），不受上面路由走掉的那一幕影响。
+	await _run_readability_case(clear_written, kit_written)
 	_cleanup()
 	_finish()
 
@@ -452,6 +516,418 @@ func _run_pixel_case(written: bool) -> void:
 		% [_tick_of(sim), _pair_text(done_0), _pair_text(done_1)])
 
 
+## PET-76 可读反馈：不看 HUD 也能说出「哪把武器发动 → 打到谁 → 什么结果」（09 §4 像素取证）。
+##
+## 三次取样对着这条因果链的三个时刻，全部取自**同一份 combat.tscn 的真实渲染**：
+##   read_before —— 第 1 只敌人在场、血条满，四样反馈一个都没有（负对照）；
+##   read_fire   —— 第 1 次齐射：枪口反馈 / 弹道 / 命中闪光**同帧**齐到，
+##                  且同一帧里血条已经短了、`热量` 读数已经涨了（因果同拍，不是「数字自己在跳」）；
+##   read_kill   —— 打死那一拍：尸体外面多一圈一次性描边；
+##   read_lane   —— 挨打的是第 1 条道上的 Runner：弹道与闪光都落在第 1 条道，
+##                  不是「只有第 0 道会亮」。
+##
+## 「三把可区分」另开一台机器丙（CORE → 分流 → 针 / 炸弹 / 锯）：三把同拍开火，
+## 三张卡上方的反馈形态必须一眼分得开。04 §3.10 只给了一套 FX 配色，
+## 于是能用来区分的只有**形状** —— 判据也就只能是形状（包围盒的横竖比）。
+func _run_readability_case(clear_written: bool, kit_written: bool) -> void:
+	_ctx.begin_case("战斗冒烟 · PET-76 可读反馈：哪把武器 / 打到谁 / 什么结果（09 §4）")
+	if not clear_written:
+		return
+	var scene: Control = await _open_offscreen(CLEAR_PATH)
+	if scene == null:
+		_ctx.check(false, "应能挂起一台载着验收机器甲的离屏 COMBAT")
+		return
+	var view: Control = _find(scene, "MachineView") as Control
+	var driver: Node = _find(scene, "MachineDriver") as Node
+	var sim: Object = driver.get(&"combat") if driver != null else null
+	if not _ctx.check(view != null and driver != null and sim != null,
+			"离屏场景应有机器视图、节拍器与一场战斗"):
+		return
+
+	# 取样一：还没开火。四样反馈都不该有 —— 下面每条正断言的前提。
+	var reached: bool = await _advance_until(sim, READ_BEFORE_TICK)
+	driver.call(&"bind", null)
+	if not _ctx.check(reached, "应在 %d ms 内跑到第 %d 拍（实际第 %d 拍）" % [
+			WALL_CLOCK_BUDGET_MS, READ_BEFORE_TICK, _tick_of(sim)]):
+		return
+	var before_image: Image = (await _h.settle())["image"]
+	if not _ctx.check(before_image != null, "应能取到离屏图像（本用例不得加 --headless 运行）"):
+		return
+	var stillness: bool = _count_rect(before_image, CUE_REGION, _cue) == 0 \
+		and _count_rect(before_image, TRACER_REGION, _cue) == 0 \
+		and _count_rect(before_image, BAND_REGION, _flash) == 0 \
+		and _count_rect(before_image, BAND_REGION, _kill) == 0
+	_ctx.check(stillness,
+		"负对照：第 %d 拍还没开火，枪口反馈 / 弹道 / 命中闪光 / 击杀描边都不该出现" % _tick_of(sim))
+	var hp_before: int = _hp_fill(before_image, 0)
+	_ctx.check(hp_before > 0 and _count_lane(before_image, 0).x > 0,
+		"第 %d 拍第 1 只敌人已在场且血条是满的（血条填充 %d px）" % [_tick_of(sim), hp_before])
+	var heat_before: int = _heat_percent(scene)
+	_ctx.equal(heat_before, 0, "第 %d 拍的 `热量` 读数（还没开火）" % _tick_of(sim))
+	_save(before_image, "read_before")
+
+	# 取样二：第 1 次齐射。三样反馈必须同帧 —— 这是本卡要治的病「看不出在干嘛」的正解。
+	driver.call(&"bind_combat", sim)
+	var fire: Dictionary = await _await_frame(sim, READ_FIRE_TICK, Callable(self, &"_is_volley_frame"))
+	driver.call(&"bind", null)
+	var fire_image: Image = fire["image"]
+	if not _ctx.check(fire_image != null, "应能取到齐射那一帧"):
+		return
+	var at_fire: int = _tick_of(sim)
+	_ctx.check(_count_rect(fire_image, CUE_REGION, _cue) > 0,
+		"第 %d 拍：开火那张卡的上方应有枪口反馈（BLUE_FX_600 %d px）—— 「哪把武器发动」" % [
+			at_fire, _count_rect(fire_image, CUE_REGION, _cue)])
+	_ctx.check(_count_rect(fire_image, TRACER_REGION, _cue) > 0,
+		"第 %d 拍：同一帧里应有弹道（BLUE_FX_600 %d px）—— 「打到谁」中间那一段" % [
+			at_fire, _count_rect(fire_image, TRACER_REGION, _cue)])
+	var flash_box: Rect2 = _color_box(fire_image, BAND_REGION, _flash)
+	_ctx.check(flash_box.size.x > 0.0,
+		"第 %d 拍：同一帧里命中点上应有一枚短促闪光（WHITE %s）—— 「打中了」" % [
+			at_fire, _rect_text(flash_box)])
+	# 「打到谁」的完整形式：弹道**末端**要落在闪光的那个身位上，而不是随便指向某个固定位置。
+	var tip: Vector2i = _top_row(fire_image, TRACER_REGION, _cue)
+	var flash_middle: int = int(flash_box.position.x + flash_box.size.x * 0.5)
+	_ctx.check(tip.x >= 0 and absi(tip.x - flash_middle) <= 8,
+		"第 %d 拍：弹道末端指向闪光那一点（末端 x=%d @ y=%d，命中点 x=%d，相差 %d px ≤ 一个身位）" % [
+			at_fire, tip.x, tip.y, flash_middle, absi(tip.x - flash_middle)])
+	# 因果同拍：读数与画面在同一帧里一起变，不是「数字自己在跳」。
+	var hp_after: int = _hp_fill(fire_image, 0)
+	_ctx.check(hp_after < hp_before,
+		"第 %d 拍：同一帧里血条真的短了（%d px → %d px）—— 「什么结果」" % [
+			at_fire, hp_before, hp_after])
+	var heat_after: int = _heat_percent(scene)
+	_ctx.check(heat_after > heat_before,
+		"第 %d 拍：同一帧里 `热量` 读数已经涨了（%d%% → %d%%）—— 开火与读数同拍，不是分开的两件事" % [
+			at_fire, heat_before, heat_after])
+	_save(fire_image, "read_fire")
+
+	# 取样三：第 1 只被打死。击杀是一次性的（负对照已证明开枪前没有这圈描边）。
+	driver.call(&"bind_combat", sim)
+	var killed: Dictionary = await _await_frame(sim, READ_KILL_TICK, Callable(self, &"_is_kill_frame"))
+	driver.call(&"bind", null)
+	var killed_image: Image = killed["image"]
+	if not _ctx.check(killed_image != null, "应能取到击杀那一帧"):
+		return
+	_ctx.check(_count_rect(killed_image, BAND_REGION, _kill) > 0,
+		"第 %d 拍：尸体外面应有一圈击杀描边（BLUE_050 %d px）—— 一次性的「死了」" % [
+			_tick_of(sim), _count_rect(killed_image, BAND_REGION, _kill)])
+	_save(killed_image, "read_kill")
+
+	# 取样四：挨打的是第 1 条道上的 Runner —— 「打到谁」不是只有第 0 道会亮。
+	driver.call(&"bind_combat", sim)
+	var lane: Dictionary = await _await_frame(sim, READ_LANE_TICK, Callable(self, &"_is_lane_frame"))
+	driver.call(&"bind", null)
+	var lane_image: Image = lane["image"]
+	if not _ctx.check(lane_image != null, "应能取到第 1 条道挨打的那一帧"):
+		return
+	var lane_flash: Rect2 = _color_box(lane_image, LANE_ONE_REGION, _flash)
+	_ctx.check(lane_flash.size.x > 0.0 and _count_rect(lane_image, TRACER_REGION, _cue) > 0,
+		"第 %d 拍：弹道与命中闪光都落在第 1 条道上（闪光 %s，弹道 %d px）—— 换一条道也跟得上" % [
+			_tick_of(sim), _rect_text(lane_flash), _count_rect(lane_image, TRACER_REGION, _cue)])
+	_save(lane_image, "read_lane")
+
+	# 「三把可区分」：换机器丙，三把武器同拍开火，量三张卡上方的反馈形状。
+	if not kit_written:
+		return
+	var kit_scene: Control = await _open_offscreen(KIT_PATH)
+	if kit_scene == null:
+		_ctx.check(false, "应能挂起一台载着验收机器丙（针 / 炸弹 / 锯）的离屏 COMBAT")
+		return
+	var kit_driver: Node = _find(kit_scene, "MachineDriver") as Node
+	var kit_sim: Object = kit_driver.get(&"combat") if kit_driver != null else null
+	if not _ctx.check(kit_sim != null, "机器丙应有三把武器与一场战斗"):
+		return
+	var kit: Dictionary = await _await_kit_frame(kit_sim, READ_FIRE_TICK)
+	kit_driver.call(&"bind", null)
+	var kit_image: Image = kit["image"]
+	if not _ctx.check(kit_image != null, "应能取到三把一起开火的那一帧"):
+		return
+	var boxes: Array[Rect2] = []
+	for index: int in 3:
+		boxes.append(_cue_box(kit_image, index))
+	for index: int in 3:
+		_ctx.check(boxes[index].size.x > 0.0 and boxes[index].size.y > 0.0,
+			"机器丙第 %d 张卡的上方应有开火反馈（%s）" % [KIT_FIRST_WEAPON_COLUMN + index, _rect_text(boxes[index])])
+	print("SMOKE 像素取证 · 三把反馈的形状（宽×高）：针 %d×%d / 炸弹 %d×%d / 锯 %d×%d"
+		% [int(boxes[0].size.x), int(boxes[0].size.y), int(boxes[1].size.x), int(boxes[1].size.y),
+			int(boxes[2].size.x), int(boxes[2].size.y)])
+	_ctx.check(boxes[0].size.x <= 2.0 and boxes[0].size.y >= boxes[0].size.x * 2.0,
+		"针的反馈是**细高**的一条：%s" % _rect_text(boxes[0]))
+	_ctx.check(boxes[1].size.x >= 4.0 and absf(boxes[1].size.x - boxes[1].size.y) <= 1.0,
+		"炸弹的反馈是**方正**的一块：%s" % _rect_text(boxes[1]))
+	_ctx.check(boxes[2].size.x >= 8.0 and boxes[2].size.x >= boxes[2].size.y * 2.0,
+		"锯的反馈是**扁宽**的一条：%s" % _rect_text(boxes[2]))
+	_save(kit_image, "read_kinds")
+	_sheet([before_image, fire_image, killed_image, lane_image], "read_sheet")
+
+
+## 把一份 combat.tscn 挂到离屏画布上、载好蓝图并跑起来，返回场景根（取节点用 _find）。
+##
+## 波次拨回第 1 波：`reload_machine()` 按 RunState 的**当前波次**建仿真，
+## 而路由用例已经把进度推到了 2（理由同 _run_pixel_case）。
+##
+## 清空出口一律断开：本用例证的是**画出来的东西**，不是路由；不断的话清空那一拍
+## 会把离屏场景也路由走，后面几次取样就全部对着一个已经被释放的场景。
+func _open_offscreen(blueprint_path: String) -> Control:
+	var packed: PackedScene = load(COMBAT_SCENE_PATH)
+	var run_state: Node = _autoload("RunState")
+	if packed == null or run_state == null:
+		return null
+	if bool(run_state.call(&"is_active")):
+		run_state.call(&"end_run")
+	run_state.call(&"start_run", WAVE_ONE_SEED)
+
+	_h.reset()
+	_h.set_canvas_size(CANVAS)
+	var scene: Control = packed.instantiate()
+	scene.theme = _theme
+	_h.adopt(scene)
+	await _h.settle()
+	scene.size = VIEWPORT
+	scene.call(&"apply_layout_for", VIEWPORT)
+	var view: Control = _find(scene, "MachineView") as Control
+	var driver: Node = _find(scene, "MachineDriver") as Node
+	if view == null or driver == null:
+		return null
+	view.set(&"blueprint_path", blueprint_path)
+	scene.call(&"reload_machine")
+	var sim: Object = driver.get(&"combat")
+	if sim == null:
+		return null
+	var exit: Callable = Callable(scene, &"on_wave_cleared")
+	if sim.is_connected(&"wave_cleared", exit):
+		sim.disconnect(&"wave_cleared", exit)
+	driver.call(&"bind_combat", sim)
+	return scene
+
+
+## 从第 from 拍起逐帧找**第一帧**满足 wanted 的画面。找不到时返回最后一帧（调用方的断言会打红）。
+##
+## 逐帧而不是「跑到某一拍再取一张」：三样反馈各自只活 3~8 拍，
+## 「枪口反馈 + 弹道 + 命中闪光同帧」这个窗口只有 3 拍宽 —— 按拍取样看运气，逐帧取样不看。
+func _await_frame(sim: Object, from: int, wanted: Callable) -> Dictionary:
+	var deadline: int = Time.get_ticks_msec() + WALL_CLOCK_BUDGET_MS
+	while _tick_of(sim) < from and Time.get_ticks_msec() < deadline:
+		await process_frame
+	var frame: Dictionary = await _h.settle()
+	while not bool(wanted.call(frame["image"])) and Time.get_ticks_msec() < deadline:
+		frame = await _h.settle()
+	return frame
+
+
+## 三把武器的反馈形状：逐帧量三个卡位那几行里的像素，取**总量最大**的那一帧。
+##
+## 为什么取最大而不是取第一帧：反馈每拍上升 1px，越老越完整地落进那片窗口；
+## 总量随拍数单调增，于是「最大」这一帧一定是长满的那一帧 —— 三把的形态在同一拍上才可比。
+## 也不取**并集**：并集会把「上升」也算进高度，三把的高度就都被撑成一样，形状反而分不开了。
+func _await_kit_frame(sim: Object, from: int) -> Dictionary:
+	var deadline: int = Time.get_ticks_msec() + WALL_CLOCK_BUDGET_MS
+	while _tick_of(sim) < from and Time.get_ticks_msec() < deadline:
+		await process_frame
+	var best: Dictionary = await _h.settle()
+	var best_total: int = _kit_total(best["image"])
+	while _tick_of(sim) < from + KIT_WINDOW and Time.get_ticks_msec() < deadline:
+		var frame: Dictionary = await _h.settle()
+		var total: int = _kit_total(frame["image"])
+		if total > best_total:
+			best_total = total
+			best = frame
+	return best
+
+
+## 齐射帧：枪口反馈、弹道、命中闪光三样**同帧**都在。
+func _is_volley_frame(image: Image) -> bool:
+	return _count_rect(image, CUE_REGION, _cue) > 0 \
+		and _count_rect(image, TRACER_REGION, _cue) > 0 \
+		and _count_rect(image, BAND_REGION, _flash) > 0
+
+
+## 击杀帧：尸体外面出现一次性描边，且同一帧里还看得见那条道上正在收缩的身体 ——
+## 描边不是凭空出现的，它套在一具正在消失的尸体上。
+func _is_kill_frame(image: Image) -> bool:
+	return _count_rect(image, BAND_REGION, _kill) > 0 \
+		and _count_rect(image, BAND_REGION, _slime) > 0
+
+
+## 第 1 条道上的挨打帧：弹道在飞、第 1 条道上有 Runner、且命中闪光落在第 1 条道那一段里。
+func _is_lane_frame(image: Image) -> bool:
+	return _count_rect(image, TRACER_REGION, _cue) > 0 \
+		and _count_lane(image, 1).y > 0 \
+		and _color_box(image, LANE_ONE_REGION, _flash).size.x > 0.0
+
+
+## 三张武器卡上方那几行里，BLUE_FX_600 的像素总数。
+func _kit_total(image: Image) -> int:
+	var total: int = 0
+	for index: int in 3:
+		total += _count_rect(image, _cue_window(index), _cue)
+	return total
+
+
+## 某一张武器卡上方那片取样窗口。窗口只覆盖卡片上缘往上的第 1..7 行（见 CUE_ROW_*）。
+func _cue_window(index: int) -> Rect2:
+	return Rect2(float((KIT_FIRST_WEAPON_COLUMN + index) * CARD_COLUMN), float(CUE_ROW_TOP),
+		float(CARD_COLUMN), float(CUE_ROW_BOTTOM - CUE_ROW_TOP))
+
+
+## 一张卡上方那枚反馈自己的形状盒：先自下而上找到反馈所在的那一行，
+## 取该行里离卡片中心最近的那一段连续判据色像素，再自下而上量出这一段自己的高度。
+##
+## 不能像命中闪光那样整窗取包围盒：弹道同是 BLUE_FX_600，会**横穿**某个取样窗口被并进盒子。
+## 实测「锯」那一格的整窗盒子宽 17px，其中只有 9px 是锯本身，剩下 8px 是路过的弹道 ——
+## 那样锯就算画成 1px 宽也照样能过。形状判据只许量反馈自己那几个像素。
+func _cue_box(image: Image, index: int) -> Rect2:
+	if image == null:
+		return Rect2()
+	var window: Rect2 = _cue_window(index)
+	var extent: Vector2i = image.get_size()
+	var top: int = clampi(int(window.position.y), 0, extent.y)
+	var bottom: int = clampi(int(window.end.y), 0, extent.y)
+	var from_x: int = clampi(int(window.position.x), 0, extent.x)
+	var to_x: int = clampi(int(window.end.x), 0, extent.x)
+	var centre: int = (from_x + to_x) / 2
+	for y: int in range(bottom - 1, top - 1, -1):
+		var run: Vector2i = _nearest_run(image, y, from_x, to_x, centre)
+		if run.x < 0:
+			continue
+		var height: int = 0
+		for up: int in range(y, top - 1, -1):
+			if not _row_has(image, up, run.x, run.y):
+				break
+			height += 1
+		return Rect2(float(run.x), float(y - height + 1), float(run.y - run.x + 1), float(height))
+	return Rect2()
+
+
+## 第 y 行 [from_x, to_x) 里离 centre 最近的那一段连续判据色像素，返回 (起, 止)。
+## 一段都没有时返回 (-1, -1)。
+func _nearest_run(image: Image, y: int, from_x: int, to_x: int, centre: int) -> Vector2i:
+	var best: Vector2i = Vector2i(-1, -1)
+	var best_gap: int = -1
+	var start: int = -1
+	for x: int in range(from_x, to_x + 1):
+		var hit: bool = x < to_x and _h.near(image.get_pixel(x, y), _cue)
+		if hit and start < 0:
+			start = x
+		elif not hit and start >= 0:
+			var gap: int = absi((start + x - 1) / 2 - centre)
+			if best_gap < 0 or gap < best_gap:
+				best = Vector2i(start, x - 1)
+				best_gap = gap
+			start = -1
+	return best
+
+
+## 第 y 行 [from_x, to_x] 这段列区间里有没有判据色像素。
+func _row_has(image: Image, y: int, from_x: int, to_x: int) -> bool:
+	for x: int in range(from_x, to_x + 1):
+		if _h.near(image.get_pixel(x, y), _cue):
+			return true
+	return false
+
+
+## 某一条道里敌人 HP 条的**已存段**像素数（RED_500）。
+## 量的是身体上方那条缝（身体顶边往上 5px 起的两行）—— 身体在它下面，故这两行里
+## 数到的 RED_500 只可能是血条本身，不会混进同色的 Runner 身体。
+func _hp_fill(image: Image, lane: int) -> int:
+	var top: float = ENEMY_BAND_TOP + float(lane) * ENEMY_ROW_HEIGHT + ENEMY_HP_ROW_OFFSET
+	return _count_rect(image, Rect2(0.0, top, VIEWPORT.x, ENEMY_HP_HEIGHT), _runner)
+
+
+## 弹道在取样窗口里**最上面那一行**的像素中点，返回图像坐标 (x, y)。一个都没有时返回 (-1, -1)。
+##
+## 取最上面一行而不是最下面：机器在战场下沿，敌人在地面上方，故弹道的**命中端在高处**——
+## 最上面那一行就是它末端落在的那个身位。
+func _top_row(image: Image, rect: Rect2, wanted: Color) -> Vector2i:
+	if image == null:
+		return Vector2i(-1, -1)
+	var extent: Vector2i = image.get_size()
+	var from_x: int = clampi(int(rect.position.x), 0, extent.x)
+	var to_x: int = clampi(int(rect.end.x), 0, extent.x)
+	for y: int in range(clampi(int(rect.position.y), 0, extent.y),
+			clampi(int(rect.end.y), 0, extent.y)):
+		var sum: int = 0
+		var hits: int = 0
+		for x: int in range(from_x, to_x):
+			if _h.near(image.get_pixel(x, y), wanted):
+				sum += x
+				hits += 1
+		if hits > 0:
+			return Vector2i(sum / hits, y)
+	return Vector2i(-1, -1)
+
+
+## 某一格矩形内判据色像素的包围盒。一个都没有时返回空 Rect2。
+## 只用来量**命中闪光**（WHITE 在 COMBAT 里只有这一处，不会被别的东西并进来）；
+## 武器反馈的盒子走 _cue_box —— 它同色于弹道，不能整窗取包围盒。
+func _color_box(image: Image, rect: Rect2, wanted: Color) -> Rect2:
+	if image == null:
+		return Rect2()
+	var extent: Vector2i = image.get_size()
+	var left: int = -1
+	var top: int = -1
+	var right: int = -1
+	var bottom: int = -1
+	for y: int in range(clampi(int(rect.position.y), 0, extent.y), clampi(int(rect.end.y), 0, extent.y)):
+		for x: int in range(clampi(int(rect.position.x), 0, extent.x), clampi(int(rect.end.x), 0, extent.x)):
+			if not _h.near(image.get_pixel(x, y), wanted):
+				continue
+			left = x if left < 0 else mini(left, x)
+			top = y if top < 0 else mini(top, y)
+			right = maxi(right, x)
+			bottom = maxi(bottom, y)
+	if right < 0:
+		return Rect2()
+	return Rect2(left, top, right - left + 1, bottom - top + 1)
+
+
+## `热量` 读数格的百分比。读数形如 `4%`；拆不出来时返回 -1（断言会打红，而不是静默当 0）。
+func _heat_percent(combat: Node) -> int:
+	var block: Node = _find(combat, "Heat")
+	if block == null:
+		return -1
+	var value: Label = block.get_node_or_null(^"Value") as Label
+	if value == null or not value.text.ends_with("%"):
+		return -1
+	return int(value.text.trim_suffix("%"))
+
+
+func _rect_text(box: Rect2) -> String:
+	if box.size.x <= 0.0 or box.size.y <= 0.0:
+		return "（没有像素）"
+	return "%d×%d @ (%d,%d)" % [int(box.size.x), int(box.size.y), int(box.position.x), int(box.position.y)]
+
+
+## 拼一张 2×2 的对照图：四帧各放大后并排，人工复核时一眼能顺着因果关系看下去。
+func _sheet(tiles: Array, tag: String) -> void:
+	var cell := Vector2i(CANVAS.x * ZOOM, CANVAS.y * ZOOM)
+	var sheet: Image = Image.create_empty(cell.x * 2, cell.y * 2, false, Image.FORMAT_RGBA8)
+	sheet.fill(_backdrop)
+	for index: int in tiles.size():
+		var tile: Image = Image.new()
+		tile.copy_from(tiles[index])
+		tile.resize(cell.x, cell.y, Image.INTERPOLATE_NEAREST)
+		if tile.get_format() != Image.FORMAT_RGBA8:
+			tile.convert(Image.FORMAT_RGBA8)
+		sheet.blit_rect(tile, Rect2i(Vector2i.ZERO, cell), Vector2i(index % 2 * cell.x, index / 2 * cell.y))
+	_ctx.check(sheet.save_png("%s%s.png" % [SHOT_PATH, tag]) == OK, "应能写出四帧拼图 %s.png" % tag)
+
+
+## 写验收机器丙：CORE → 分流 → 针 / 炸弹 / 锯。三把武器同一拍开火，
+## 用来取「三把的反馈形态一眼分得开」的证据。
+func _write_kit_blueprint() -> bool:
+	var spec: Array = [
+		["core", "核心", _kind_core, _fn_none],
+		["split", "分流", _kind_function, _fn_split],
+		["needle", "针", _kind_weapon, _fn_none, _weapon_needle],
+		["bomb", "炸弹", _kind_weapon, _fn_none, _weapon_bomb],
+		["saw", "锯", _kind_weapon, _fn_none, _weapon_saw],
+	]
+	var edges: Array = [["core", "split"], ["split", "needle"], ["split", "bomb"], ["split", "saw"]]
+	var blueprint: Resource = _build_blueprint(spec, edges, "验收机器丙")
+	return bool(blueprint.call(&"save_to", KIT_PATH)) if blueprint != null else false
+
+
 ## 写验收机器甲：CORE → 分流 → 针 ×2。走数据类落盘，于是这份图与玩家在整备界面拖出来的
 ## 是同一种东西，机器重建也走同一条路（09 §3.2）。
 func _write_clear_blueprint() -> bool:
@@ -586,7 +1062,7 @@ func _cleanup() -> void:
 	var dir: DirAccess = DirAccess.open(TEST_DIR)
 	if dir == null:
 		return
-	for file_name: String in [CLEAR_PATH.get_file(), BARE_PATH.get_file()]:
+	for file_name: String in [CLEAR_PATH.get_file(), BARE_PATH.get_file(), KIT_PATH.get_file()]:
 		if FileAccess.file_exists(TEST_DIR + "/" + file_name):
 			dir.remove(file_name)
 
@@ -620,7 +1096,8 @@ func _finish() -> void:
 	_lines.append("- 集成测试：见 unit_tests.log")
 	_lines.append("- 场景冒烟：%d/%d" % [_ctx.passed, _ctx.passed + _ctx.failed])
 	_lines.append("- 手动场景：经路由进 COMBAT(点 CTA) · 验收机器甲 CORE→Split→针×2 · 敌人在真实帧上生成并推进 · 第 %d 拍本波清空并把场景路由到 REWARD · 机器乙的漏怪把 `CORE` 读数打到 %s · 敌人判据色与消失的像素取证" % [CLEAR_TICK, LEAK_READOUT])
-	_lines.append("- 证据图：%s{before,spawn,killed,cleared}.png 与 %s{before,spawn,killed,cleared}_%dx.png" % [SHOT_PATH, SHOT_PATH, ZOOM])
+	_lines.append("- 可读反馈（PET-76）：机器甲的开火前 / 齐射 / 击杀 / 第 1 条道挨打 四帧 + 机器丙（针/炸弹/锯）三把形态对照")
+	_lines.append("- 证据图：%s{before,spawn,killed,cleared,read_before,read_fire,read_kill,read_lane,read_kinds}.png 与 %s*_%dx.png、四帧拼图 %sread_sheet.png" % [SHOT_PATH, SHOT_PATH, ZOOM, SHOT_PATH])
 	if _ctx.failures.is_empty():
 		_lines.append("- 失败项：无")
 	else:

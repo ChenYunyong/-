@@ -3,6 +3,7 @@
 ##       外加**选中与删改**（S2-05 补课）—— 选中节点 / 连线、删除（连带清掉挂在节点上的线）、
 ##       撤销栈、清空整张图，改动即落盘；
 ##       外加战斗界面的**只读机器视图**（FIRST PLAYABLE 2/4）—— 把机器画出来、把运行时状态画成可见反馈；
+##       其中**开火反馈按武器种类分成三种形态**（PET-76：针 / 炸弹 / 锯 一眼能分开）；
 ##       外加把 REWARD 选中的奖励落到画布（S4-07 最小版，见 add_reward_node）。
 ## 所属系统：ui
 ## 依赖：Palette、Settings（只订阅语言变化，用于重画）、InputNormalizer / SemanticInput（仅归一指针，
@@ -58,10 +59,24 @@ const DRAG_ALPHA: float = 0.7
 const LABEL_HEIGHT: float = 10.0
 const LABEL_FONT_SIZE: int = 8
 const MARKER_INSET: float = 2.0
-## 火花（信号 / 占位弹丸）的边长。04 §3.10 要求 FX 三层（芯 / 体 / 描边），各占 1px 时最小就是 6×6。
+## 火花（信号）的边长。04 §3.10 要求 FX 三层（芯 / 体 / 描边），各占 1px 时最小就是 6×6。
 const SPARK: float = 6.0
-## 占位弹丸升起的高度（像素）。升到顶即消失，不留轨迹。
-const SHOT_RISE: float = 48.0
+
+## 三把武器的**开火形态**（PET-76 可读性）。给的是 FX 三层的**外框**尺寸，逐层内缩 1px。
+##   针   → 3×8  细长的一条（外框内缩后只剩 1×6 的体）
+##   炸弹 → 7×7  方块状的一团
+##   锯   → 11×4 横扁的一条
+## 三者的**长宽比**两两不同（0.4 / 1.0 / 2.8），于是静止的一帧里也读得出是哪把武器开的火。
+## 颜色不承担这件事：04 §3.10 只给了**一套** FX 三层色（描边 NAVY_900 / 体 BLUE_FX_600 /
+## 芯 BLUE_050），拿色相去分三把武器会变成第二套色语言，而 04 §3 的语义色是冻结的。
+const CUE_NEEDLE: Vector2 = Vector2(3.0, 8.0)
+const CUE_BOMB: Vector2 = Vector2(7.0, 7.0)
+const CUE_SAW: Vector2 = Vector2(11.0, 4.0)
+
+## 开火反馈从卡片上缘升起的高度（像素）。**刻意远小于一条穿过战场的弹道**：
+## 「打到谁」由 combat_screen 画的弹道线负责（PET-76），这里只回答「哪把武器发动了」，
+## 于是反馈贴在卡片上缘那一小段里，不会与弹道混成一片。
+const CUE_RISE: float = 8.0
 
 ## 选中辉光的落笔位置：卡片**外侧** 1px。06 §2.1 把 BLUE_300 定为选中态判据色（四边整圈），
 ## 画在卡片边长上会把卡片自己那圈 BROWN_600 描边盖掉 —— 两种状态要能同时读出来。
@@ -808,7 +823,7 @@ func _relayout() -> void:
 ## COMBAT 只读视图（Area.VIEWER）的可见反馈 —— 卡片要求的「信号经过节点 / 连线时必须有可见变化」：
 ##   · 在途信号   → 连线上的火花，位置由 pulse.progress() 插值；
 ##   · 节点被点亮 → 卡片描边闪一下 BLUE_050（窗口由 MachineRuntime.FLASH_TICKS 定）；
-##   · 武器开火   → 卡片上缘升起一枚占位弹丸（存活期由 MachineRuntime.SHOT_TICKS 定）。
+##   · 武器开火   → 卡片上缘升起一枚**按武器种类定形**的开火反馈（存活期由 MachineRuntime.SHOT_TICKS 定）。
 ##
 ## 本函数**只读** runtime，一个仿真状态都不改 —— 视图与仿真是单向的，
 ## 于是「画得对不对」永远不会反过来影响「跑得对不对」。位置一律由节拍序号算出，不读真实时间（03 §6）。
@@ -827,19 +842,72 @@ func _draw_effects() -> void:
 			draw_rect(box, Palette.get_color(Palette.Key.BLUE_050), false, 1.0)
 		var age: int = runtime.shot_age(node_id)
 		if age >= 0:
-			_draw_spark(Vector2(box.position.x + CARD * 0.5, box.position.y - _rise(age)))
+			_draw_shot_cue(box, _weapon_kind_of(node_id), age)
 
 
-## 占位弹丸从武器卡片上缘垂直升起；升到 SHOT_RISE 时恰好用完 MachineRuntime.SHOT_TICKS 拍，随即消失。
-func _rise(age: int) -> float:
-	return SHOT_RISE * float(age + 1) / float(MachineRuntime.SHOT_TICKS)
+## 某个节点的武器种类。非武器 / 认不出的取值一律 WeaponKind.NONE ——
+## 调用方据此落到 NEEDLE 那一档，与 WeaponData.resolve() 的降级方向一致。
+func _weapon_kind_of(node_id: StringName) -> int:
+	for node: NodeData in _blueprint.nodes:
+		if node.id == node_id:
+			return node.weapon_kind
+	return NodeData.WeaponKind.NONE
 
 
-## 信号与弹丸画成同一个东西：04 §3.10 的 FX 三层结构（芯 BLUE_050 / 体 BLUE_FX_600 / 描边 NAVY_900）。
+## 开火反馈的外框尺寸：三把武器各一种形态（见 CUE_* 的说明）。**纯函数** ——
+## 「三把真的分得开」这条可以脱离场景树单测，不必为了量一个尺寸去真跑一场战斗。
+func fire_cue_size(weapon_kind: int) -> Vector2:
+	match weapon_kind:
+		NodeData.WeaponKind.BOMB:
+			return CUE_BOMB
+		NodeData.WeaponKind.SAW:
+			return CUE_SAW
+		_:
+			return CUE_NEEDLE
+
+
+## 某把武器开火第 age 拍的反馈外框在卡片坐标系里的位置：**下缘**贴卡片上缘，整块随拍数往上抬，
+## 抬到 CUE_RISE 为止。
+##
+## 下缘贴卡片、而不是以卡片上缘为中点：中点对齐时外框有一半压在卡片上，八拍里那半截会盖住
+## 卡片自己的描边与类型色，看起来像卡片在闪 —— 而这条反馈要回答的是「这张卡开火了」，
+## 盖住卡片反而把这个答案抹掉。抬高之后外框**始终整块落在卡片上方的空档里**（y < 卡片上缘）。
+##
+## 横向以卡片中点对齐：三把武器的宽度不同，用左上角对齐会让「哪张卡在开火」在宽窄之间看起来像偏了。
+func shot_cue_rect(box: Rect2, weapon_kind: int, age: int) -> Rect2:
+	var cue: Vector2 = fire_cue_size(weapon_kind)
+	var rise: float = CUE_RISE * float(age + 1) / float(MachineRuntime.SHOT_TICKS)
+	var left: float = box.position.x + CARD * 0.5 - cue.x * 0.5
+	return Rect2(Vector2(left, box.position.y - rise - cue.y).floor(), cue)
+
+
+func _draw_shot_cue(box: Rect2, weapon_kind: int, age: int) -> void:
+	_draw_fx(shot_cue_rect(box, weapon_kind, age))
+
+
+## 节点卡片在**本控件坐标系**里的矩形（VIEWER 侧的弹道要从这里出发）。
+## 没有这张卡（未落格 / 已删除）时返回零矩形 —— 调用方据此跳过，而不是把线画到 (0,0)。
+func card_rect(node_id: StringName) -> Rect2:
+	return _boxes.get(node_id, Rect2())
+
+
+## 信号火花：04 §3.10 的 FX 三层结构（芯 BLUE_050 / 体 BLUE_FX_600 / 描边 NAVY_900）。
 ## 三层缺一不可，故最小尺寸就是 6×6 —— 这正合意：类型标识讲「这是什么节点」，
 ## 火花讲「此刻这里有事发生」，后者本就该更亮眼。
 func _draw_spark(center: Vector2) -> void:
-	var box := Rect2((center - Vector2(SPARK, SPARK) * 0.5).floor(), Vector2(SPARK, SPARK))
-	draw_rect(box, Palette.get_color(Palette.Key.NAVY_900), true)
-	draw_rect(box.grow(-1.0), Palette.get_color(Palette.Key.BLUE_FX_600), true)
-	draw_rect(box.grow(-2.0), Palette.get_color(Palette.Key.BLUE_050), true)
+	_draw_fx(Rect2((center - Vector2(SPARK, SPARK) * 0.5).floor(), Vector2(SPARK, SPARK)))
+
+
+## 04 §3.10 的 FX 三层：描边 NAVY_900 / 体 BLUE_FX_600 / 芯 BLUE_050，逐层内缩 1px。
+## 薄到放不下某一层时**跳过那一层**，而不是把外框撑大 —— 撑大会把三把武器的形态差别抹平，
+## 而形态正是它们唯一的区分手段（见 CUE_* 的说明）。
+func _draw_fx(rect: Rect2) -> void:
+	draw_rect(rect, Palette.get_color(Palette.Key.NAVY_900), true)
+	var body: Rect2 = rect.grow(-1.0)
+	if body.size.x <= 0.0 or body.size.y <= 0.0:
+		return
+	draw_rect(body, Palette.get_color(Palette.Key.BLUE_FX_600), true)
+	var core: Rect2 = body.grow(-1.0)
+	if core.size.x <= 0.0 or core.size.y <= 0.0:
+		return
+	draw_rect(core, Palette.get_color(Palette.Key.BLUE_050), true)

@@ -16,6 +16,10 @@ const SCENE_PATH: String = "res://scenes/combat/combat.tscn"
 const SCREEN_SCRIPT_PATH: String = "res://scripts/ui/combat_screen.gd"
 const LAYOUT_SCRIPT_PATH: String = "res://scripts/ui/combat_layout.gd"
 const GAME_FLOW_SCRIPT_PATH: String = "res://scripts/core/game_flow.gd"
+## 战场里那张只读机器视图。PET-76 的「三把武器的开火反馈两两可分」要问它取尺寸 ——
+## 开火反馈画在卡片上，是 VIEWER 角色专属的（整备界面里的同一份脚本是编辑器，节点不会开火），
+## 而 VIEWER 是本场景装配出来的，故那条断言落在本文件而不是工作区自己的用例里。
+const WORKSPACE_SCRIPT_PATH: String = "res://scripts/ui/blueprint_workspace.gd"
 ## 次级文字色变体的**定义处**。用例取的是变体常量本身而不是字面量 `&"LabelSecondary"`：
 ## 变体改名时这里跟着断，而不是静默地永远不成立。
 const THEME_SCRIPT_PATH: String = "res://scripts/data/palette_theme.gd"
@@ -243,6 +247,7 @@ func _run_structure_checks(ctx: RefCounted, packed: PackedScene) -> void:
 	_check_readout_blocks(ctx, scene)
 	_check_readout_hierarchy(ctx, scene)
 	_check_overheat_cue(ctx)
+	_check_readable_feedback(ctx)
 	scene.free()
 
 
@@ -430,6 +435,52 @@ func _check_overheat_cue(ctx: RefCounted) -> void:
 			"应接上 MachineRuntime.%s（否则换色永不发生）" % signal_name)
 	ctx.check(not code.contains("is_overheated("),
 		"不得自己判定过热（06 §8.1 / 03 §2：阈值与停火都在 MachineRuntime）")
+
+
+## PET-76 的可读反馈：三把武器开火时的反馈**形态**必须两两不同，且整条链路的接点在代码里真实存在。
+##
+## 为什么钉形态而不是钉颜色：04 §3.10 只给了**一套** FX 三层色（描边 NAVY_900 / 体 BLUE_FX_600 /
+## 芯 BLUE_050）。拿色相去分针 / 炸弹 / 锯，等于在冻结的语义色之外另立第二套色语言 ——
+## 于是区分只能落在**形状**上，而形状恰好是静止一帧里就读得出来的东西。
+##
+## 本用例只量纯函数与代码接点；「画到屏幕上时到底是什么颜色、真的看得见吗」归像素取证
+## （tests/integration/combat_loop_smoke.gd）—— 09 §4：视觉结果不能只断言配置项。
+func _check_readable_feedback(ctx: RefCounted) -> void:
+	ctx.begin_case("COMBAT · 三把武器的开火反馈两两可分（PET-76 / 13 §5）")
+	var workspace: GDScript = load(WORKSPACE_SCRIPT_PATH)
+	if not ctx.check(workspace != null and workspace.can_instantiate(),
+			"blueprint_workspace.gd 应能编译"):
+		return
+
+	var kinds: Array[int] = [NodeData.WeaponKind.NEEDLE, NodeData.WeaponKind.BOMB,
+		NodeData.WeaponKind.SAW]
+	var ratios: Array[float] = []
+	for kind: int in kinds:
+		var cue: Vector2 = workspace.fire_cue_size(kind)
+		if not ctx.check(cue.x > 0.0 and cue.y > 0.0,
+				"武器种类 %d 的开火反馈应有正的尺寸（实际 %s）" % [kind, cue]):
+			continue
+		ratios.append(cue.x / cue.y)
+	# 比的是**长宽比**而不是尺寸：三把都缩成同样形状、只差几个像素时，「两个尺寸不相等」
+	# 照样会绿，而画面上三把看起来一模一样。长宽比不同，才意味着静止一帧里读得出是哪把。
+	for i: int in ratios.size():
+		for j: int in range(i + 1, ratios.size()):
+			ctx.check(absf(ratios[i] - ratios[j]) > 0.15,
+				"武器 %d 与 %d 的开火反馈长宽比应明显不同（%.2f 与 %.2f）—— 静止一帧里也分得出是哪把"
+					% [kinds[i], kinds[j], ratios[i], ratios[j]])
+	# 认不出的武器种类要退到**一种确定的**形态，而不是给出一个零尺寸的空框
+	# （零矩形在画面上等于「这把武器开火了，但什么都没发生」）。
+	var fallback: Vector2 = workspace.fire_cue_size(NodeData.WeaponKind.NONE)
+	ctx.check(fallback.x > 0.0 and fallback.y > 0.0,
+		"没有武器种类（NONE）时也应给出一种可画的形态（实际 %s）" % fallback)
+
+	# 「哪把武器发动 → 打到谁」这条链路上的四个接点。缺任何一个，画面上都会安静地少一样东西：
+	#   没有 weapon_fired → 不知道是哪把武器发动；
+	#   没有 card_rect     → 弹道没有起点（起点只能是那张卡，不能是 (0,0)）；
+	#   没有 draw_line     → 弹道不存在；没有 draw_rect → 命中闪光不存在。
+	var code: String = _strip_comments(FileAccess.get_file_as_string(SCREEN_SCRIPT_PATH))
+	for token: String in ["weapon_fired", "card_rect", "draw_line", "draw_rect"]:
+		ctx.check(code.contains(token), "combat_screen.gd 的代码中应出现 `%s`（PET-76 链路接点）" % token)
 
 
 func _check_one_readout(ctx: RefCounted, block: Node, index: int) -> void:

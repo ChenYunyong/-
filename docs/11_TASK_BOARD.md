@@ -1,7 +1,7 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.4.1**｜维护者 DSH
-> （v0.4.1：`PET-75` 复核 `ACCEPTED` 并落 `main`；`PET-76` 自 `BACKLOG` 提升为 `TODO`（单写手让位）；新增待办 `R6`。v0.4.0：`PET-74` 复核 `ACCEPTED` 并落 `main`；**用户试玩反馈已进板** —— 新增 `PET-75` / `PET-76` 两行。）
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.4.2**｜维护者 DSH
+> （v0.4.2：`PET-76` 复核 `ACCEPTED` 并落 `main`（战斗可读反馈）+ 双击包**用修后代码重新导出**；新增待办 `R7`（唤醒投递不可靠）。v0.4.1：`PET-75` 复核 `ACCEPTED` 并落 `main`；`PET-76` 自 `BACKLOG` 提升为 `TODO`（单写手让位）；新增待办 `R6`。v0.4.0：`PET-74` 复核 `ACCEPTED` 并落 `main`；**用户试玩反馈已进板** —— 新增 `PET-75` / `PET-76` 两行。）
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -219,7 +219,7 @@
 | PET-73 | **VB-04** VB-03 组件切片收口：Godot 导入设置（`.png.import` 九宫格落点 = `StyleBoxTexture`）+ `_approved/` 流程走完 + 可用清单 | Codex | `ACCEPTED`（2026-10-04 DSH **逐张**复核通过并已推送 `main`，见 §4.1 末注；**未新开 gameplay 方向** —— 下一个玩法里程碑等 `PET-37` 的用户试玩反馈定向） |
 | PET-74 | **BUILD-WIN** 双击可玩的 Windows 调试包：`export_presets.cfg` **仅新增** `Windows Desktop` 段（debug）→ `build\windows\PixelFusion.exe`（产物不入库） | Claude | `ACCEPTED`（2026-10-04 DSH 复核通过并已推送 `main`，见 §4.1 末注；**窗口尺寸实测 1280×720 = 4× 整数放大**） |
 | PET-75 | **PLAY-01 · 用户试玩反馈 #2** 蓝图节点删不掉：删除 / 撤销（`Ctrl+Z`）/ 清空（S2-05 补课） | Claude | `ACCEPTED`（2026-10-04 DSH 独立复核通过并已推送 `main`，见 §4.1 末注；**唯一红项 I18N 由 DSH 集成补齐**） |
-| PET-76 | **PLAY-02 · 用户试玩反馈 #3** 战斗看不懂：武器 / 命中 / 结果 的可读反馈（依 `13 §18` 克制原则） | Claude | `TODO`（2026-10-04 DSH 自 `BACKLOG` 提升 —— **单写手让位**：`PET-75` 已完成，本卡为该批唯一在跑的 Claude 卡；已挂**同款条件唤醒** `status = in_review`） |
+| PET-76 | **PLAY-02 · 用户试玩反馈 #3** 战斗看不懂：武器 / 命中 / 结果 的可读反馈（依 `13 §18` 克制原则） | Claude | `ACCEPTED`（2026-10-06 DSH 独立复核通过并已推送 `main`，见 §4.1 末注；**复核因平台 run 卡死而延迟约 8 小时**，交付本身逐项复跑全绿） |
 
 | — | 退出期资源清点：`palette.gd` / `palette.tres` 未释放（已复核、非阻塞；随下一张触碰该文件的卡一并修） | Claude | `BACKLOG` |
 | R1 | `tests/integration/full_loop_smoke.gd` 仍按老写法建武器节点（无 `weapon_kind`）→ 每次跑出 5 条 `WeaponData.resolve` 降级 `push_error`，且该用例的武器全部落到 Needle。**一条参数即可消除**（`09 §5` 的 ERROR 零增量） | Claude | `BACKLOG` |
@@ -228,6 +228,7 @@
 | R4 | 主按钮切片 64×20 与主菜单四按钮 90×20（`tests/unit/test_input.gd` 命中区表）不一致 —— 是否按切片尺寸重排待定 | Claude | `BACKLOG` |
 | R5 | `blueprint_workspace._draw_warehouse()` 的 7 个仓库槽位名走 `draw_string(String(entry["name"]))`，**不经 `tr()`** ⇒ 英文态下这 7 个标签仍是中文（DSH 独立取帧逐像素实测：底部仓库墨迹带在 zh / en 两帧完全相同）。`06 §11` 的旧缺口、**不在 PET-67 的 ALLOWED FILES** 内，故不判 PET-67 未达 DoD；**不静默豁免**，并入 `PET-72`（同一文件，单一写手） | Claude | `BACKLOG` |
 | R6 | `tests/integration/test_state_loop.gd` 的 `S1-12 · R1`「COMBAT 停 10 分钟不动」按**墙钟预算**推进模拟时间（`line 372-373`：`elapsed < 600s` **且** `Time.get_ticks_msec() < deadline`）—— 机器一忙就跑不满 600 秒，该用例稳定输出 **4 条按名转红**（状态 3→5、场景换到 `result.tscn`、切换数 +1、清空入口）。DSH 在**未改动的 `1a6f874`（HEAD）**上用同一命令复现出**逐字相同**的 4 条 ⇒ **非 PET-75 回归**，属测试自身的时序脆弱性。修法（下一张触碰该文件的卡一并做）：把 10 分钟压进模拟时钟（`--fixed-fps` 之外改由 `TestClock` 直接推进）或把 deadline 抬到模拟跑满为止 | Claude | `BACKLOG`（**非阻塞**：`09 §1.1` 的 L1 只要求本模块不退化，且 HEAD 同结果） |
+| R7 | **流水线驱动不可靠（本次停摆 8 小时的直接原因，属平台/进程层，非代码缺陷）**：`PET-76` 的条件唤醒 `status = in_review` 于 `2026-10-06T03:16:35Z` **确实触发**并起了 DSH 复核 run `01a10f36`；该 run 只把 `PET-76` 置 `in_progress` 后即**卡死**，任务记录至今停在 `running`（另一条 `01a10f35` 同样停在 03:15）。此后：① 条件已不再满足（`in_progress`）⇒ 事件唤醒无望；② 03:33 的一次性 `at` 安全网 `fire_count = 0` **从未触发**；③ 30 分钟巡检已于 10-04 关闭 ⇒ **没有任何独立驱动**。处置：巡检**重新武装为按小时周期**（唯一不依赖单卡状态的驱动），并保留「每个交付卡各挂一条 `at` 安全网」。**未证实**：`at` 不触发究竟是平台调度缺陷还是被同 issue 的 `running` 僵尸 run 压制（无平台侧日志可查）——**不编根因**，只登记现象与规避手段 | DSH | `OPEN`（**观察中**：下次任一卡交付若仍出现「无 run、无唤醒」即为复发） |
 
 **执行纪律（用户 2026-10-04）**：
 
@@ -354,6 +355,18 @@
 > - **未上 L3**（按卡面 L1）：全量基线 / 全部场景冒烟 / Web 导出 / 像素探针未跑，本卡不产生 L3 结论。**未跑渲染探针**：本卡未改 Theme / StyleBox / 视觉 Token（三个按钮复用既有 `ButtonSecondary`），按 `09 §4` v0.1.2 的触发条件不适用；视觉权重改以**像素直方图**取证（见上）。
 > - **环境说明（非本卡缺陷）**：复核在**工作区内的独立副本**上完成（`APPDATA` / `LOCALAPPDATA` / `TEMP` 重定向进工作区，先 `--headless --import` 刷类缓存）；期间观察到 **1 次**退出期 `0xC0000005`（报告已完整写出、失败项 0，同一命令随后 4 次运行不复现），与 `PET-60` 已结案的引擎级退出缺陷同类、**不可确定性复现**，不归因本卡。
 > - **下一步**：`PET-76`（PLAY-02 · 战斗可读性）自 `BACKLOG` **提升为 `TODO`** 并挂**同款条件唤醒**（`status = in_review`）—— **单写手**：`PET-76` 完成前**不开第二张 Claude 卡**。依据 `13 §18` 与 `13 §9`（`FIRST PLAYABLE Gameplay > UI Kit 继续打磨`）。
+
+> **2026-10-06 PET-76 验收（`ACCEPTED`，DSH 已推送 `main`）—— 用户反馈「战斗看不懂」已修好** —— DSH **不采信自报**，按卡面写明的 **L1**（`09 §1.1`，**未擅自上 L3**）在交付树的**独立副本**上复跑。
+> - **复核方式**：把交付树（`HEAD = cdcc23f` + 4 个**未提交**改动文件）整树复制进 DSH 工作区，先 `--headless --import` 刷类缓存，再 `run_tests.gd --fixed-fps 600`（headless）→ **unit 2743/2743 · integration 426/426 · 失败项 无**；三个冒烟**非 headless**、`--resolution 320x180`、真实 GL（RTX 4060 / OpenGL 3.3）→ **`combat_smoke` 106/106 · `combat_loop_smoke` 113/113 · `blueprint_smoke` 132/132**，三者 `exit=0`。
+> - **交付方自报与实跑不符，已如实记录**：交付说明写「integration 419/423，4 条失败」，DSH **在同一棵树上用同一条命令**复跑得 **426/426 全绿**。差异与 `R6` 同族（`test_state_loop` 按**墙钟预算**推进模拟时间，机器一忙跑不满 600 秒）。**不按自报判红，也不判交付方说谎** —— 结论以本机复跑为准：无回归。
+> - **`13 §18` 六点逐条取证（不是「应该看得见」）**：① **三把武器形态可区分**，由 `combat_loop_smoke` 自量的**反馈包围盒**钉住 —— **针 1×6 / 炸弹 5×5 / 锯 9×2**（三种尺寸互不相同）；② **弹道可见**（1px）＋**命中点短促闪光**（2×2）；③ 敌人**受击闪白 + 抖动 1px**、**血条随逐拍 `enemy.hp` 差值真的动**、**击杀有一次性描边**；④ **因果同拍** —— 命中判定改为**逐拍 `enemy.hp` 差分**，与 `weapon_fired` **落在同一帧**，故「热量上涨 / 能量下降」与画面同拍，不是只有数字在跳；⑤ **未引入**粒子雨 / 全屏闪光 / 伤害数字洪水 / 屏幕震动（包围盒最大 9×2，全屏级特效在尺寸上即不可能）；⑥ 色值全走 `Palette`，无字面色值。
+> - **交付方式合规**：交付方**按卡不 push**，4 个文件（`scripts/ui/blueprint_workspace.gd` · `scripts/ui/combat_screen.gd` · `tests/integration/combat_loop_smoke.gd` · `tests/unit/test_combat.gd`）全部落在卡面 ALLOWED FILES 内；未跟踪的 `.import` / `tests/output/**` 产物**未入库**。
+> - **未上 L3**（按卡面 L1）：全量基线 / Web 导出 / 像素探针未跑，本卡不产生 L3 结论。
+> - **环境说明（非本卡缺陷）**：复核期间退出期固定出现 **3 个 ObjectDB 实例 / 2 个资源未释放**的 `WARNING` / `ERROR`，按 `09 §1.1` **v0.1.7**「可复现且不属本批引入 ⇒ 不判 DoD 失败、须留档」处理；另有沙箱自身的 `Failed to read the root certificate store`（无证书存储），与本批无关。
+> - **停摆 8 小时的如实归因**：交付本身无问题，**卡死的是平台侧驱动** —— 见新增待办 **`R7`**。DSH 未在停摆期间收到任何触发（事件唤醒的 run `01a10f36` 停在 `running`、`at` 安全网 `fire_count = 0`、巡检已关）。
+> - **已同步的产物**：`build\windows\PixelFusion.exe`（+ `.pck` / `.console.exe`）**已用修后代码重新导出**，用户双击路径不变。
+> - **下一步**：`PET-76` 完成即**让位**（单写手解除）—— 下一张 Claude 卡由 DSH 依**用户试玩反馈**定向；`PET-72`（奖励真的生效）与 `R1` / `R5` 仍在 `BACKLOG` 等待排期。
+
 
 ## 5. STAGE 3 — CORE / FUNCTION / WEAPON（未开始）
 

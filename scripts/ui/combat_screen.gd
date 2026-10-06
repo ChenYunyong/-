@@ -6,6 +6,12 @@
 ##       把敌人画进战场、把 CORE 血量与波次写进状态带读数；
 ##       本波清空时**非末波**推进波次并进 REWARD（选完奖励回 PREPARATION 继续改造机器），
 ##       **末波**清空即本局打完，直接进 RESULT。
+##       本卡（PET-76）补上**可读反馈**，回答「哪把武器发动 → 打到谁 → 造成什么结果」：
+##       武器卡片上缘按武器种类升起一枚开火反馈（三种形态见 BlueprintWorkspace 的 CUE_*）→
+##       一条 1px 弹道连到被打中的敌人 → 命中点一枚 2×2 闪光、敌人身体抖 1px、血条真的变短 →
+##       被打死时尸体外面多一圈 1px 描边。
+##       这些**全部是读仿真的只读状态画出来的** —— 本文件不重算伤害、不重算选目标、不改任何数值，
+##       于是「画得对不对」永远不会反过来影响「跑得对不对」。
 ## 所属系统：ui
 ## 依赖：Palette、Theme、GameFlow、RunState、CombatLayout、InputScreen、MachineRuntime、MachineDriver、
 ##       CombatSimulation、EnemyState、EnemyData、BlueprintWorkspace
@@ -66,6 +72,25 @@ const ENEMY_RUNNER_SIZE: float = 6.0
 const ENEMY_HP_HEIGHT: float = 2.0
 const ENEMY_HP_GAP: float = 3.0
 
+## ── 可读反馈（PET-76）──────────────────────────────────────────────────────
+## 13 §5：FIRST PLAYABLE 只要求玩家看清「哪把武器发动 → 攻击谁 → 造成什么结果」，
+## 少量 命中闪光 / 弹道 / 状态提示 即可，**不得**堆巨量粒子 / 全屏闪光 / 大面积特效 / 伤害数字。
+## 于是这里只有三样东西（枪口反馈在 BlueprintWorkspace 画），且全是**表现层**的事 ——
+## 改这些数不改变任何一局的胜负。
+##
+## 命中闪光是一枚 2×2 的点，存活 3 拍。**不扩散、不放大**：它要回答的是「这一下打在这只身上」，
+## 扩散成一团就会盖住敌人 8×8 的身体色，反而看不出是哪一只挨了打。
+const IMPACT_SIZE: float = 2.0
+const IMPACT_TICKS: int = 3
+## 受击抖动：命中当拍起把身体上下抖 1px，抖 3 拍（奇偶交替，见 _hit_shake_of）。
+##
+## 用**抖动**而不是「把整只闪白」当主要的受击信号：敌人身体本身就是 04 §3.7 的危险红，
+## 整只闪白的那一帧里「这是哪只敌人、还剩多少血」全被吃掉。白光只留 2×2 那么一点，
+## 既给出命中点，又不遮盖体型与体色。
+const HIT_SHAKE_TICKS: int = 3
+## 击杀描边相对尸体的外扩量（像素）。
+const KILL_MARK_GROW: float = 1.0
+
 @onready var _backdrop: ColorRect = %Backdrop
 @onready var _battlefield: Control = %Battlefield
 @onready var _enemy_layer: Control = %EnemyLayer
@@ -116,6 +141,33 @@ var _hp_missing: Color = Color.BLACK
 var _hp_fill: Color = Color.BLACK
 var _enemy_label_color: Color = Color.BLACK
 
+## 可读反馈（PET-76）的判据色。同上面几个：在 _ready() 里从 Palette 取一次（06 §10.7）。
+var _tracer_color: Color = Color.BLACK
+var _impact_color: Color = Color.BLACK
+var _kill_color: Color = Color.BLACK
+
+## 这一拍开火的武器（按 weapon_fired 到达的顺序）。由 _on_simulation_ticked 消费后清空 ——
+## 开火那一刻还不知道打中了谁，故**先记下、后配对**，而不是在回调里就地画一根弹道。
+var _fired: Array[StringName] = []
+
+## 在途弹道：{from, to, age}。age 到 MachineRuntime.SHOT_TICKS 即消失。
+var _tracers: Array[Dictionary] = []
+
+## 命中闪光：{at, age}。age 到 IMPACT_TICKS 即消失。
+var _impacts: Array[Dictionary] = []
+
+## 受击抖动：EnemyState → 已抖拍数。
+##
+## **键就是 EnemyState 本身，不用 get_instance_id()**：RefCounted 一旦释放，它的 id 会被
+## 下一个对象复用，新生成的敌人于是可能继承上一只的旧血量 —— 症状是「刚出场就掉血」，
+## 一根凭空出现的弹道，而且只在特定的帧序下复现。用对象本身当键则顺便持有一份引用，
+## 旧对象在退场那一拍被清掉之前不会被释放，复用无从发生。
+var _hit_shake: Dictionary = {}
+
+## 每只敌人**上一拍结束时**的血量，键同 _hit_shake。命中取证的全部依据就是它：
+## 这一拍比上一拍少，就是这一拍挨了打（见 _note_hits）。
+var _hp_before: Dictionary = {}
+
 
 func _ready() -> void:
 	# 底色全部取自 Palette —— 场景里那几个 ColorRect 不带 color 字面量（06 §10.7）。
@@ -133,6 +185,12 @@ func _ready() -> void:
 	_hp_missing = Palette.get_color(Palette.Key.RED_600)
 	_hp_fill = Palette.get_color(Palette.Key.RED_500)
 	_enemy_label_color = Palette.get_color(Palette.Key.GREY_300)
+	# 可读反馈（PET-76）。弹道取 FX 体色（04 §3.10：它和机器视图里的火花是同一类东西 ——
+	# 一次「事件」，不是一种「物体」）；命中闪光取 WHITE（整幕 COMBAT 里只有它会画白，
+	# Label 的正文色是 BLUE_100）；击杀描边取 FX 芯色，与尸体自身的红拉开最大的明度差。
+	_tracer_color = Palette.get_color(Palette.Key.BLUE_FX_600)
+	_impact_color = Palette.get_color(Palette.Key.WHITE)
+	_kill_color = Palette.get_color(Palette.Key.BLUE_050)
 	# 06 §8.1 硬规则 1 明写「**分格之后才允许**分别套 Heat 橙 / Energy 蓝」——
 	# 这两格既已分格（硬规则 1 的另一半是不得合并），就把语义色落上：
 	# `能量` 取 BLUE_300（04 §3.8 的蓝组：能量 / 激活语义），`热量` 的常态色在
@@ -158,6 +216,13 @@ func reload_machine() -> void:
 	_machine_view.reload()
 	_driver.bind(null)
 	_simulation = null
+	# 反馈账簿跟着仿真一起清零：上一局的弹道与闪光若留着，新一局的头几拍会凭空多出几笔
+	# 指向不存在的敌人的线，而那几拍恰好是玩家确认「这一局跑起来了」的时刻。
+	_fired.clear()
+	_tracers.clear()
+	_impacts.clear()
+	_hit_shake.clear()
+	_hp_before.clear()
 	_notice_label.visible = false
 	# COMBAT 永远属于某一局：没有进行中的一局就先开一局。波次读数与「末波清空 → RESULT」
 	# 都靠 RunState 那一份进度，而本场景是全项目**唯一**读它的玩法场景 —— 开局放在这里，
@@ -190,7 +255,10 @@ func reload_machine() -> void:
 	machine.overheat_ended.connect(_on_overheat_ended)
 	# 重绘挂在本拍推进之后，而不是每帧无条件重画：机器不动时画面就一个像素都不重画。
 	machine.ticked.connect(_machine_view.queue_redraw)
-	simulation.ticked.connect(_enemy_layer.queue_redraw)
+	# 开火与命中要画在**同一帧**里（见 _on_weapon_fired / _on_simulation_ticked）：
+	# 前者只记下本拍开了火的武器，真正的绘制等本拍全部推进完再一起做。
+	machine.weapon_fired.connect(_on_weapon_fired)
+	simulation.ticked.connect(_on_simulation_ticked)
 	simulation.core_hp_changed.connect(_show_core_hp)
 	# 胜负由仿真判定，出口仍走本场景既有的两个语义入口（03 §1.1 R2 只认这两条边）。
 	# 这样 REWARD / RESULT 的路由前置条件（场景是否就绪）依然只在这一处判断。
@@ -382,37 +450,181 @@ func _draw_enemies() -> void:
 		# 糊在一起时「敌人在哪条道上」反而看不出，比空着更糟。
 		return
 	var tick: int = _simulation.tick_index()
+	# 顺序即层次：弹道在敌人**之下**（它从武器飞过来，末端被身体挡住才像「打进去」），
+	# 命中闪光在敌人**之上**（它标的就是身体上那一点）。反过来画，两者都会被身体吃掉。
+	_draw_tracers()
 	for enemy: EnemyState in _simulation.enemies():
 		_draw_enemy(enemy, tick)
+	_draw_impacts()
+
+
+## 一只敌人身体在敌人层坐标系里的矩形。**绘制与命中取证共用这一个换算** ——
+## 两处各写一份的话，弹道的落点与屏幕上那块红迟早会错开，而症状只是「线没打中」。
+func _body_rect(enemy: EnemyState) -> Rect2:
+	var data: EnemyData = enemy.data
+	if data == null:
+		return Rect2()
+	var body: float = ENEMY_SLIME_SIZE if data.kind == EnemyData.Kind.SLIME else ENEMY_RUNNER_SIZE
+	# 右 → 左：progress 0 在战场右缘，1 在左缘（CORE 那一侧）。
+	var left: float = lerpf(_enemy_layer.size.x - body, 0.0, enemy.progress)
+	var top: float = ENEMY_BAND_TOP + float(enemy.lane) * ENEMY_ROW_HEIGHT + ENEMY_BODY_TOP
+	return Rect2(left, top, body, body)
+
+
+## 这一拍该把这只敌人的身体向下 / 向上偏几像素。没在抖就是 0。
+##
+## 奇偶交替（1px 下、-1px 上、再 1px 下）—— **不读随机数**：抖动只是「刚挨了一下」的视觉标记，
+## 用了随机数，同一份蓝图在不同机器上就画不出同一张截图，像素取证再也没法比对（03 §6）。
+## 偏移量固定 ±1px：敌人在一条 24px 高的道里只占 8px，抖更多会跨道，读起来像换了条道。
+func _hit_shake_of(enemy: EnemyState) -> float:
+	if not _hit_shake.has(enemy):
+		return 0.0
+	return 1.0 if int(_hit_shake[enemy]) % 2 == 0 else -1.0
+
+
+## 在途弹道：一根 1px 的线，从开火那张卡片的上缘连到被打中的敌人的身体中心。
+## 线宽取 1px 且不开抗锯齿（默认值）—— 抗锯齿会让边缘像素变成半透明的过渡色，
+## 于是「这根线是什么颜色」在取色时变得没有确切答案。
+func _draw_tracers() -> void:
+	for tracer: Dictionary in _tracers:
+		_enemy_layer.draw_line(tracer["from"], tracer["to"], _tracer_color, 1.0)
+
+
+## 命中点的一枚短促闪光。画在敌人**之上**（在 _draw_enemy 之后调用），
+## 否则会被敌人身体整个盖住 —— 而它要标的正是身体上挨打的那一点。
+func _draw_impacts() -> void:
+	for impact: Dictionary in _impacts:
+		var at: Vector2 = impact["at"]
+		_enemy_layer.draw_rect(Rect2(
+			(at - Vector2(IMPACT_SIZE, IMPACT_SIZE) * 0.5).floor(),
+			Vector2(IMPACT_SIZE, IMPACT_SIZE)), _impact_color)
 
 
 func _draw_enemy(enemy: EnemyState, tick: int) -> void:
 	var data: EnemyData = enemy.data
 	if data == null:
 		return
-	var is_slime: bool = data.kind == EnemyData.Kind.SLIME
-	var body: float = ENEMY_SLIME_SIZE if is_slime else ENEMY_RUNNER_SIZE
-	var color: Color = _slime_color if is_slime else _runner_color
-	var row_top: float = ENEMY_BAND_TOP + float(enemy.lane) * ENEMY_ROW_HEIGHT
-	# 右 → 左：progress 0 在战场右缘，1 在左缘（CORE 那一侧）。
-	var left: float = lerpf(_enemy_layer.size.x - body, 0.0, enemy.progress)
-	var top: float = row_top + ENEMY_BODY_TOP
+	var rect: Rect2 = _body_rect(enemy)
+	var color: Color = _slime_color if data.kind == EnemyData.Kind.SLIME else _runner_color
 	var age: int = enemy.death_age(tick)
 	if age >= 0:
-		_draw_vanishing(left, top, body, age, color)
+		_draw_vanishing(rect, age, color)
 		return
-	_enemy_layer.draw_rect(Rect2(left, top, body, body), color)
-	_draw_health(enemy, left, top, body)
-	_draw_name(data.display_name, left, body, row_top)
+	# 受击抖动只抖**身体**：血条与名字留在原地 —— 它们要回答的是「还剩多少、这是什么」，
+	# 跟着一起抖只会让这两件事在抖动的那几拍里更难读。
+	var shaken := rect
+	shaken.position.y += _hit_shake_of(enemy)
+	_enemy_layer.draw_rect(shaken, color)
+	_draw_health(enemy, rect.position.x, rect.position.y, rect.size.x)
+	_draw_name(data.display_name, rect.position.x, rect.size.x,
+		ENEMY_BAND_TOP + float(enemy.lane) * ENEMY_ROW_HEIGHT)
 
 
 ## 死亡后的占位消失动画：绕中心收缩到 1px，VANISH_TICKS 拍后被仿真移除。
 ## 用**收缩**而不是淡出 —— 320×180 的像素画里半透明只会得到一团糊块，
 ## 而「缩掉了」在一张静止的截图里也读得出是在消失。
-func _draw_vanishing(left: float, top: float, body: float, age: int, color: Color) -> void:
-	var side: float = maxf(body * (1.0 - float(age) / float(CombatSimulation.VANISH_TICKS)), 1.0)
-	var center := Vector2(left + body * 0.5, top + body * 0.5)
-	_enemy_layer.draw_rect(Rect2(center - Vector2(side, side) * 0.5, Vector2(side, side)), color)
+##
+## PET-76 在尸体外面套一圈 1px 描边（04 §3.10 的 FX 芯色），把「被打死了」与「挨了一下」分开：
+## 受击是身体**里面**多一枚 2×2 的白点，击杀是身体**外面**多一圈框 —— 内点 / 外框，
+## 形状不同，于是在一张静止的截图里也分得开，不必靠颜色去猜。
+func _draw_vanishing(rect: Rect2, age: int, color: Color) -> void:
+	var center: Vector2 = rect.get_center()
+	var side: float = maxf(rect.size.x * (1.0 - float(age) / float(CombatSimulation.VANISH_TICKS)), 1.0)
+	var body := Rect2(center - Vector2(side, side) * 0.5, Vector2(side, side))
+	_enemy_layer.draw_rect(body, color)
+	_enemy_layer.draw_rect(body.grow(KILL_MARK_GROW), _kill_color, false, 1.0)
+
+
+## 武器开火 → 只**记下**这一拍开了火的武器，不在这里画。
+##
+## 此刻本拍还没结算完（weapon_fired 是在 machine.tick() 里发的，伤害结算挂在同一条链上），
+## 于是这一刻还不知道打中了谁。等 simulation.ticked（本拍全部推进完毕）再一起画，
+## 「哪把武器发动」与「打到谁」才会出现在**同一帧**里，而不是一先一后。
+func _on_weapon_fired(weapon_id: StringName) -> void:
+	_fired.append(weapon_id)
+
+
+## 本拍推进完毕：先把上一拍画的东西变老、清掉过期的，再按本拍的掉血情况补上新的记录。
+func _on_simulation_ticked() -> void:
+	_age_feedback()
+	_note_hits()
+	_enemy_layer.queue_redraw()
+
+
+## 反馈的存活期一律按**拍数**算，不按帧（03 §6）：帧率高低只决定你看到其中几帧，
+## 不决定一根弹道在几拍之后消失 —— 同一份蓝图在任何机器上取样都得到同一张图。
+func _age_feedback() -> void:
+	_tracers = _aged(_tracers, MachineRuntime.SHOT_TICKS)
+	_impacts = _aged(_impacts, IMPACT_TICKS)
+	for enemy: Variant in _hit_shake.keys():
+		var age: int = int(_hit_shake[enemy]) + 1
+		if age >= HIT_SHAKE_TICKS:
+			_hit_shake.erase(enemy)
+		else:
+			_hit_shake[enemy] = age
+
+
+## 把记录表里每条的 age 加一，丢掉活到头的那几条。表很小（同屏最多几笔），重建比原地删简单。
+func _aged(records: Array[Dictionary], life: int) -> Array[Dictionary]:
+	var kept: Array[Dictionary] = []
+	for record: Dictionary in records:
+		record["age"] = int(record["age"]) + 1
+		if int(record["age"]) < life:
+			kept.append(record)
+	return kept
+
+
+## 本拍谁挨了打 —— 全部依据就是**血量比上一拍少**。
+##
+## 为什么不去问仿真「谁打了谁」：选目标的规则（单体打最靠前的、范围打全部、近战只打贴脸的）
+## 全在 CombatSimulation 里，在 UI 里再实现一遍就是第二份真相 —— 两份一旦漂开，
+## 画面上会出现一根指向**错**敌人的弹道，而那正是本卡要治的病。
+## 观测式的代价是「哪把武器打的」只能配对（见下），这是本卡明确接受的取舍。
+func _note_hits() -> void:
+	var fired: Array[StringName] = _fired
+	_fired = []
+	var hits: Array[EnemyState] = []
+	var alive: Dictionary = {}
+	for enemy: EnemyState in _simulation.enemies():
+		alive[enemy] = true
+		var before: float = _hp_before.get(enemy, enemy.hp)
+		if enemy.hp < before:
+			hits.append(enemy)
+		_hp_before[enemy] = enemy.hp
+	# 退场的敌人连键一起清掉。不清的话这份表会随每一波单调变长，更要紧的是**留着旧键有害** ——
+	# 见 _hit_shake 上关于「对象当键」的那段。
+	for enemy: Variant in _hp_before.keys():
+		if not alive.has(enemy):
+			_hp_before.erase(enemy)
+	if hits.is_empty():
+		return
+	# 配对：本拍第 i 个掉血的敌人，配本拍第 i 把开火的武器（取模）。
+	# 这是**表现层的配对**，不是伤害归属的重算 —— 一发炸弹打中三只时武器只有一把、
+	# 命中点有三个，三根弹道于是全部从那一张卡出发，恰恰就是画面该说的话。
+	for index: int in hits.size():
+		var target: EnemyState = hits[index]
+		var at: Vector2 = _body_rect(target).get_center()
+		_impacts.append({"at": at, "age": 0})
+		_hit_shake[target] = 0
+		if fired.is_empty():
+			continue
+		var box: Rect2 = _machine_view.card_rect(fired[index % fired.size()])
+		if box.size.x <= 0.0:
+			# 开火的武器在视图里没有卡片（未落格 / 已被删掉）。画不出起点就不画这根线 ——
+			# 从 (0,0) 拉一根到敌人身上的线会让玩家以为机器接错了。
+			continue
+		_tracers.append({"from": _muzzle_point(box), "to": at, "age": 0})
+
+
+## 武器卡片上缘中点，换算到**敌人层坐标系**。
+##
+## MachineView 与 EnemyLayer 是战场下的两个兄弟，且敌人层原点与战场重合，
+## 故「机器视图局部坐标 + 机器视图在战场里的位置」就是敌人层坐标。
+## 这个换算留在本文件而不是 BlueprintWorkspace：知道这两层是兄弟的是**本场景的装配**，
+## 工作区不该知道自己被摆在哪儿 —— 它在整备界面里是另一个位置。
+func _muzzle_point(box: Rect2) -> Vector2:
+	return _machine_view.position + Vector2(
+		box.position.x + BlueprintWorkspace.CARD * 0.5, box.position.y)
 
 
 ## HP 条：画在身体**上方**那条缝里，落在战场底色上而不是压在身上（压在深红身体上分不出深浅）。
