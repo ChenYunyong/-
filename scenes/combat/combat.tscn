@@ -162,38 +162,38 @@ mouse_filter = 2
 theme_override_font_sizes/font_size = 20
 text = "100%"
 
-[node name="Heat" type="VBoxContainer" parent="StatusBar/Readouts/ReadoutsRow"]
+[node name="Mana" type="VBoxContainer" parent="StatusBar/Readouts/ReadoutsRow"]
 unique_name_in_owner = true
 layout_mode = 2
 custom_minimum_size = Vector2(108, 0)
 
-[node name="Caption" type="Label" parent="StatusBar/Readouts/ReadoutsRow/Heat"]
+[node name="Caption" type="Label" parent="StatusBar/Readouts/ReadoutsRow/Mana"]
 layout_mode = 2
 mouse_filter = 2
-text = "热量"
+text = "魔力"
 
-[node name="Value" type="Label" parent="StatusBar/Readouts/ReadoutsRow/Heat"]
+[node name="Value" type="Label" parent="StatusBar/Readouts/ReadoutsRow/Mana"]
 layout_mode = 2
 mouse_filter = 2
 theme_override_font_sizes/font_size = 20
-text = "0%"
+text = "100%"
 
-[node name="Energy" type="VBoxContainer" parent="StatusBar/Readouts/ReadoutsRow"]
+[node name="AbilitySlots" type="VBoxContainer" parent="StatusBar/Readouts/ReadoutsRow"]
 unique_name_in_owner = true
 layout_mode = 2
 custom_minimum_size = Vector2(108, 0)
 
-[node name="Caption" type="Label" parent="StatusBar/Readouts/ReadoutsRow/Energy"]
+[node name="Caption" type="Label" parent="StatusBar/Readouts/ReadoutsRow/AbilitySlots"]
 layout_mode = 2
 mouse_filter = 2
 theme_type_variation = &"LabelSecondary"
-text = "能量"
+text = "能力位"
 
-[node name="Value" type="Label" parent="StatusBar/Readouts/ReadoutsRow/Energy"]
+[node name="Value" type="Label" parent="StatusBar/Readouts/ReadoutsRow/AbilitySlots"]
 layout_mode = 2
 mouse_filter = 2
 theme_type_variation = &"LabelSecondary"
-text = "0%"
+text = "0/3"
 
 [node name="Queue" type="VBoxContainer" parent="StatusBar/Readouts/ReadoutsRow"]
 layout_mode = 2

@@ -74,7 +74,7 @@ static func icon_color(kind: RewardOption.Kind) -> Color:
 			return Palette.get_color(Palette.Key.GOLD_400)
 		RewardOption.Kind.FUNCTION:
 			return Palette.get_color(Palette.Key.BLUE_400)
-		RewardOption.Kind.WEAPON:
+		RewardOption.Kind.ABILITY:
 			return Palette.get_color(Palette.Key.ORANGE_500)
 		_:
 			return Palette.get_color(Palette.Key.GREY_500)

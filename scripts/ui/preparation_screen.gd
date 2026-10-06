@@ -36,7 +36,7 @@ const NOTICE_RESULT: String = "结算场景（RESULT）的路由未就绪，本�
 ## 第二下才真的清 —— 于是「误触一次」最多让人多看一眼，而不是把整张图删掉。
 const LABEL_DELETE: String = "删除"
 const LABEL_UNDO: String = "撤销"
-const LABEL_CLEAR: String = "清空蓝图"
+const LABEL_CLEAR: String = "清空法术书"
 const LABEL_CLEAR_ARMED: String = "确认清空？"
 
 ## 动作列每行的高度与行间距（逻辑像素）。24 是 06 §1 的触摸下限（2× 下 48 设备像素），

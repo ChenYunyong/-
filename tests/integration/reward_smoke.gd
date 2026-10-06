@@ -343,8 +343,8 @@ func _run_narrow_case() -> void:
 ## 验收核心：**由玩家选择**后回到 PREPARATION，且**选中的那一项真的改变玩家的机器** ——
 ## 走 GameFlow 的真实路由，不得自己换场景。
 ##
-## 点的是第 3 张卡（炸弹）：它是验收点名的那个，也是唯一能把「类型有没有在路上被换掉」照出来的
-## 一项（核心 / 增幅 的 weapon_kind 都是 NONE，落错了也看不出来）。
+## 点的是第 3 张卡（火）：它是验收点名的那个，也是唯一能把「类型有没有在路上被换掉」照出来的
+## 一项（核心 / 附魔 的 weapon_kind 都是 NONE，落错了也看不出来）。
 ##
 ## 本用例必须排在**最后**：它会把当前场景换成整备界面。
 func _run_selection_case() -> void:
@@ -383,14 +383,14 @@ func _run_selection_case() -> void:
 	flow.disconnect(&"state_changed", handler)
 
 	# 跨场景的载荷是**同步**记下的（场景换掉要等下一帧），故此刻还读得到。
-	# 它必须是 BOMB：拿显示名反查的实现会在这一步就变成针，而画面上三张卡长得一模一样。
+	# 它必须是 BOMB：拿显示名反查的实现会在这一步就变成冰，而画面上三张卡长得一模一样。
 	var run_state: Node = _autoload("RunState")
 	if not _ctx.check(run_state != null, "RunState Autoload 应存在"):
 		return
 	var node_script: GDScript = load(NODE_DATA_PATH)
-	var bomb_kind: int = int(node_script.WeaponKind.BOMB)
+	var bomb_kind: int = int(node_script.Ability.FIRE)
 	_ctx.equal(int((run_state.call(&"pending_reward") as Dictionary).get("weapon_kind", -1)), bomb_kind,
-		"选中炸弹后待落地的载荷应是 BOMB")
+		"选中火后待落地的载荷应是 BOMB")
 
 	await process_frame
 	await process_frame
@@ -427,9 +427,9 @@ func _run_landing_checks(node_script: GDScript, bomb_kind: int, face_key: String
 	if count == 0:
 		return
 	var landed = blueprint.nodes[count - 1]
-	_ctx.equal(int(landed.kind), int(node_script.Kind.WEAPON), "落地的应是 WEAPON 节点")
+	_ctx.equal(int(landed.kind), int(node_script.Kind.ABILITY), "落地的应是 WEAPON 节点")
 	_ctx.equal(int(landed.weapon_kind), bomb_kind,
-		"落地的武器种类应原样是 BOMB（降级成针的话，卡面、画布、结算就是三份互不相干的说法）")
+		"落地的武器种类应原样是 BOMB（降级成冰的话，卡面、画布、结算就是三份互不相干的说法）")
 	_ctx.equal(String(landed.display_name), face_key,
 		"落地节点的名字应与卡面那一项同名（同一格仓库，不许各抄一份）")
 
@@ -440,7 +440,7 @@ func _run_landing_checks(node_script: GDScript, bomb_kind: int, face_key: String
 		_ctx.equal(saved.nodes.size(), count, "磁盘上的节点数应与画布一致（落下即落盘）")
 		if saved.nodes.size() > 0:
 			_ctx.equal(int(saved.nodes[saved.nodes.size() - 1].weapon_kind), bomb_kind,
-				"磁盘上最后一个节点应是刚落下的那枚炸弹")
+				"磁盘上最后一个节点应是刚落下的那枚火")
 
 	_ctx.check((run_state.call(&"pending_reward") as Dictionary).is_empty(),
 		"载荷取走即清：一次选择只落一次，重复进 PREPARATION 不得重复发奖")
@@ -525,7 +525,7 @@ func _finish() -> void:
 	_lines.append("- 单元测试：见 unit_tests.log")
 	_lines.append("- 集成测试：见 unit_tests.log")
 	_lines.append("- 场景冒烟：%d/%d" % [_ctx.passed, _ctx.passed + _ctx.failed])
-	_lines.append("- 手动场景：REWARD 经路由进入(点 CTA→本波清空) · 三张卡片矩形 · 五项俱备 · 「跳过」补齐 · 停留 10 分钟不离开 · 窄屏折叠 · 选定后回 PREPARATION · 选中的炸弹真的落进蓝图(内存 + 磁盘 + 取走即清)")
+	_lines.append("- 手动场景：REWARD 经路由进入(点 CTA→本波清空) · 三张卡片矩形 · 五项俱备 · 「跳过」补齐 · 停留 10 分钟不离开 · 窄屏折叠 · 选定后回 PREPARATION · 选中的火真的落进蓝图(内存 + 磁盘 + 取走即清)")
 	if _ctx.failures.is_empty():
 		_lines.append("- 失败项：无")
 	else:

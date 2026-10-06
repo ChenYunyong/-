@@ -1,6 +1,6 @@
 ## test_signal_flow.gd
 ## 职责：机器运行的**纯逻辑**（FIRST PLAYABLE 2/4）—— CORE 固定节拍、脉冲沿有向边传播、
-##       FUNCTION 三件（分流 / 放大 / 延时）、WEAPON 开火与 Heat 累积，
+##       功能卡三件（子弹数量 / 附魔 / 冷却）、能力卡施放与魔力扣减，
 ##       外加确定性、环路、悬空边、断开子图这些边界（03 §4 / §6、09 §3.3）。
 ## 所属系统：tests
 ## 依赖：test_context, scripts/gameplay/{machine_runtime,signal_pulse}.gd,
@@ -29,13 +29,15 @@ const DETERMINISM_BANNED: PackedStringArray = [
 	"randi", "randf", "RandomNumberGenerator", "_process", "_physics_process", "Timer", "create_timer",
 ]
 
-## 03 §4.1 给 FUNCTION 列的四件事（条件判断未实现）。本文件独立复写，不从实现里取。
-const EXPECTED_FUNCTIONS: PackedStringArray = ["NONE", "SPLIT", "AMPLIFY", "DELAY"]
+## 用户 2026-10-06 给功能卡列的八类。本文件独立复写，不从实现里取 ——
+## 从实现里取的话，枚举被改窄了这条还是绿的。**前四个必须原地不动**（旧存档落的是整数）。
+const EXPECTED_FUNCTIONS: PackedStringArray = ["NONE", "BULLET_COUNT", "ENCHANT", "COOLDOWN",
+	"HASTE", "SLOW", "BURST", "LOOP", "ATTACK_SPEED"]
 
 var _activations: Array[StringName] = []
 var _fired: Array[StringName] = []
 var _fire_ticks: Array[int] = []
-var _heat_log: Array[float] = []
+var _mana_log: Array[float] = []
 var _watched: MachineRuntime = null
 
 
@@ -48,7 +50,7 @@ func run(ctx: RefCounted, _tree: SceneTree) -> void:
 	_run_split_checks(ctx)
 	_run_amplify_checks(ctx)
 	_run_delay_checks(ctx)
-	_run_weapon_heat_checks(ctx)
+	_run_ability_cast_checks(ctx)
 	_run_degenerate_checks(ctx)
 	_run_cycle_checks(ctx)
 	_run_determinism_checks(ctx)
@@ -67,10 +69,14 @@ func _run_enum_checks(ctx: RefCounted) -> void:
 		ctx.check(NodeData.Function.has(EXPECTED_FUNCTIONS[index]),
 			"Function 应含成员 %s" % EXPECTED_FUNCTIONS[index])
 	ctx.equal(int(NodeData.Function.NONE), 0, "NONE 的枚举值（缺省值必须排在第一位）")
-	# 反向对照：三个行为两两不同，否则「拖的是延迟、跑出来是放大」这种错没有任何断言能发现。
-	ctx.not_equal(NodeData.Function.SPLIT, NodeData.Function.AMPLIFY, "SPLIT 与 AMPLIFY 不得同值")
-	ctx.not_equal(NodeData.Function.AMPLIFY, NodeData.Function.DELAY, "AMPLIFY 与 DELAY 不得同值")
-	ctx.not_equal(NodeData.Function.SPLIT, NodeData.Function.DELAY, "SPLIT 与 DELAY 不得同值")
+	# 旧存档里有行为的只有前三件，它们的整数落盘值必须一动不动。
+	ctx.equal(int(NodeData.Function.BULLET_COUNT), 1, "BULLET_COUNT 的枚举值（旧 SPLIT）")
+	ctx.equal(int(NodeData.Function.ENCHANT), 2, "ENCHANT 的枚举值（旧 AMPLIFY）")
+	ctx.equal(int(NodeData.Function.COOLDOWN), 3, "COOLDOWN 的枚举值（旧 DELAY）")
+	# 反向对照：三个行为两两不同，否则「拖的是冷却、跑出来是附魔」这种错没有任何断言能发现。
+	ctx.not_equal(NodeData.Function.BULLET_COUNT, NodeData.Function.ENCHANT, "前两件不得同值")
+	ctx.not_equal(NodeData.Function.ENCHANT, NodeData.Function.COOLDOWN, "后两件不得同值")
+	ctx.not_equal(NodeData.Function.BULLET_COUNT, NodeData.Function.COOLDOWN, "首尾两件不得同值")
 	var node: NodeData = NodeData.new()
 	ctx.equal(node.function_kind, NodeData.Function.NONE, "缺省行为应是直通")
 	ctx.equal(node.kind, NodeData.Kind.FUNCTION, "只设 function_kind 不得顺带改 kind")
@@ -108,7 +114,7 @@ func _run_core_beat_checks(ctx: RefCounted) -> void:
 	_tick(runtime, MachineRuntime.CORE_PERIOD_TICKS - 1)
 	ctx.equal(runtime.pulses().size(), 0, "满一拍之前不得有在途脉冲")
 	ctx.equal(_activations.size(), 0, "满一拍之前不得点亮任何节点")
-	ctx.equal(runtime.heat(), 0.0, "还没开火，Heat 应为 0")
+	ctx.equal(runtime.mana(), MachineRuntime.MANA_MAX, "还没施放，魔力应为满（资源线见 test_mana.gd）")
 
 	runtime.tick()
 	var beat: int = MachineRuntime.CORE_PERIOD_TICKS
@@ -142,12 +148,12 @@ func _run_travel_checks(ctx: RefCounted) -> void:
 
 ## 「1 进 → 2 出」是**连线的形状**：出边有几条就发几枚，值既不复制也不切分。
 func _run_split_checks(ctx: RefCounted) -> void:
-	ctx.begin_case("FUNCTION · 分流：出边几条就发几枚（03 §4.2）")
+	ctx.begin_case("FUNCTION · 子弹数量：出边几条就发几枚（03 §4.2）")
 	var runtime: MachineRuntime = _machine(_graph([
 		{"id": "core", "kind": NodeData.Kind.CORE},
-		{"id": "split", "function": NodeData.Function.SPLIT},
-		{"id": "needle_a", "kind": NodeData.Kind.WEAPON},
-		{"id": "needle_b", "kind": NodeData.Kind.WEAPON},
+		{"id": "split", "function": NodeData.Function.BULLET_COUNT},
+		{"id": "needle_a", "kind": NodeData.Kind.ABILITY},
+		{"id": "needle_b", "kind": NodeData.Kind.ABILITY},
 	], [
 		{"from": "core", "to": "split"},
 		{"from": "split", "to": "needle_a"},
@@ -155,43 +161,43 @@ func _run_split_checks(ctx: RefCounted) -> void:
 	]))
 	var arrival: int = MachineRuntime.CORE_PERIOD_TICKS + MachineRuntime.TRAVEL_TICKS
 	_tick(runtime, arrival)
-	ctx.equal(_count_activated("split"), 1, "分流节点应被点亮一次")
+	ctx.equal(_count_activated("split"), 1, "子弹数量节点应被点亮一次")
 	ctx.equal(runtime.pulses().size(), 2, "两条出边应各发一枚")
 	ctx.equal(_count_fired("needle_a") + _count_fired("needle_b"), 0, "此时两把武器都还没收到")
 	for pulse: SignalPulse in runtime.pulses():
-		# 反向对照：分流若被实现成「把值切成两半」，这里会读到 0.5。
-		ctx.equal(pulse.value, MachineRuntime.BASE_PULSE_VALUE, "分流不得改动信号值")
+		# 反向对照：子弹数量若被实现成「把值切成两半」，这里会读到 0.5。
+		ctx.equal(pulse.value, MachineRuntime.BASE_PULSE_VALUE, "子弹数量不得改动信号值")
 
 	_tick(runtime, MachineRuntime.TRAVEL_TICKS)
 	ctx.equal(_count_fired("needle_a"), 1, "第一把武器应收到一枚")
 	ctx.equal(_count_fired("needle_b"), 1, "第二把武器应收到一枚")
 
-	# 反向对照：同一个分流节点只接一条出边时**只有一枚** ——
-	# 若「分流」被实现成节点自带的复制，这一条会读到 2。
+	# 反向对照：同一个子弹数量节点只接一条出边时**只有一枚** ——
+	# 若「子弹数量」被实现成节点自带的复制，这一条会读到 2。
 	var one: MachineRuntime = _machine(_graph([
 		{"id": "core", "kind": NodeData.Kind.CORE},
-		{"id": "split", "function": NodeData.Function.SPLIT},
-		{"id": "needle", "kind": NodeData.Kind.WEAPON},
+		{"id": "split", "function": NodeData.Function.BULLET_COUNT},
+		{"id": "needle", "kind": NodeData.Kind.ABILITY},
 	], [
 		{"from": "core", "to": "split"},
 		{"from": "split", "to": "needle"},
 	]))
 	_tick(one, arrival + MachineRuntime.TRAVEL_TICKS)
-	ctx.equal(_count_fired("needle"), 1, "只接一条出边的分流只发一枚（分流是连线的形状）")
+	ctx.equal(_count_fired("needle"), 1, "只接一条出边的子弹数量只发一枚（它是连线的形状）")
 
 
-## Amplify：固定倍数放大脉冲值。
+## 附魔：固定倍数放大脉冲值。
 func _run_amplify_checks(ctx: RefCounted) -> void:
 	ctx.begin_case("FUNCTION · 放大：固定倍数（本卡用常数，不自造公式）")
-	ctx.check(MachineRuntime.AMPLIFY_FACTOR > 1.0,
-		"放大倍数必须 > 1，否则「放大」是句空话（实际 %.2f）" % MachineRuntime.AMPLIFY_FACTOR)
-	var runtime: MachineRuntime = _machine(_chain([{"id": "amp", "function": NodeData.Function.AMPLIFY}]))
+	ctx.check(MachineRuntime.ENCHANT_FACTOR > 1.0,
+		"放大倍数必须 > 1，否则「放大」是句空话（实际 %.2f）" % MachineRuntime.ENCHANT_FACTOR)
+	var runtime: MachineRuntime = _machine(_chain([{"id": "amp", "function": NodeData.Function.ENCHANT}]))
 	var arrival: int = MachineRuntime.CORE_PERIOD_TICKS + MachineRuntime.TRAVEL_TICKS
 	_tick(runtime, arrival)
 	ctx.equal(runtime.pulses().size(), 1, "放大节点应在抵达当拍转发一枚")
 	var pulse: SignalPulse = runtime.pulses()[0]
 	ctx.equal(String(pulse.from_node_id), "amp", "转发后的起点应是放大节点")
-	ctx.equal(pulse.value, MachineRuntime.BASE_PULSE_VALUE * MachineRuntime.AMPLIFY_FACTOR, "放大后的信号值")
+	ctx.equal(pulse.value, MachineRuntime.BASE_PULSE_VALUE * MachineRuntime.ENCHANT_FACTOR, "放大后的信号值")
 
 	# 反向对照：同一个位置放一个「未指定行为」的 FUNCTION，值必须原样通过。
 	var plain: MachineRuntime = _machine(_chain([]))
@@ -199,55 +205,63 @@ func _run_amplify_checks(ctx: RefCounted) -> void:
 	ctx.equal(plain.pulses()[0].value, MachineRuntime.BASE_PULSE_VALUE, "未指定行为的节点应原样转发")
 
 
-## Delay：滞留 DELAY_TICKS 拍后才放行。反向对照是「不延迟的链路早该开火了」。
+## 冷却：滞留 COOLDOWN_TICKS 拍后才放行。反向对照是「没有冷却的链路早该施放了」。
 func _run_delay_checks(ctx: RefCounted) -> void:
-	ctx.begin_case("FUNCTION · 延迟：滞留 DELAY_TICKS 拍（03 §2 的节拍计数）")
-	var runtime: MachineRuntime = _machine(_chain([{"id": "delay", "function": NodeData.Function.DELAY}]))
+	ctx.begin_case("FUNCTION · 冷却：滞留 COOLDOWN_TICKS 拍（03 §2 的节拍计数）")
+	var runtime: MachineRuntime = _machine(_chain([{"id": "delay", "function": NodeData.Function.COOLDOWN}]))
 	var arrival: int = MachineRuntime.CORE_PERIOD_TICKS + MachineRuntime.TRAVEL_TICKS
-	var release: int = arrival + MachineRuntime.DELAY_TICKS
+	var release: int = arrival + MachineRuntime.COOLDOWN_TICKS
 	_tick(runtime, arrival)
-	ctx.equal(_count_activated("delay"), 1, "延迟节点应在抵达当拍被点亮")
-	ctx.equal(runtime.pulses().size(), 0, "被延迟节点收下的脉冲不在途，故不该出现在画面上")
+	ctx.equal(_count_activated("delay"), 1, "冷却节点应在抵达当拍被点亮")
+	ctx.equal(runtime.pulses().size(), 0, "被冷却节点收下的脉冲不在途，故不该出现在画面上")
 
-	# 反向对照：不延迟的链路在第 10 + 4 × 2 = 18 拍就已经开火了，
-	# 这条在 18 / 25 拍都要求「还没开火」—— 延迟若没生效，两次都会转红。
+	# 反向对照：不带冷却的链路在第 10 + 4 × 2 = 18 拍就已经施放了，
+	# 这条在 18 / 25 拍都要求「还没施放」—— 冷却若没生效，两次都会转红。
 	_tick(runtime, MachineRuntime.TRAVEL_TICKS)
-	ctx.equal(_count_fired("needle"), 0, "第 %d 拍时延迟链路还不该开火" % (arrival + MachineRuntime.TRAVEL_TICKS))
+	ctx.equal(_count_fired("needle"), 0, "第 %d 拍时带冷却的链路还不该施放" % (arrival + MachineRuntime.TRAVEL_TICKS))
 	_tick(runtime, release - 1 - runtime.tick_index())
 	ctx.equal(runtime.tick_index(), release - 1, "推进到放行前一拍")
 	ctx.equal(_count_fired("needle"), 0, "第 %d 拍（放行前一拍）仍不该开火" % (release - 1))
 
-	# CORE 每 10 拍发一次，滞留 12 拍意味着延迟节点手里可能同时压着两枚 —— 故这里比的是**增量**
+	# CORE 每 10 拍发一次，滞留 12 拍意味着冷却节点手里可能同时压着两枚 —— 故这里比的是**增量**
 	# 而不是总数：总数取决于「这几拍里又到了几枚」，那与「放行是否点亮了自己」是两件事。
 	var before: int = _count_activated("delay")
 	runtime.tick()
 	ctx.equal(runtime.tick_index(), release, "第 %d 拍" % release)
-	ctx.equal(runtime.pulses().size(), 1, "第 %d 拍延迟节点应放行一枚" % release)
-	ctx.equal(_count_activated("delay"), before + 1, "放行当拍延迟节点应再被点亮一次（放行也是可见事件）")
+	ctx.equal(runtime.pulses().size(), 1, "第 %d 拍冷却节点应放行一枚" % release)
+	ctx.equal(_count_activated("delay"), before + 1, "放行当拍冷却节点应再被点亮一次（放行也是可见事件）")
 
 	_tick(runtime, MachineRuntime.TRAVEL_TICKS)
 	ctx.equal(_count_fired("needle"), 1, "放行后再走满 %d 拍应抵达并开火" % MachineRuntime.TRAVEL_TICKS)
 
 
-## WEAPON 开火 → 累积 Heat → 到阈值触发 Overheat；顺带钉住点亮 / 弹丸两个时间窗口。
-func _run_weapon_heat_checks(ctx: RefCounted) -> void:
-	ctx.begin_case("WEAPON · 开火与 Heat 累积到阈值（06 §8.1 的 `热量` 读数）")
-	# 用的就是验收卡点名的那台机器：CORE → Split → Amplify → Needle。
-	# 三条边各走 TRAVEL_TICKS 拍，故首发的绝对拍号是 10 + 3 × 4 = 22 —— 这条把整条链路钉在一起：
-	# 节拍、传播、FUNCTION 的转发、WEAPON 的开火，任何一环改了时长这里都会转红。
+## 能力卡施放 → 扣魔力；顺带钉住点亮 / 弹丸两个时间窗口，以及整条链路端到端的拍号。
+##
+## **热累积那半条已随 Heat→Mana 一起搬走**：旧机制「开火攒热、攒满被罚停」在单张能力卡下
+## 就能自证（50 发攒到 100），新机制是**资源**，单张能力卡永远攒不到过载 ——
+## 「施法扣魔力 / 停手回魔力 / 见底过载 / 回满恢复」这四条现在整条归 tests/unit/test_mana.gd
+## （那里有反向对照：两张养得动、三张才透支）。本文件只留它自己那一份职责：
+## 施放发生没发生、什么时候发生、广播的值域对不对。
+##
+## 之所以不把这几条也搬过去：它们量的是**这条链路的拍号**，而链路由本文件的三个功能卡用例定义。
+func _run_ability_cast_checks(ctx: RefCounted) -> void:
+	ctx.begin_case("ABILITY · 施放扣魔力与点亮 / 弹丸时间窗（06 §8.1 的 `魔力` 读数）")
+	# core → 子弹数量 → 附魔 → needle。三条边各走 TRAVEL_TICKS 拍，
+	# 故首发的绝对拍号是 10 + 3 × 4 = 22 —— 这条把整条链路钉在一起：
+	# 节拍、传播、功能卡的转发、能力卡的施放，任何一环改了时长这里都会转红。
 	var runtime: MachineRuntime = _machine(_chain([
-		{"id": "split", "function": NodeData.Function.SPLIT},
-		{"id": "amp", "function": NodeData.Function.AMPLIFY},
+		{"id": "split", "function": NodeData.Function.BULLET_COUNT},
+		{"id": "amp", "function": NodeData.Function.ENCHANT},
 	]))
 	var first: int = MachineRuntime.CORE_PERIOD_TICKS + 3 * MachineRuntime.TRAVEL_TICKS
 	_tick(runtime, first)
-	ctx.equal(_fire_ticks.size(), 1, "第 %d 拍应恰好开火一次" % first)
+	ctx.equal(_fire_ticks.size(), 1, "第 %d 拍应恰好施放一次" % first)
 	ctx.equal(_fire_ticks[0], first, "首发的拍号（CORE 节拍 + 三条边各 %d 拍）" % MachineRuntime.TRAVEL_TICKS)
-	ctx.equal(runtime.heat(), MachineRuntime.HEAT_PER_SHOT, "一发之后的 Heat")
-	ctx.equal(_heat_log.size(), 1, "Heat 变化应广播一次")
-	ctx.equal(runtime.shot_age(&"needle"), 0, "刚开火时弹丸年龄应为 0")
-	ctx.check(runtime.is_lit(&"needle"), "刚开火的节点应处于点亮窗口内")
-	ctx.equal(runtime.shot_age(&"core"), -1, "CORE 不是武器，弹丸年龄应为 -1")
+	ctx.equal(runtime.mana(), MachineRuntime.MANA_MAX - MachineRuntime.MANA_PER_CAST, "一发之后的魔力")
+	ctx.equal(_mana_log.size(), 1, "魔力变化应广播一次")
+	ctx.equal(runtime.shot_age(&"needle"), 0, "刚施放时弹丸年龄应为 0")
+	ctx.check(runtime.is_lit(&"needle"), "刚施放的节点应处于点亮窗口内")
+	ctx.equal(runtime.shot_age(&"core"), -1, "CORE 不是能力卡，弹丸年龄应为 -1")
 	ctx.equal(runtime.is_lit(&"ghost"), false, "不存在的节点不得被报告为点亮")
 
 	# 点亮窗口 FLASH_TICKS 与弹丸存活期 SHOT_TICKS —— 边界各钉一次。
@@ -261,35 +275,30 @@ func _run_weapon_heat_checks(ctx: RefCounted) -> void:
 	runtime.tick()
 	ctx.equal(runtime.shot_age(&"needle"), -1, "越过存活期后弹丸应消失")
 
-	# 第二发：Heat 广播的是**绝对值**，不是每发重置。
+	# 第二发：魔力广播的是**绝对值**（扣完剩多少），不是每发一条增量。
+	# 这张书只有一张能力卡，一个周期净 +1（回 25、扣 12 × 1），故第二发之前魔力已经回满 ——
+	# 广播里出现的正是「满值」与「满值 - 一发」，这与 test_mana.gd 的收支结论是同一条。
 	var second: int = first + MachineRuntime.CORE_PERIOD_TICKS
 	_tick(runtime, second - runtime.tick_index())
 	ctx.equal(_fire_ticks.size(), 2, "第二个 CORE 节拍应带来第二发")
 	ctx.equal(_fire_ticks[1], second, "第二发的拍号")
-	ctx.equal(runtime.heat(), MachineRuntime.HEAT_PER_SHOT * 2.0, "两发之后的 Heat 应是累加的")
+	ctx.equal(runtime.mana(), MachineRuntime.MANA_MAX - MachineRuntime.MANA_PER_CAST, "第二发之后的魔力")
 
-	# 阈值：Heat 累加到 MAX_HEAT 即触发 Overheat（PET-66）。到阈值需要几发由两个常数直接算出，
-	# 不写死拍号 —— HEAT_PER_SHOT 或 MAX_HEAT 一改，这里应当跟着算，而不是跟着烂。
-	# 本用例只钉「确实走到了那一步」；阈值之后的停火 / 冷却 / 恢复归 tests/unit/test_heat.gd。
-	var shots_to_overheat: int = int(ceilf(MachineRuntime.MAX_HEAT / MachineRuntime.HEAT_PER_SHOT))
-	_tick(runtime, (shots_to_overheat - 3) * MachineRuntime.CORE_PERIOD_TICKS)
-	ctx.check(not runtime.is_overheated(), "差一发到阈值时不得过热")
-	ctx.check(runtime.heat() < MachineRuntime.MAX_HEAT, "差一发到阈值时 Heat 应低于上限")
-
-	_tick(runtime, MachineRuntime.CORE_PERIOD_TICKS)
-	ctx.check(runtime.is_overheated(), "连续开火累加到阈值应触发 Overheat")
-	ctx.equal(runtime.heat(), MachineRuntime.MAX_HEAT, "触发的那一拍 Heat 应恰是 MAX_HEAT")
-
-	# 封顶：读数格只有三位，任何一次广播越过 MAX_HEAT 都会印成四位数。
+	# 值域：读数是百分比，任何一次广播越界都会印成四位数或负数。
 	var peak: float = 0.0
+	var lowest: float = MachineRuntime.MANA_MAX
 	var overflow: bool = false
-	for value: float in _heat_log:
+	for value: float in _mana_log:
 		peak = maxf(peak, value)
-		if value > MachineRuntime.MAX_HEAT:
+		lowest = minf(lowest, value)
+		if value < 0.0 or value > MachineRuntime.MANA_MAX:
 			overflow = true
 	ctx.check(not overflow,
-		"Heat 的每次广播都不得越过 MAX_HEAT（读数格只有三位，共 %d 次）" % _heat_log.size())
-	ctx.equal(peak, MachineRuntime.MAX_HEAT, "广播的最大值应恰是 MAX_HEAT（确实走到过阈值）")
+		"魔力的每次广播都应落在 [0, MANA_MAX]（读数格只有三位，共 %d 次）" % _mana_log.size())
+	ctx.equal(lowest, MachineRuntime.MANA_MAX - MachineRuntime.MANA_PER_CAST,
+		"广播的最小值应是扣掉一发之后的量")
+	# 单张能力卡永远不过载 —— 过载是「能力卡太多」的代价，不是施放的代价。
+	ctx.check(not runtime.is_overloaded(), "一张能力卡的书不该过载")
 
 
 ## 退化输入一律不崩、不产生事件 —— 「没有机器」是玩家的正常状态，不是异常。
@@ -309,7 +318,7 @@ func _run_degenerate_checks(ctx: RefCounted) -> void:
 
 	# 有武器但没信号源：机器一步都不动。这正是玩家「忘了拖 CORE」时看到的样子。
 	var no_core: BlueprintData = BlueprintData.new()
-	_node(no_core, "needle", NodeData.Kind.WEAPON)
+	_node(no_core, "needle", NodeData.Kind.ABILITY)
 	var orphan: MachineRuntime = _machine(no_core)
 	_tick(orphan, 30)
 	ctx.equal(_count_activated("needle"), 0, "没有 CORE 时武器不该被点亮")
@@ -325,9 +334,9 @@ func _run_degenerate_checks(ctx: RefCounted) -> void:
 	# 断开子图（09 §3.3）：没接上 CORE 的那一支不参与执行。
 	var split_runtime: MachineRuntime = _machine(_graph([
 		{"id": "core", "kind": NodeData.Kind.CORE},
-		{"id": "split", "function": NodeData.Function.SPLIT},
-		{"id": "needle_a", "kind": NodeData.Kind.WEAPON},
-		{"id": "needle_b", "kind": NodeData.Kind.WEAPON},
+		{"id": "split", "function": NodeData.Function.BULLET_COUNT},
+		{"id": "needle_a", "kind": NodeData.Kind.ABILITY},
+		{"id": "needle_b", "kind": NodeData.Kind.ABILITY},
 	], [
 		{"from": "core", "to": "split"},
 		{"from": "split", "to": "needle_a"},
@@ -364,10 +373,10 @@ func _run_determinism_checks(ctx: RefCounted) -> void:
 	ctx.begin_case("确定性 · 同图同结果（03 §6：无随机、无真实时间）")
 	var spec: Array[Dictionary] = [
 		{"id": "core", "kind": NodeData.Kind.CORE},
-		{"id": "split", "function": NodeData.Function.SPLIT},
-		{"id": "amp", "function": NodeData.Function.AMPLIFY},
-		{"id": "needle_a", "kind": NodeData.Kind.WEAPON},
-		{"id": "needle_b", "kind": NodeData.Kind.WEAPON},
+		{"id": "split", "function": NodeData.Function.BULLET_COUNT},
+		{"id": "amp", "function": NodeData.Function.ENCHANT},
+		{"id": "needle_a", "kind": NodeData.Kind.ABILITY},
+		{"id": "needle_b", "kind": NodeData.Kind.ABILITY},
 	]
 	var forward: Array[Dictionary] = [
 		{"from": "core", "to": "split"},
@@ -402,13 +411,13 @@ func _run_readonly_checks(ctx: RefCounted) -> void:
 	ctx.equal(runtime.pulses().size(), 1, "清空拿到的数组不得影响仿真（交出的必须是副本）")
 
 
-## 仓库清单里三个 FUNCTION 槽位各带一种行为。没有这一列，玩家拖出来的「延迟」重进场景就退化成直通。
+## 仓库清单里三个功能卡槽位各带一种行为。没有这一列，玩家拖出来的「冷却」重进场景就退化成直通。
 func _run_warehouse_checks(ctx: RefCounted) -> void:
-	ctx.begin_case("仓库清单 · FUNCTION 三件各带行为（2/4 新增列）")
+	ctx.begin_case("仓库清单 · 功能卡三件各带行为（2/4 新增列）")
 	var expected := {
-		"分流": NodeData.Function.SPLIT,
-		"增幅": NodeData.Function.AMPLIFY,
-		"延迟": NodeData.Function.DELAY,
+		"子弹数量": NodeData.Function.BULLET_COUNT,
+		"附魔": NodeData.Function.ENCHANT,
+		"冷却": NodeData.Function.COOLDOWN,
 	}
 	var list: Array[Dictionary] = BlueprintWorkspace.WAREHOUSE
 	var carriers: int = 0
@@ -439,10 +448,10 @@ func _run_persistence_checks(ctx: RefCounted) -> void:
 	ctx.begin_case("落盘往返 · function_kind 存活（09 §3.2）")
 	var blueprint: BlueprintData = BlueprintData.new()
 	_node(blueprint, "core", NodeData.Kind.CORE)
-	_node(blueprint, "split", NodeData.Kind.FUNCTION, NodeData.Function.SPLIT)
-	_node(blueprint, "amp", NodeData.Kind.FUNCTION, NodeData.Function.AMPLIFY)
-	_node(blueprint, "delay", NodeData.Kind.FUNCTION, NodeData.Function.DELAY)
-	_node(blueprint, "needle", NodeData.Kind.WEAPON)
+	_node(blueprint, "split", NodeData.Kind.FUNCTION, NodeData.Function.BULLET_COUNT)
+	_node(blueprint, "amp", NodeData.Kind.FUNCTION, NodeData.Function.ENCHANT)
+	_node(blueprint, "delay", NodeData.Kind.FUNCTION, NodeData.Function.COOLDOWN)
+	_node(blueprint, "needle", NodeData.Kind.ABILITY)
 	_link(blueprint, "core", "split")
 	_link(blueprint, "split", "amp")
 	_link(blueprint, "amp", "delay")
@@ -458,14 +467,14 @@ func _run_persistence_checks(ctx: RefCounted) -> void:
 	var kinds: Dictionary = {}
 	for node: NodeData in loaded.nodes:
 		kinds[String(node.id)] = int(node.function_kind)
-	ctx.equal(int(kinds.get("split", -1)), int(NodeData.Function.SPLIT), "载回后「分流」的行为")
-	ctx.equal(int(kinds.get("amp", -1)), int(NodeData.Function.AMPLIFY), "载回后「增幅」的行为")
-	ctx.equal(int(kinds.get("delay", -1)), int(NodeData.Function.DELAY), "载回后「延迟」的行为")
+	ctx.equal(int(kinds.get("split", -1)), int(NodeData.Function.BULLET_COUNT), "载回后「子弹数量」的行为")
+	ctx.equal(int(kinds.get("amp", -1)), int(NodeData.Function.ENCHANT), "载回后「附魔」的行为")
+	ctx.equal(int(kinds.get("delay", -1)), int(NodeData.Function.COOLDOWN), "载回后「冷却」的行为")
 	ctx.equal(int(kinds.get("core", -1)), int(NodeData.Function.NONE), "载回后 CORE 的行为")
 	# 载回的图要能直接跑起来 —— 存档的价值就在于此。
-	# 路径是 core→split→amp→delay→needle：CORE 节拍 10 + 四条边各 TRAVEL_TICKS + 滞留 DELAY_TICKS。
+	# 路径是 core→split→amp→delay→needle：CORE 节拍 10 + 四条边各 TRAVEL_TICKS + 滞留 COOLDOWN_TICKS。
 	var fire_tick: int = MachineRuntime.CORE_PERIOD_TICKS + 4 * MachineRuntime.TRAVEL_TICKS \
-		+ MachineRuntime.DELAY_TICKS
+		+ MachineRuntime.COOLDOWN_TICKS
 	var runtime: MachineRuntime = _machine(loaded)
 	_tick(runtime, fire_tick)
 	ctx.check(_count_fired("needle") > 0, "载回的图应能直接跑出开火（第 %d 拍）" % fire_tick)
@@ -519,7 +528,7 @@ func _run_assembly_checks(ctx: RefCounted) -> void:
 	var at: Vector2 = first_box.get_center()
 	ctx.check(not String(viewer.call(&"_card_at", at)).is_empty(),
 		"取样的点确实落在一张卡片上（这是下面两条断言有意义的前提）")
-	var payload: Dictionary = {"type": &"node", "kind": NodeData.Kind.WEAPON, "name": "针"}
+	var payload: Dictionary = {"type": &"node", "kind": NodeData.Kind.ABILITY, "name": "冰"}
 	ctx.equal(canvas.call(&"_can_drop_data", at, payload), true, "画布应接受拖入的节点")
 	ctx.equal(viewer.call(&"_can_drop_data", at, payload), false, "只读视图不得接受拖入的节点")
 	ctx.equal(viewer.call(&"_get_drag_data", at), null, "只读视图不得拖出节点")
@@ -528,7 +537,7 @@ func _run_assembly_checks(ctx: RefCounted) -> void:
 
 
 ## 串联的机器骨架：core 打头，spec 里的节点依次接上，最后接 needle。
-## 要分叉 / 环路 / 悬空边的用例请用 _graph（这里一定会补一根针，也会补一条链）。
+## 要分叉 / 环路 / 悬空边的用例请用 _graph（这里一定会补一张冰，也会补一条链）。
 func _chain(spec: Array[Dictionary]) -> BlueprintData:
 	var nodes: Array[Dictionary] = [{"id": "core", "kind": NodeData.Kind.CORE}]
 	var links: Array[Dictionary] = []
@@ -538,7 +547,7 @@ func _chain(spec: Array[Dictionary]) -> BlueprintData:
 		nodes.append(item)
 		links.append({"from": previous, "to": id})
 		previous = id
-	nodes.append({"id": "needle", "kind": NodeData.Kind.WEAPON})
+	nodes.append({"id": "needle", "kind": NodeData.Kind.ABILITY})
 	links.append({"from": previous, "to": "needle"})
 	return _graph(nodes, links)
 
@@ -582,12 +591,12 @@ func _machine(blueprint: BlueprintData) -> MachineRuntime:
 	_activations.clear()
 	_fired.clear()
 	_fire_ticks.clear()
-	_heat_log.clear()
+	_mana_log.clear()
 	var runtime := MachineRuntime.new(blueprint)
 	_watched = runtime
 	runtime.node_activated.connect(_on_activated)
-	runtime.weapon_fired.connect(_on_fired)
-	runtime.heat_changed.connect(_on_heat)
+	runtime.ability_cast.connect(_on_fired)
+	runtime.mana_changed.connect(_on_mana)
 	return runtime
 
 
@@ -595,13 +604,13 @@ func _on_activated(node_id: StringName) -> void:
 	_activations.append(node_id)
 
 
-func _on_fired(weapon_id: StringName) -> void:
-	_fired.append(weapon_id)
+func _on_fired(ability_id: StringName) -> void:
+	_fired.append(ability_id)
 	_fire_ticks.append(_watched.tick_index())
 
 
-func _on_heat(heat: float) -> void:
-	_heat_log.append(heat)
+func _on_mana(mana: float) -> void:
+	_mana_log.append(mana)
 
 
 func _tick(runtime: MachineRuntime, times: int) -> void:
@@ -609,7 +618,7 @@ func _tick(runtime: MachineRuntime, times: int) -> void:
 		runtime.tick()
 
 
-## 逐拍把在途脉冲与 Heat 记成一串文本，供两张图逐字比较（03 §6 的确定性）。
+## 逐拍把在途脉冲与魔力记成一串文本，供两张图逐字比较（03 §6 的确定性）。
 func _trace(runtime: MachineRuntime, ticks: int) -> String:
 	var lines: PackedStringArray = []
 	for index: int in ticks:
@@ -618,7 +627,7 @@ func _trace(runtime: MachineRuntime, ticks: int) -> String:
 		for pulse: SignalPulse in runtime.pulses():
 			parts.append("%s>%s:%d:%.3f" % [pulse.from_node_id, pulse.to_node_id,
 				pulse.ticks_left, pulse.value])
-		lines.append("%d[%s]h=%.3f" % [runtime.tick_index(), ",".join(parts), runtime.heat()])
+		lines.append("%d[%s]m=%.3f" % [runtime.tick_index(), ",".join(parts), runtime.mana()])
 	return "\n".join(lines)
 
 

@@ -72,19 +72,21 @@ const EXPECTED_TIGHT_NARROW: Array[Rect2] = [
 
 ## 06 §8.1（v0.1.10，Codex 裁定）的 5 个只读读数块，按带内从左到右的顺序。
 ## 这条带**不是**动作栏，里面只许有这些只读读数。
-const READOUT_CAPTIONS: PackedStringArray = ["波次", "CORE", "热量", "能量", "队列"]
+const READOUT_CAPTIONS: PackedStringArray = ["波次", "CORE", "魔力", "能力位", "队列"]
 ## 06 §8.1 表里的占位值。CORE 用可比较读数，不用自然语言状态词。
-const READOUT_VALUES: PackedStringArray = ["1/1", "100%", "0%", "0%", "0项"]
-## 06 §8.1 硬规则 1：热量与能量必须**分格**（Heat 归橙 / Energy 归蓝，语义不同，
-## 合并后告警读不出是哪个系统）。这里按节点名钉住它们各自独立。
-const SPLIT_READOUTS: PackedStringArray = ["Heat", "Energy"]
+## PET-82 换语义之后的两个默认值：魔力起手是满的（100%），能力位是「已装 0 / 共 3」。
+const READOUT_VALUES: PackedStringArray = ["1/1", "100%", "100%", "0/3", "0项"]
+## 06 §8.1 硬规则 1：魔力与能力位必须**分格**（语义不同，合并后读不出是哪个系统）。
+## 这里按节点名钉住它们各自独立。
+const SPLIT_READOUTS: PackedStringArray = ["Mana", "AbilitySlots"]
 
 ## 13 §5 的 HUD 分层，落在 §8.1 冻结的这五格上：
-## 一级 = §5 点名的 `WAVE` · `CORE / HP` · `HEAT`（本带里就是 波次 / CORE / 热量）；
+## 一级 = §5 点名的 `WAVE` · `CORE / HP` · `HEAT`（PET-82 把 HEAT 那格换成了 `魔力`，
+## 层级与格数一动不动，故本带里就是 波次 / CORE / 魔力）；
 ## 二级 = 剩下两格。§5 的二级 `GOLD` / `NEXT` **不在** §8.1 的五格里，故不在此表 ——
 ## 它们要不要进来属 §8.1 的格数问题，已按任务卡要求上报 DSH，不自行改规范。
-const PRIMARY_READOUTS: PackedStringArray = ["Wave", "Core", "Heat"]
-const SECONDARY_READOUTS: PackedStringArray = ["Energy", "Queue"]
+const PRIMARY_READOUTS: PackedStringArray = ["Wave", "Core", "Mana"]
+const SECONDARY_READOUTS: PackedStringArray = ["AbilitySlots", "Queue"]
 ## 06 §1 的正文字号。二级读数就是它，一级读数必须**严格大于**它 ——
 ## 只断言「两者不同」的话，五格一起调小也会绿。
 const BODY_FONT_SIZE: int = 16
@@ -324,7 +326,7 @@ func _check_status_bar_read_only(ctx: RefCounted, scene: Node, bar: Control) -> 
 	ctx.check(edge.get_index() > fill.get_index(), "上沿应排在底色之后（否则会被底色盖掉）")
 
 
-## 06 §8.1（v0.1.10，Codex 裁定）：读数区恰好 5 个只读读数块，热量与能量各自独立成块，
+## 06 §8.1（v0.1.10，Codex 裁定）：读数区恰好 5 个只读读数块，魔力与能力位各自独立成块，
 ## CORE 用百分比读数。这里量的是装配出来的节点结构与文案；
 ## 「这 5 格真的被画到屏幕上」归 tests/unit/combat_probe.gd 的像素取证（09 §4）。
 func _check_readout_blocks(ctx: RefCounted, scene: Node) -> void:
@@ -340,16 +342,22 @@ func _check_readout_blocks(ctx: RefCounted, scene: Node) -> void:
 	for index: int in READOUT_CAPTIONS.size():
 		_check_one_readout(ctx, blocks[index], index)
 
-	# 硬规则 1：热量与能量**必须分格**，不得再合并成一格 `0% / 0%`。
-	var heat: Node = _find(row, SPLIT_READOUTS[0])
-	var energy: Node = _find(row, SPLIT_READOUTS[1])
-	if ctx.check(heat != null and energy != null, "热量与能量应各自有独立的读数块"):
-		ctx.check(heat != energy, "热量与能量必须是两个不同的节点，不得是同一格的两种说法")
-		ctx.equal(heat.get_index() + 1, energy.get_index(), "热量与能量应是相邻的两块")
-		for block: Node in [heat, energy]:
-			var value: Label = _find(block, "Value") as Label
-			ctx.check(value != null and not value.text.contains("/"),
-				"%s 的读数不得写成合并形式（读数里不得出现 `/`）" % block.name)
+	# 硬规则 1：魔力与能力位**必须分格**，不得合并成一格。
+	var mana: Node = _find(row, SPLIT_READOUTS[0])
+	var slots: Node = _find(row, SPLIT_READOUTS[1])
+	if ctx.check(mana != null and slots != null, "魔力与能力位应各自有独立的读数块"):
+		ctx.check(mana != slots, "魔力与能力位必须是两个不同的节点，不得是同一格的两种说法")
+		ctx.equal(mana.get_index() + 1, slots.get_index(), "魔力与能力位应是相邻的两块")
+		# 「不得写成合并形式」这条**只对魔力格**成立 —— 魔力是纯百分比，出现 `/` 就是两格又合了。
+		# 能力位格是**有意**写成 `已装 / 总数` 的（PET-82 把原来那个恒为 0% 的死格子接到一个
+		# 真实存在的量上），拿同一条代理去卡它会把「合并」和「分数读数」当成同一件事。
+		# 「两格没有合在一起」由上面两条（不同节点 + 相邻）直接钉住，不靠这个代理。
+		var mana_value: Label = _find(mana, "Value") as Label
+		ctx.check(mana_value != null and not mana_value.text.contains("/"),
+			"魔力格的读数应是纯百分比，不得出现 `/`（出现即两格又合了）")
+		var slots_value: Label = _find(slots, "Value") as Label
+		ctx.check(slots_value != null and slots_value.text.contains("/"),
+			"能力位格应是「已装 / 总数」的读法（实际：%s）" % (slots_value.text if slots_value else ""))
 
 	# 硬规则 2：CORE 用可比较的百分比读数，不用 `完好` 这类自然语言状态词。
 	var core: Node = _find(row, "Core")
@@ -419,7 +427,7 @@ func _value_font_size(block: Node) -> int:
 	return int(override_size) if override_size != null else BODY_FONT_SIZE
 
 
-## 过热提示（PET-66 遗留项）：本卡评估后落地的形式是**只给 `热量` 那一格换色**，
+## 过载提示（PET-66 遗留项，PET-82 随 Heat→Mana 改名）：形式是**只给 `魔力` 那一格换色**，
 ## 因为 06 §8.1 把这条带冻结成 5 个只读读数块 —— 加格子 / 加控件 / 改几何都属于
 ## 「改动 §8.1 的结构」，按任务卡要求不得自行进行。于是这里钉两件事：
 ##   ① 取色映射本身（常态 / 过热各取到 Palette 里的哪一个 Token，且两者不同）；
@@ -431,26 +439,26 @@ func _check_overheat_cue(ctx: RefCounted) -> void:
 	if not ctx.check(screen != null, "combat_screen.gd 应能加载"):
 		return
 
-	var normal: Color = screen.heat_readout_color(false)
-	var overheated: Color = screen.heat_readout_color(true)
+	var normal: Color = screen.mana_readout_color(false)
+	var overheated: Color = screen.mana_readout_color(true)
 	ctx.equal(normal, Palette.get_color(Palette.Key.ORANGE_500),
-		"常态的 `热量` 读数色（04 §3.8：Heat 条 / 高温）")
+		"常态的 `魔力` 读数色（04 §3.8：Heat 条 / 高温）")
 	ctx.equal(overheated, Palette.get_color(Palette.Key.ORANGE_300),
-		"过热中的 `热量` 读数色（04 §3.8：过热高光）")
+		"过载中的 `魔力` 读数色（04 §3.8：过热高光）")
 	ctx.check(normal != overheated, "两种状态必须取到不同的颜色，否则这个提示并不存在")
 
 	var code: String = _strip_comments(FileAccess.get_file_as_string(SCREEN_SCRIPT_PATH))
-	for signal_name: String in ["overheat_started", "overheat_ended"]:
+	for signal_name: String in ["overload_started", "overload_ended"]:
 		ctx.check(code.contains(signal_name),
 			"应接上 MachineRuntime.%s（否则换色永不发生）" % signal_name)
-	ctx.check(not code.contains("is_overheated("),
+	ctx.check(not code.contains("is_overloaded("),
 		"不得自己判定过热（06 §8.1 / 03 §2：阈值与停火都在 MachineRuntime）")
 
 
 ## PET-76 的可读反馈：三把武器开火时的反馈**形态**必须两两不同，且整条链路的接点在代码里真实存在。
 ##
 ## 为什么钉形态而不是钉颜色：04 §3.10 只给了**一套** FX 三层色（描边 NAVY_900 / 体 BLUE_FX_600 /
-## 芯 BLUE_050）。拿色相去分针 / 炸弹 / 锯，等于在冻结的语义色之外另立第二套色语言 ——
+## 芯 BLUE_050）。拿色相去分冰 / 火 / 雷，等于在冻结的语义色之外另立第二套色语言 ——
 ## 于是区分只能落在**形状**上，而形状恰好是静止一帧里就读得出来的东西。
 ##
 ## 本用例只量纯函数与代码接点；「画到屏幕上时到底是什么颜色、真的看得见吗」归像素取证
@@ -462,8 +470,8 @@ func _check_readable_feedback(ctx: RefCounted) -> void:
 			"blueprint_workspace.gd 应能编译"):
 		return
 
-	var kinds: Array[int] = [NodeData.WeaponKind.NEEDLE, NodeData.WeaponKind.BOMB,
-		NodeData.WeaponKind.SAW]
+	var kinds: Array[int] = [NodeData.Ability.ICE, NodeData.Ability.FIRE,
+		NodeData.Ability.THUNDER]
 	var ratios: Array[float] = []
 	for kind: int in kinds:
 		var cue: Vector2 = workspace.fire_cue_size(kind)
@@ -480,16 +488,16 @@ func _check_readable_feedback(ctx: RefCounted) -> void:
 					% [kinds[i], kinds[j], ratios[i], ratios[j]])
 	# 认不出的武器种类要退到**一种确定的**形态，而不是给出一个零尺寸的空框
 	# （零矩形在画面上等于「这把武器开火了，但什么都没发生」）。
-	var fallback: Vector2 = workspace.fire_cue_size(NodeData.WeaponKind.NONE)
+	var fallback: Vector2 = workspace.fire_cue_size(NodeData.Ability.NONE)
 	ctx.check(fallback.x > 0.0 and fallback.y > 0.0,
 		"没有武器种类（NONE）时也应给出一种可画的形态（实际 %s）" % fallback)
 
 	# 「哪把武器发动 → 打到谁」这条链路上的四个接点。缺任何一个，画面上都会安静地少一样东西：
-	#   没有 weapon_fired → 不知道是哪把武器发动；
+	#   没有 ability_cast → 不知道是哪把武器发动；
 	#   没有 card_rect     → 弹道没有起点（起点只能是那张卡，不能是 (0,0)）；
 	#   没有 draw_line     → 弹道不存在；没有 draw_rect → 命中闪光不存在。
 	var code: String = _strip_comments(FileAccess.get_file_as_string(SCREEN_SCRIPT_PATH))
-	for token: String in ["weapon_fired", "card_rect", "draw_line", "draw_rect"]:
+	for token: String in ["ability_cast", "card_rect", "draw_line", "draw_rect"]:
 		ctx.check(code.contains(token), "combat_screen.gd 的代码中应出现 `%s`（PET-76 链路接点）" % token)
 
 

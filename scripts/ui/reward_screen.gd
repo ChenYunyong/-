@@ -4,7 +4,7 @@
 ##       本批（FIRST PLAYABLE 4/4）给三个选项接上**真实数据**：一张固定的三选项池（见 default_options）。
 ## 所属系统：ui
 ## 依赖：GameFlow、RunState、RewardLayout、RewardCard、RewardOption、MessagePanel、Palette、
-##       InputScreen、MachineRuntime、WeaponData、BlueprintWorkspace
+##       InputScreen、MachineRuntime、AbilityData、BlueprintWorkspace
 ## 禁止：本文件不得调用 change_scene_to_file() —— 场景路由只能由 GameFlow 落地（03 §1.1 R3）；
 ##       不得写任何字面色值（06 §10.7）；
 ##       不得判断任何原始输入事件类型（InputEventMouseButton 等）—— 输入一律经 InputScreen
@@ -30,11 +30,11 @@ const NOTICE_DISMISS: String = "点击任意处关闭"
 const NOTICE_PREPARATION: String = "整备场景（PREPARATION）的路由未就绪，本次留在奖励界面。"
 
 ## 三个奖励选项各自对应的仓库槽位：**下标即 RewardOption.Kind**，值是 BlueprintWorkspace.WAREHOUSE
-## 的行号（CORE→0 核心 / FUNCTION→2 增幅 / WEAPON→5 炸弹）。
+## 的行号（核心卡→0 / 功能卡→2 附魔 / 能力卡→5 火）。
 ##
 ## 类型只从这一处来，且**只按选项的 Kind 查**：不看卡面文案、不看显示名
-## （PET-70 刚删掉「拿显示名反查 weapon_kind」那条路，这里不得从后门接回来 —— 「炸弹」一旦落成针，
-## 卡面、画布、结算就是三份互不相干的说法）。
+## （PET-70 刚删掉「拿显示名反查 weapon_kind」那条路，这里不得从后门接回来 —— 卡面写着「火」
+## 却落成冰的话，卡面、法术书、结算就是三份互不相干的说法）。
 ##
 ## 按 Kind 而不是按「第几张卡」：Kind 说的是「这是什么」，卡位说的是「摆在哪」——
 ## 摆错位置仍该落对东西。这条也不是洁癖：按卡位实现时，卡片数与槽位数一旦不同源，
@@ -81,19 +81,19 @@ func _ready() -> void:
 ## 那三样连同「选中之后真的把东西给到玩家手里」都属 Stage 4 的 S4-07。
 ## 本批只把选项**显示**出来，并把玩家选中的那一项经 get_chosen_option() 交出去。
 ##
-## 三项都是玩家在整备界面**真能拖出来**的东西：名字逐字取 06 §4 的仓库槽位名（核心 / 增幅 / 炸弹），
-## 数值则从它们的定义处现取，不在这里抄第二份。卡片上的「伤害 25」与结算里真正生效的那个 25
-## 一旦漂开，玩家会照着卡面做决定 —— 而这种错在画面上完全看不出来。
+## 三项都是玩家在整备界面**真能拖出来**的东西：名字逐字取 06 §4 的仓库槽位名（核心卡 / 附魔 / 火），
+## 类型行取法术书三栏的栏名，数值则从它们的定义处现取，不在这里抄第二份。卡片上的「伤害 25」
+## 与结算里真正生效的那个 25 一旦漂开，玩家会照着卡面做决定 —— 而这种错在画面上完全看不出来。
 static func default_options() -> Array[RewardOption]:
 	var period_seconds: float = float(MachineRuntime.CORE_PERIOD_TICKS) / float(MachineRuntime.TICK_RATE)
-	var bomb: WeaponData = WeaponData.for_kind(WeaponData.Kind.BOMB)
+	var fire: AbilityData = AbilityData.for_kind(AbilityData.Kind.FIRE)
 	return [
-		RewardOption.new(RewardOption.Kind.CORE, slot_name(0), "CORE",
-			"每 %.1f 秒一次脉冲" % period_seconds, "自己就是信号源，不需要上游连线"),
-		RewardOption.new(RewardOption.Kind.FUNCTION, slot_name(2), "FUNCTION",
-			"脉冲 ×%d" % roundi(MachineRuntime.AMPLIFY_FACTOR), "进一枚，出去一枚更强的"),
-		RewardOption.new(RewardOption.Kind.WEAPON, slot_name(5), "WEAPON",
-			"伤害 %d" % roundi(bomb.damage), "打全场，不分先后"),
+		RewardOption.new(RewardOption.Kind.CORE, slot_name(0), "核心卡",
+			"每 %.1f 秒一次魔力" % period_seconds, "自己就是核心卡，不需要上游连线"),
+		RewardOption.new(RewardOption.Kind.FUNCTION, slot_name(2), "功能卡",
+			"魔力 ×%d" % roundi(MachineRuntime.ENCHANT_FACTOR), "进一枚，出去一枚更强的"),
+		RewardOption.new(RewardOption.Kind.ABILITY, slot_name(5), "能力卡",
+			"伤害 %d" % roundi(fire.damage), "打全场，不分先后"),
 	]
 
 

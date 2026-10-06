@@ -61,19 +61,26 @@ const MARKER_INSET: float = 4.0
 ## 火花（信号）的边长。04 §3.10 要求 FX 三层（芯 / 体 / 描边），各占 1px 时最小就是 6×6。
 const SPARK: float = 12.0
 
-## 三把武器的**开火形态**（PET-76 可读性）。给的是 FX 三层的**外框**尺寸，逐层内缩 1px。
-##   针   → 3×8  细长的一条（外框内缩后只剩 1×6 的体）
-##   炸弹 → 7×7  方块状的一团
-##   锯   → 11×4 横扁的一条
-## 三者的**长宽比**两两不同（0.4 / 1.0 / 2.8），于是静止的一帧里也读得出是哪把武器开的火。
+## 法术书分栏字的字号（PET-82）。取 06 §1 的正文字号下限 —— 它是**次要**信息，
+## 比槽位名（16）小一档，故不会与 7 个槽位名抢读。
+const GROUP_FONT_SIZE: int = 8
+
+## 三种能力卡的**施放形态**（PET-76 可读性）。给的是 FX 三层的**外框**尺寸，逐层内缩 1px。
+##   冰 → 3×8  细长的一条（外框内缩后只剩 1×6 的体）—— 扎出去的一根冰棱
+##   火 → 7×7  方块状的一团 —— 炸开的一片
+##   雷 → 11×4 横扁的一条 —— 横扫的一道弧
+## 三者的**长宽比**两两不同（0.4 / 1.0 / 2.8），于是静止的一帧里也读得出是哪张能力卡放的。
 ## 颜色不承担这件事：04 §3.10 只给了**一套** FX 三层色（描边 NAVY_900 / 体 BLUE_FX_600 /
-## 芯 BLUE_050），拿色相去分三把武器会变成第二套色语言，而 04 §3 的语义色是冻结的。
-const CUE_NEEDLE: Vector2 = Vector2(6.0, 16.0)
-const CUE_BOMB: Vector2 = Vector2(14.0, 14.0)
-const CUE_SAW: Vector2 = Vector2(22.0, 8.0)
+## 芯 BLUE_050），拿色相去分三种能力卡会变成第二套色语言，而 04 §3 的语义色是冻结的。
+##
+## **PET-82 只换名字，三个数字一个没动** —— 形态与「哪一档 slot」绑死，
+## 换了形状就得重新对着 640×360 上的一帧调可读性，那是独立的一件事。
+const CUE_ICE: Vector2 = Vector2(6.0, 16.0)
+const CUE_FIRE: Vector2 = Vector2(14.0, 14.0)
+const CUE_THUNDER: Vector2 = Vector2(22.0, 8.0)
 
 ## 开火反馈从卡片上缘升起的高度（像素）。**刻意远小于一条穿过战场的弹道**：
-## 「打到谁」由 combat_screen 画的弹道线负责（PET-76），这里只回答「哪把武器发动了」，
+## 「打到谁」由 combat_screen 画的弹道线负责（PET-76），这里只回答「哪张能力卡发动了」，
 ## 于是反馈贴在卡片上缘那一小段里，不会与弹道混成一片。
 const CUE_RISE: float = 16.0
 
@@ -103,31 +110,46 @@ const PAYLOAD_CONNECT: StringName = &"connect"
 const PORT_OUT: StringName = &"out"
 const PORT_IN: StringName = &"in"
 
-## 仓库清单：1×CORE / 3×FUNCTION / 3×WEAPON（本卡范围）。顺序即槽位顺序。
+## 仓库清单：1 张核心卡 / 3 张功能卡 / 3 张能力卡（本卡范围）。**顺序即槽位顺序，不得重排** ——
+## 下标是 reward_screen.OPTION_SLOTS 的取值，也是落节点时取哪一行的唯一依据。
 ##
-## function_kind 是 2/4 卡才加的一列：三个 FUNCTION 槽位在**卡片上长得一模一样**
+## PET-82（MAGIC-01）把「电路元件」换成「法术书」：这一表就是法术书的三栏，
+## 三栏的分组见 SPELLBOOK_GROUPS。分组只是**画在槽位上方的一行字**，不改这一表的顺序，
+## 也不改任何一行的字段 —— 玩家看到的说法变了，落进蓝图的那几个整数一个没变。
+##
+## function_kind 是功能卡那一栏的列：三个修饰槽位在**卡片上长得一模一样**
 ## （06 §4 的类型标识只按 Kind 分三色，不分小类），分别全靠这一列 ——
-## 拖出去的节点带的是哪种行为，就是从这里传下去的。CORE / WEAPON 没有可选项，一律 NONE。
+## 拖出去的节点带的是哪种修饰，就是从这里传下去的。核心卡 / 能力卡没有可选项，一律 NONE。
 ##
-## weapon_kind 同理是武器槽位的那一列：三张武器槽在卡片上也长得一模一样，
-## 「拖出去的是针还是锯」只由这一列决定。**这是它的唯一来源** —— 从前是拿中文显示名
-## 反查武器，那样一见 I18N 就整表落空（WeaponData.BY_DISPLAY_NAME 已删）。
-## 非武器槽位一律 NONE：给它们也写上武器种类，会让「这是不是武器」有两个互相矛盾的答案。
+## weapon_kind 同理是能力卡那一栏的列：三张能力卡槽在卡片上也长得一模一样，
+## 「拖出去的是冰还是雷」只由这一列决定。**这是它的唯一来源** —— 从前是拿中文显示名
+## 反查能力卡，那样一见 I18N 就整表落空（AbilityData.BY_DISPLAY_NAME 已删）。
+## 非能力卡槽位一律 NONE：给它们也写上能力卡种类，会让「这是不是能力卡」有两个互相矛盾的答案。
 const WAREHOUSE: Array[Dictionary] = [
-	{"kind": NodeData.Kind.CORE, "name": "核心",
-		"function_kind": NodeData.Function.NONE, "weapon_kind": NodeData.WeaponKind.NONE},
-	{"kind": NodeData.Kind.FUNCTION, "name": "分流",
-		"function_kind": NodeData.Function.SPLIT, "weapon_kind": NodeData.WeaponKind.NONE},
-	{"kind": NodeData.Kind.FUNCTION, "name": "增幅",
-		"function_kind": NodeData.Function.AMPLIFY, "weapon_kind": NodeData.WeaponKind.NONE},
-	{"kind": NodeData.Kind.FUNCTION, "name": "延迟",
-		"function_kind": NodeData.Function.DELAY, "weapon_kind": NodeData.WeaponKind.NONE},
-	{"kind": NodeData.Kind.WEAPON, "name": "针",
-		"function_kind": NodeData.Function.NONE, "weapon_kind": NodeData.WeaponKind.NEEDLE},
-	{"kind": NodeData.Kind.WEAPON, "name": "炸弹",
-		"function_kind": NodeData.Function.NONE, "weapon_kind": NodeData.WeaponKind.BOMB},
-	{"kind": NodeData.Kind.WEAPON, "name": "锯",
-		"function_kind": NodeData.Function.NONE, "weapon_kind": NodeData.WeaponKind.SAW},
+	{"kind": NodeData.Kind.CORE, "name": "核心卡",
+		"function_kind": NodeData.Function.NONE, "weapon_kind": NodeData.Ability.NONE},
+	{"kind": NodeData.Kind.FUNCTION, "name": "子弹数量",
+		"function_kind": NodeData.Function.BULLET_COUNT, "weapon_kind": NodeData.Ability.NONE},
+	{"kind": NodeData.Kind.FUNCTION, "name": "附魔",
+		"function_kind": NodeData.Function.ENCHANT, "weapon_kind": NodeData.Ability.NONE},
+	{"kind": NodeData.Kind.FUNCTION, "name": "冷却",
+		"function_kind": NodeData.Function.COOLDOWN, "weapon_kind": NodeData.Ability.NONE},
+	{"kind": NodeData.Kind.ABILITY, "name": "冰",
+		"function_kind": NodeData.Function.NONE, "weapon_kind": NodeData.Ability.ICE},
+	{"kind": NodeData.Kind.ABILITY, "name": "火",
+		"function_kind": NodeData.Function.NONE, "weapon_kind": NodeData.Ability.FIRE},
+	{"kind": NodeData.Kind.ABILITY, "name": "雷",
+		"function_kind": NodeData.Function.NONE, "weapon_kind": NodeData.Ability.THUNDER},
+]
+
+## 法术书的三栏：起始槽位 / 槽位数 / 栏目名（06 §11：名字即 tr() 的 key）。
+## 只用于**画那一行栏目字**，不参与任何落地逻辑 —— 槽位顺序与类型仍然只由 WAREHOUSE 决定。
+## 之所以单列一张表而不是在 _draw_warehouse 里写死三个矩形：栏界一改就要同时改画字与分组，
+## 分成两处迟早会漂开，而症状只是「栏目名压在了错误的槽位上」，没人会去查。
+const SPELLBOOK_GROUPS: Array[Dictionary] = [
+	{"from": 0, "count": 1, "name": "核心卡"},
+	{"from": 1, "count": 3, "name": "功能卡"},
+	{"from": 4, "count": 3, "name": "能力卡"},
 ]
 
 @export var area: Area = Area.CANVAS
@@ -276,9 +298,36 @@ func _draw_warehouse() -> void:
 		_draw_card(rect, int(entry["kind"]))
 		if font != null:
 			# 名称不画在卡片上（06 §4：24px 放不下可读中文，名称归 Tooltip 与右侧详情面板）。
-			# 仓库槽位底下这一行是本卡唯一的名称落点，用 §1 的正文字号下限 8px。
+			# 仓库槽位底下这一行是本卡唯一的名称落点，字号见 warehouse_label_size()。
+			var label: String = warehouse_label(entry)
 			draw_string(font, Vector2(rect.position.x, rect.end.y + LABEL_FONT_SIZE),
-				warehouse_label(entry), HORIZONTAL_ALIGNMENT_CENTER, CARD, LABEL_FONT_SIZE, text_color)
+				label, HORIZONTAL_ALIGNMENT_CENTER, CARD, warehouse_label_size(font, label), text_color)
+	if font != null:
+		_draw_group_captions(font, shown)
+
+
+## 法术书三栏的分栏字（PET-82）：核心卡 / 功能卡 / 能力卡，各自居中画在自己那一组槽位**上方**。
+##
+## 为什么值得画这一行：从前的底条是 7 个并排、长得一模一样的元件，玩家要读完 7 个名字才知道
+## 「哪些是核心卡、哪些是能力卡」；分成三栏之后，**扫一眼就知道这本书有哪三类东西**。
+## 这正是本卡要的「一眼比电路图更易读」，而它不需要任何新美术资源。
+##
+## 字号取 8（06 §1 的正文字号下限），落笔在槽位上缘往上 2px ——
+## 那正是 _slot_rect 把整块竖直居中后空出来的上方余量，故**不改任何槽位几何**：
+## 分栏只是多画一行字，槽位位置、命中区、拖放行为一个字节都没变。
+func _draw_group_captions(font: Font, shown: int) -> void:
+	var color: Color = Palette.get_color(Palette.Key.GREY_300)
+	for group: Dictionary in SPELLBOOK_GROUPS:
+		var first: int = int(group["from"])
+		var last: int = mini(first + int(group["count"]) - 1, shown - 1)
+		# 整组都没显示出来（窄屏裁掉了它）就不画 —— 画出来会是一行悬在空处、无所指的字。
+		if first > last:
+			continue
+		var left: float = _slot_rect(first).position.x
+		var right: float = _slot_rect(last).end.x
+		var baseline: float = _slot_rect(first).position.y - 2.0
+		draw_string(font, Vector2(left, baseline), TranslationServer.translate(String(group["name"])),
+			HORIZONTAL_ALIGNMENT_CENTER, right - left, GROUP_FONT_SIZE, color)
 
 
 ## 仓库槽位底下那行标签的文本（06 §11：文本走 key，key 即中文原文）。
@@ -290,6 +339,23 @@ static func warehouse_label(entry: Dictionary) -> String:
 	return String(TranslationServer.translate(String(entry["name"])))
 
 
+## 槽位标签的字号：名字比 48px 的卡片还宽时按比例缩到放得下，否则就用 LABEL_FONT_SIZE。
+##
+## 为什么需要这条：用户给的八类功能卡里有「子弹数量」这种四个字的，而相邻槽位的中心距只有
+## 56px（卡片 48 + 间隔 8）—— 一个字 16px 的话四个字宽 64px，左右各溢出 8px，正好顶到隔壁槽位，
+## 读出来是一整串「核心卡子弹数量」。缩到 12 时每字 12px、四个字 48px，与卡片同宽。
+##
+## **只在超宽时才缩**：名字本来就放得下的槽位仍然出 LABEL_FONT_SIZE，
+## 故这条对既有槽位的出字是逐像素恒等的（像素取证不会因为加了它而漂）。
+static func warehouse_label_size(font: Font, text: String) -> int:
+	if font == null:
+		return LABEL_FONT_SIZE
+	var width: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_FONT_SIZE).x
+	if width <= CARD:
+		return LABEL_FONT_SIZE
+	return maxi(1, int(floorf(float(LABEL_FONT_SIZE) * CARD / width)))
+
+
 ## 06 §4 的节点卡：底色 NAVY_700、外框 1px BROWN_600、左上 4×4 类型标识、左右各一个端口 ——
 ## 这四件事**全部烘焙在已批准的 24×24 切片里**，故本函数只把切片贴上去，不再逐笔画。
 ## 这也正是 06 §10.7「不得写死像素色」想要的结果：卡片的颜色从此只在切片里有一份。
@@ -297,8 +363,8 @@ func _draw_card(rect: Rect2, kind: int) -> void:
 	draw_texture_rect(_card_texture(kind), rect, false)
 
 
-## 类型 → 切片文件的映射。下标与 NodeData.Kind 同序（CORE / FUNCTION / WEAPON），
-## 越界或认不出的取值落到 FUNCTION 那一张 —— 与 _kind_color() 的兜底方向一致，
+## 类型 → 切片文件的映射。下标与 NodeData.Kind 同序（核心卡 / 功能卡 / 能力卡），
+## 越界或认不出的取值落到功能卡那一张 —— 与 _kind_color() 的兜底方向一致，
 ## 「认不出」在任何一处都不得变成一种新的类型。
 func _card_file(kind: int) -> String:
 	if kind < 0 or kind >= CARD_SLICE_NORMAL.size():
@@ -322,7 +388,7 @@ func _kind_color(kind: int) -> Color:
 	match kind:
 		NodeData.Kind.CORE:
 			return Palette.get_color(Palette.Key.GOLD_400)
-		NodeData.Kind.WEAPON:
+		NodeData.Kind.ABILITY:
 			return Palette.get_color(Palette.Key.ORANGE_500)
 		_:
 			return Palette.get_color(Palette.Key.BLUE_400)
@@ -422,7 +488,7 @@ func _drop_data(at: Vector2, data: Variant) -> void:
 	var payload: Dictionary = data
 	if payload.get("type", &"") == PAYLOAD_NODE:
 		var function_kind: int = int(payload.get("function_kind", NodeData.Function.NONE))
-		var weapon_kind: int = int(payload.get("weapon_kind", NodeData.WeaponKind.NONE))
+		var weapon_kind: int = int(payload.get("weapon_kind", NodeData.Ability.NONE))
 		_add_node(int(payload["kind"]), String(payload["name"]), at, function_kind, weapon_kind)
 		return
 	if not _connect(StringName(payload.get("from", &"")), _card_at(at)):
@@ -432,10 +498,10 @@ func _drop_data(at: Vector2, data: Variant) -> void:
 
 ## 落一个节点。function_kind / weapon_kind 都有缺省值：不带这两项信息的调用方
 ## （旧测试、将来的程序化建图）拿到的是「直通」与 NONE，不会因为少传一个参数就落出一个
-## 行为随机 / 武器种类随机的节点 —— NONE 由 WeaponData.resolve() 按 02 §9 降级成 Needle。
+## 行为随机 / 武器种类随机的节点 —— NONE 由 AbilityData.resolve() 按 02 §9 降级成 Needle。
 func _add_node(kind: int, display_name: String, at: Vector2,
 		function_kind: int = NodeData.Function.NONE,
-		weapon_kind: int = NodeData.WeaponKind.NONE) -> void:
+		weapon_kind: int = NodeData.Ability.NONE) -> void:
 	_push_history()
 	var node := NodeData.new()
 	node.id = _next_id(kind)
@@ -873,47 +939,47 @@ func _draw_effects() -> void:
 			draw_rect(box, Palette.get_color(Palette.Key.BLUE_050), false, 2.0)
 		var age: int = runtime.shot_age(node_id)
 		if age >= 0:
-			_draw_shot_cue(box, _weapon_kind_of(node_id), age)
+			_draw_shot_cue(box, _ability_kind_of(node_id), age)
 
 
-## 某个节点的武器种类。非武器 / 认不出的取值一律 WeaponKind.NONE ——
-## 调用方据此落到 NEEDLE 那一档，与 WeaponData.resolve() 的降级方向一致。
-func _weapon_kind_of(node_id: StringName) -> int:
+## 某个节点的能力卡种类。非能力卡 / 认不出的取值一律 Ability.NONE ——
+## 调用方据此落到冰那一档，与 AbilityData.resolve() 的降级方向一致。
+func _ability_kind_of(node_id: StringName) -> int:
 	for node: NodeData in _blueprint.nodes:
 		if node.id == node_id:
 			return node.weapon_kind
-	return NodeData.WeaponKind.NONE
+	return NodeData.Ability.NONE
 
 
-## 开火反馈的外框尺寸：三把武器各一种形态（见 CUE_* 的说明）。**纯函数** ——
-## 「三把真的分得开」这条可以脱离场景树单测，不必为了量一个尺寸去真跑一场战斗。
-func fire_cue_size(weapon_kind: int) -> Vector2:
-	match weapon_kind:
-		NodeData.WeaponKind.BOMB:
-			return CUE_BOMB
-		NodeData.WeaponKind.SAW:
-			return CUE_SAW
+## 施放反馈的外框尺寸：三种能力卡各一种形态（见 CUE_* 的说明）。**纯函数** ——
+## 「三种真的分得开」这条可以脱离场景树单测，不必为了量一个尺寸去真跑一场战斗。
+func fire_cue_size(ability_kind: int) -> Vector2:
+	match ability_kind:
+		NodeData.Ability.FIRE:
+			return CUE_FIRE
+		NodeData.Ability.THUNDER:
+			return CUE_THUNDER
 		_:
-			return CUE_NEEDLE
+			return CUE_ICE
 
 
-## 某把武器开火第 age 拍的反馈外框在卡片坐标系里的位置：**下缘**贴卡片上缘，整块随拍数往上抬，
+## 某道能力卡施放第 age 拍的反馈外框在卡片坐标系里的位置：**下缘**贴卡片上缘，整块随拍数往上抬，
 ## 抬到 CUE_RISE 为止。
 ##
 ## 下缘贴卡片、而不是以卡片上缘为中点：中点对齐时外框有一半压在卡片上，八拍里那半截会盖住
-## 卡片自己的描边与类型色，看起来像卡片在闪 —— 而这条反馈要回答的是「这张卡开火了」，
+## 卡片自己的描边与类型色，看起来像卡片在闪 —— 而这条反馈要回答的是「这张卡施放了」，
 ## 盖住卡片反而把这个答案抹掉。抬高之后外框**始终整块落在卡片上方的空档里**（y < 卡片上缘）。
 ##
-## 横向以卡片中点对齐：三把武器的宽度不同，用左上角对齐会让「哪张卡在开火」在宽窄之间看起来像偏了。
-func shot_cue_rect(box: Rect2, weapon_kind: int, age: int) -> Rect2:
-	var cue: Vector2 = fire_cue_size(weapon_kind)
+## 横向以卡片中点对齐：三种能力卡的宽度不同，用左上角对齐会让「哪张卡在施放」在宽窄之间看起来像偏了。
+func shot_cue_rect(box: Rect2, ability_kind: int, age: int) -> Rect2:
+	var cue: Vector2 = fire_cue_size(ability_kind)
 	var rise: float = CUE_RISE * float(age + 1) / float(MachineRuntime.SHOT_TICKS)
 	var left: float = box.position.x + CARD * 0.5 - cue.x * 0.5
 	return Rect2(Vector2(left, box.position.y - rise - cue.y).floor(), cue)
 
 
-func _draw_shot_cue(box: Rect2, weapon_kind: int, age: int) -> void:
-	_draw_fx(shot_cue_rect(box, weapon_kind, age))
+func _draw_shot_cue(box: Rect2, ability_kind: int, age: int) -> void:
+	_draw_fx(shot_cue_rect(box, ability_kind, age))
 
 
 ## 节点卡片在**本控件坐标系**里的矩形（VIEWER 侧的弹道要从这里出发）。

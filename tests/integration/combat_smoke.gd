@@ -52,15 +52,17 @@ const STATUS_BAR_SHARE: float = 0.25
 
 ## 06 §8.1（v0.1.10，Codex 裁定）的 5 个只读读数块，独立复写一遍
 ## （期望值若与被测实现同源，实现改错时两边一起错）。
-const READOUT_CAPTIONS: PackedStringArray = ["波次", "CORE", "热量", "能量", "队列"]
+const READOUT_CAPTIONS: PackedStringArray = ["波次", "CORE", "魔力", "能力位", "队列"]
 ## `波次` 的期望值是 `1/3`：06 §8.1 的表里写的是 `1/1`，那是一局只有一波时期冻结的**占位值**；
 ## FIRST PLAYABLE 4/4 起一局三波，这一格由 combat_screen.gd 在 _ready() 里按
 ## RunState 的当前波次拼成 `n/N`，故经路由进入后看到的是第 1 波第 1 帧的 `1/3`。
 ## 那个 3 刻意写死在这里而不是问 RunState 要（本文件不引用 Autoload 标识符）——
 ## 它要钉的正是「总数真的是 3」，与 RunState.TOTAL_WAVES 对不上时这条会当场转红。
-const READOUT_VALUES: PackedStringArray = ["1/3", "100%", "0%", "0%", "0项"]
-## 06 §8.1 硬规则 1：热量与能量必须分格，故各自是一个独立节点。
-const SPLIT_READOUTS: PackedStringArray = ["Heat", "Energy"]
+## PET-82：魔力起手是满的（100%）；能力位是「已装 / 总数」，而本用例是**经路由**进场的，
+## 夹具蓝图里已经有三张能力卡，故读到 3/3（空图直接实例化场景时才是 0/3，见 test_combat.gd）。
+const READOUT_VALUES: PackedStringArray = ["1/3", "100%", "100%", "3/3", "0项"]
+## 06 §8.1 硬规则 1：魔力与能力位必须分格，故各自是一个独立节点。
+const SPLIT_READOUTS: PackedStringArray = ["Mana", "AbilitySlots"]
 ## 06 §8.1 硬规则 2：CORE 用百分比读数，不用自然语言状态词。
 const CORE_VALUE: String = "100%"
 
@@ -219,8 +221,8 @@ func _run_status_bar_case() -> void:
 	_ctx.check(fill.get_index() < edge.get_index(), "上沿应画在底色之上，否则会被盖掉")
 
 
-## 06 §8.1（v0.1.10，Codex 裁定）：读数区恰好 5 个只读读数块，`热量` 与 `能量` 各自独立成块
-## （Heat 橙 / Energy 蓝语义不同，合并成一格 `0% / 0%` 时告警读不出是哪个系统），
+## 06 §8.1（v0.1.10，Codex 裁定）：读数区恰好 5 个只读读数块，`魔力` 与 `能力位` 各自独立成块
+## （语义不同，合并成一格时读不出是哪个系统），
 ## CORE 改用可比较的百分比读数，且本批新增**零个**可点击控件。
 ##
 ## 这里量的是经路由进入后真实装配出来的节点；「这 5 格真的被画到屏幕上」归
@@ -250,12 +252,12 @@ func _run_readout_case() -> void:
 		_ctx.equal(caption.text, READOUT_CAPTIONS[index], "第 %d 块的 Caption" % (index + 1))
 		_ctx.equal(value.text, READOUT_VALUES[index], "第 %d 块的读数" % (index + 1))
 
-	# 硬规则 1：热量与能量必须分格 —— 是两个不同的节点、且相邻。
-	var heat: Node = _find(row, SPLIT_READOUTS[0])
-	var energy: Node = _find(row, SPLIT_READOUTS[1])
-	if _ctx.check(heat != null and energy != null, "热量与能量应各自有独立的读数块"):
-		_ctx.check(heat != energy, "热量与能量必须是两个不同的节点，不得是同一格的两种说法")
-		_ctx.equal(heat.get_index() + 1, energy.get_index(), "热量与能量应是相邻的两块")
+	# 硬规则 1：魔力与能力位必须分格 —— 是两个不同的节点、且相邻。
+	var mana: Node = _find(row, SPLIT_READOUTS[0])
+	var slots: Node = _find(row, SPLIT_READOUTS[1])
+	if _ctx.check(mana != null and slots != null, "魔力与能力位应各自有独立的读数块"):
+		_ctx.check(mana != slots, "魔力与能力位必须是两个不同的节点，不得是同一格的两种说法")
+		_ctx.equal(mana.get_index() + 1, slots.get_index(), "魔力与能力位应是相邻的两块")
 
 	# 硬规则 2：CORE 用可比较的百分比读数，不用 `完好` 这类自然语言状态词。
 	var core: Node = _find(row, "Core")
@@ -276,18 +278,18 @@ func _run_readout_case() -> void:
 	_check_semantic_colors(row)
 
 
-## 06 §8.1 硬规则 1 的语义色落点。**只钉语义色本身**，「过热时 `热量` 转亮橙」那条状态变化
-## 属一次真实的过热过程（要几百拍），归 tests/unit/test_combat.gd 的取色映射与像素探针，
-## 本用例不在这里伪造一次过热。
+## 06 §8.1 硬规则 1 的语义色落点。**只钉语义色本身**，「过载时 `魔力` 转亮橙」那条状态变化
+## 属一次真实的过载过程（要几百拍），归 tests/unit/test_combat.gd 的取色映射与像素探针，
+## 本用例不在这里伪造一次过载。PET-82：这一格原叫 `热量`（Heat 橙），换语义后色号不动。
 func _check_semantic_colors(row: Node) -> void:
-	var heat_value: Label = _find(_find(row, SPLIT_READOUTS[0]), "Value") as Label
-	var energy_value: Label = _find(_find(row, SPLIT_READOUTS[1]), "Value") as Label
-	if not _ctx.check(heat_value != null and energy_value != null, "热量与能量的读数格都应存在"):
+	var mana_value: Label = _find(_find(row, SPLIT_READOUTS[0]), "Value") as Label
+	var slots_value: Label = _find(_find(row, SPLIT_READOUTS[1]), "Value") as Label
+	if not _ctx.check(mana_value != null and slots_value != null, "魔力与能力位的读数格都应存在"):
 		return
-	_ctx.equal(heat_value.get_theme_color(&"font_color"), _color("ORANGE_500"),
-		"`热量` 读数常态应取 Heat 橙（04 §3.8）")
-	_ctx.equal(energy_value.get_theme_color(&"font_color"), _color("BLUE_300"),
-		"`能量` 读数应取 Energy 蓝（04 §3.8）")
+	_ctx.equal(mana_value.get_theme_color(&"font_color"), _color("ORANGE_500"),
+		"`魔力` 读数常态应取 Heat 橙（04 §3.8）")
+	_ctx.equal(slots_value.get_theme_color(&"font_color"), _color("BLUE_300"),
+		"`能力位` 读数应取 Energy 蓝（04 §3.8）")
 
 
 ## 03 §1.1 R2：COMBAT 的两条出口**各自**只能由特定事件触发 —— 本波清空 → REWARD、

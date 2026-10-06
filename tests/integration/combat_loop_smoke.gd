@@ -54,11 +54,11 @@ const SHOT_PATH: String = "res://tests/output/combat_loop_"
 
 ## 测试专用落盘目录，与正式存档目录刻意分开。
 const TEST_DIR: String = "user://test_blueprints"
-## 验收机器甲：CORE → 分流 → 针 ×2。两把针把伤害翻倍，四只敌人才能在漏掉之前全部被打死。
+## 验收机器甲：CORE → 分流 → 冰 ×2。两把冰把伤害翻倍，四只敌人才能在漏掉之前全部被打死。
 const CLEAR_PATH: String = TEST_DIR + "/_combat_loop_clear.tres"
 ## 验收机器乙：只有 CORE。它一把武器都没有，于是敌人只会一路走到终点 —— 用来取「漏怪扣血」的证据。
 const BARE_PATH: String = TEST_DIR + "/_combat_loop_bare.tres"
-## 验收机器丙：CORE → 分流 → 针 / 炸弹 / 锯。三把武器同一拍开火，用来取「三把反馈长得不一样」的证据。
+## 验收机器丙：CORE → 分流 → 冰 / 火 / 雷。三把武器同一拍开火，用来取「三把反馈长得不一样」的证据。
 const KIT_PATH: String = TEST_DIR + "/_combat_loop_kit.tres"
 
 ## 画布 = 06 §1 的 640×360 基准（PET-80 前 320×180），于是「第几个像素」可以直接读。
@@ -82,7 +82,7 @@ const CORE_PERIOD: int = 10
 const TRAVEL: int = 4
 const SPAWN_FIRST: int = 10
 const SPAWN_EVERY: int = 20
-## 验收机器甲的两把针落在分流之后：CORE 节拍 + 2 条边各 4 拍。
+## 验收机器甲的两把冰落在分流之后：CORE 节拍 + 2 条边各 4 拍。
 const FIRST_FIRE_TICK: int = CORE_PERIOD + TRAVEL * 2
 ## 机器甲的一波四只分别在 28 / 38 / 68 / 78 拍被打死，最后一只的尸体在第 82 拍退场 → 本波清空。
 const CLEAR_TICK: int = 82
@@ -125,7 +125,7 @@ const ENEMY_HP_HEIGHT: float = 4.0
 const CUE_ROW_TOP: int = 142
 const CUE_ROW_BOTTOM: int = 156
 ## 卡片列宽（BlueprintWorkspace.GRID 的独立复写，PET-80：24 → 48）与三把武器所在的列号。
-## 机器丙 = CORE / 分流 / 针 / 炸弹 / 锯 依次落格，故武器在第 2 / 3 / 4 列。
+## 机器丙 = CORE / 分流 / 冰 / 火 / 雷 依次落格，故武器在第 2 / 3 / 4 列。
 const CARD_COLUMN: int = 48
 const KIT_FIRST_WEAPON_COLUMN: int = 2
 ## 三把武器的反馈每拍上升 2 逻辑像素（CUE_RISE 16 ÷ SHOT_TICKS 8；PET-80 前 1px），存活 8 拍。
@@ -206,12 +206,12 @@ func _initialize() -> void:
 	_kill = _palette.get_color(_palette.Key.BLUE_050)
 	_kind_core = int(_node_script.Kind.CORE)
 	_kind_function = int(_node_script.Kind.FUNCTION)
-	_kind_weapon = int(_node_script.Kind.WEAPON)
-	_weapon_needle = int(_node_script.WeaponKind.NEEDLE)
-	_weapon_bomb = int(_node_script.WeaponKind.BOMB)
-	_weapon_saw = int(_node_script.WeaponKind.SAW)
+	_kind_weapon = int(_node_script.Kind.ABILITY)
+	_weapon_needle = int(_node_script.Ability.ICE)
+	_weapon_bomb = int(_node_script.Ability.FIRE)
+	_weapon_saw = int(_node_script.Ability.THUNDER)
 	_fn_none = int(_node_script.Function.NONE)
-	_fn_split = int(_node_script.Function.SPLIT)
+	_fn_split = int(_node_script.Function.BULLET_COUNT)
 
 	_h.backdrop = _backdrop
 	_h.fill = _runner
@@ -490,7 +490,7 @@ func _run_pixel_case(written: bool) -> void:
 	var killed_0: Vector2i = _count_lane(killed_shot, 0)
 	var killed_1: Vector2i = _count_lane(killed_shot, 1)
 	_ctx.check(killed_0 == Vector2i.ZERO,
-		"第 %d 拍时第 0 道应已清空（实际 %s）—— 那把针真的把它打死了，尸体也退场了" % [
+		"第 %d 拍时第 0 道应已清空（实际 %s）—— 那把冰真的把它打死了，尸体也退场了" % [
 			at_killed, _pair_text(killed_0)])
 	_ctx.check(killed_1.y > 0,
 		"第 %d 拍时第 1 道应还有 Runner（RED_500，实际 %d px）—— 空的是被打死的那条道，不是整块战场" % [
@@ -530,12 +530,12 @@ func _run_pixel_case(written: bool) -> void:
 ## 三次取样对着这条因果链的三个时刻，全部取自**同一份 combat.tscn 的真实渲染**：
 ##   read_before —— 第 1 只敌人在场、血条满，四样反馈一个都没有（负对照）；
 ##   read_fire   —— 第 1 次齐射：枪口反馈 / 弹道 / 命中闪光**同帧**齐到，
-##                  且同一帧里血条已经短了、`热量` 读数已经涨了（因果同拍，不是「数字自己在跳」）；
+##                  且同一帧里血条已经短了、`魔力` 读数已经掉了（因果同拍，不是「数字自己在跳」）；
 ##   read_kill   —— 打死那一拍：尸体外面多一圈一次性描边；
 ##   read_lane   —— 挨打的是第 1 条道上的 Runner：弹道与闪光都落在第 1 条道，
 ##                  不是「只有第 0 道会亮」。
 ##
-## 「三把可区分」另开一台机器丙（CORE → 分流 → 针 / 炸弹 / 锯）：三把同拍开火，
+## 「三把可区分」另开一台机器丙（CORE → 分流 → 冰 / 火 / 雷）：三把同拍开火，
 ## 三张卡上方的反馈形态必须一眼分得开。04 §3.10 只给了一套 FX 配色，
 ## 于是能用来区分的只有**形状** —— 判据也就只能是形状（包围盒的横竖比）。
 func _run_readability_case(clear_written: bool, kit_written: bool) -> void:
@@ -571,8 +571,8 @@ func _run_readability_case(clear_written: bool, kit_written: bool) -> void:
 	var hp_before: int = _hp_fill(before_image, 0)
 	_ctx.check(hp_before > 0 and _count_lane(before_image, 0).x > 0,
 		"第 %d 拍第 1 只敌人已在场且血条是满的（血条填充 %d px）" % [_tick_of(sim), hp_before])
-	var heat_before: int = _heat_percent(scene)
-	_ctx.equal(heat_before, 0, "第 %d 拍的 `热量` 读数（还没开火）" % _tick_of(sim))
+	var mana_before: int = _mana_percent(scene)
+	_ctx.equal(mana_before, 100, "第 %d 拍的 `魔力` 读数（还没施放，应当是满的）" % _tick_of(sim))
 	_save(before_image, "read_before")
 
 	# 取样二：第 1 次齐射。三样反馈必须同帧 —— 这是本卡要治的病「看不出在干嘛」的正解。
@@ -604,10 +604,10 @@ func _run_readability_case(clear_written: bool, kit_written: bool) -> void:
 	_ctx.check(hp_after < hp_before,
 		"第 %d 拍：同一帧里血条真的短了（%d px → %d px）—— 「什么结果」" % [
 			at_fire, hp_before, hp_after])
-	var heat_after: int = _heat_percent(scene)
-	_ctx.check(heat_after > heat_before,
-		"第 %d 拍：同一帧里 `热量` 读数已经涨了（%d%% → %d%%）—— 开火与读数同拍，不是分开的两件事" % [
-			at_fire, heat_before, heat_after])
+	var mana_after: int = _mana_percent(scene)
+	_ctx.check(mana_after < mana_before,
+		"第 %d 拍：同一帧里 `魔力` 读数已经掉了（%d%% → %d%%）—— 施放与读数同拍，不是分开的两件事" % [
+			at_fire, mana_before, mana_after])
 	_save(fire_image, "read_fire")
 
 	# 取样三：第 1 只被打死。击杀是一次性的（负对照已证明开枪前没有这圈描边）。
@@ -640,7 +640,7 @@ func _run_readability_case(clear_written: bool, kit_written: bool) -> void:
 		return
 	var kit_scene: Control = await _open_offscreen(KIT_PATH)
 	if kit_scene == null:
-		_ctx.check(false, "应能挂起一台载着验收机器丙（针 / 炸弹 / 锯）的离屏 COMBAT")
+		_ctx.check(false, "应能挂起一台载着验收机器丙（冰 / 火 / 雷）的离屏 COMBAT")
 		return
 	var kit_driver: Node = _find(kit_scene, "MachineDriver") as Node
 	var kit_sim: Object = kit_driver.get(&"combat") if kit_driver != null else null
@@ -657,7 +657,7 @@ func _run_readability_case(clear_written: bool, kit_written: bool) -> void:
 	for index: int in 3:
 		_ctx.check(boxes[index].size.x > 0.0 and boxes[index].size.y > 0.0,
 			"机器丙第 %d 张卡的上方应有开火反馈（%s）" % [KIT_FIRST_WEAPON_COLUMN + index, _rect_text(boxes[index])])
-	print("SMOKE 像素取证 · 三把反馈的形状（宽×高）：针 %d×%d / 炸弹 %d×%d / 锯 %d×%d"
+	print("SMOKE 像素取证 · 三把反馈的形状（宽×高）：冰 %d×%d / 火 %d×%d / 雷 %d×%d"
 		% [int(boxes[0].size.x), int(boxes[0].size.y), int(boxes[1].size.x), int(boxes[1].size.y),
 			int(boxes[2].size.x), int(boxes[2].size.y)])
 	# PET-80：三条里的**绝对长度**门槛全部 ×2（2→4、4→8、1→2、8→16）；
@@ -665,11 +665,11 @@ func _run_readability_case(clear_written: bool, kit_written: bool) -> void:
 	# 之所以绝对门槛也必须翻倍而不是「反正变宽了肯定过」：门槛不翻倍就退化成**恒真**，
 	# 那才是把断言弱化掉。翻倍之后它钉的仍是同一件事 —— 外框内缩之后剩下的那几像素。
 	_ctx.check(boxes[0].size.x <= 4.0 and boxes[0].size.y >= boxes[0].size.x * 2.0,
-		"针的反馈是**细高**的一条：%s" % _rect_text(boxes[0]))
+		"冰的反馈是**细高**的一条：%s" % _rect_text(boxes[0]))
 	_ctx.check(boxes[1].size.x >= 8.0 and absf(boxes[1].size.x - boxes[1].size.y) <= 2.0,
-		"炸弹的反馈是**方正**的一块：%s" % _rect_text(boxes[1]))
+		"火的反馈是**方正**的一块：%s" % _rect_text(boxes[1]))
 	_ctx.check(boxes[2].size.x >= 16.0 and boxes[2].size.x >= boxes[2].size.y * 2.0,
-		"锯的反馈是**扁宽**的一条：%s" % _rect_text(boxes[2]))
+		"雷的反馈是**扁宽**的一条：%s" % _rect_text(boxes[2]))
 	_save(kit_image, "read_kinds")
 	_sheet([before_image, fire_image, killed_image, lane_image], "read_sheet")
 
@@ -787,9 +787,9 @@ func _cue_window(index: int) -> Rect2:
 ## 取该行里离卡片中心最近的那一段连续判据色像素，再自下而上量出这一段自己的高度。
 ##
 ## 不能像命中闪光那样整窗取包围盒：弹道同是 BLUE_FX_600，会**横穿**某个取样窗口被并进盒子。
-## 实测（PET-80 前）「锯」那一格的整窗盒子宽 17px，其中只有 9px 是锯本身，剩下 8px 是路过的弹道。
+## 实测（PET-80 前）「雷」那一格的整窗盒子宽 17px，其中只有 9px 是雷本身，剩下 8px 是路过的弹道。
 ## PET-80 后这三个读数随坐标系一起 ×2（17→34 / 9→18 / 8→16，比例不变）——
-## 那样锯就算画成 2 逻辑像素宽也照样能过。形状判据只许量反馈自己那几个像素。
+## 那样雷就算画成 2 逻辑像素宽也照样能过。形状判据只许量反馈自己那几个像素。
 func _cue_box(image: Image, index: int) -> Rect2:
 	if image == null:
 		return Rect2()
@@ -895,9 +895,10 @@ func _color_box(image: Image, rect: Rect2, wanted: Color) -> Rect2:
 	return Rect2(left, top, right - left + 1, bottom - top + 1)
 
 
-## `热量` 读数格的百分比。读数形如 `4%`；拆不出来时返回 -1（断言会打红，而不是静默当 0）。
-func _heat_percent(combat: Node) -> int:
-	var block: Node = _find(combat, "Heat")
+## `魔力` 读数格的百分比。读数形如 `88%`；拆不出来时返回 -1（断言会打红，而不是静默当 0）。
+## PET-82：这一格原叫 `热量`（开火升高），现在叫 `魔力`（施法下降），方向相反。
+func _mana_percent(combat: Node) -> int:
+	var block: Node = _find(combat, "Mana")
 	if block == null:
 		return -1
 	var value: Label = block.get_node_or_null(^"Value") as Label
@@ -927,31 +928,31 @@ func _sheet(tiles: Array, tag: String) -> void:
 	_ctx.check(sheet.save_png("%s%s.png" % [SHOT_PATH, tag]) == OK, "应能写出四帧拼图 %s.png" % tag)
 
 
-## 写验收机器丙：CORE → 分流 → 针 / 炸弹 / 锯。三把武器同一拍开火，
+## 写验收机器丙：CORE → 分流 → 冰 / 火 / 雷。三把武器同一拍开火，
 ## 用来取「三把的反馈形态一眼分得开」的证据。
 func _write_kit_blueprint() -> bool:
 	var spec: Array = [
 		["core", "核心", _kind_core, _fn_none],
-		["split", "分流", _kind_function, _fn_split],
-		["needle", "针", _kind_weapon, _fn_none, _weapon_needle],
-		["bomb", "炸弹", _kind_weapon, _fn_none, _weapon_bomb],
-		["saw", "锯", _kind_weapon, _fn_none, _weapon_saw],
+		["split", "子弹数量", _kind_function, _fn_split],
+		["needle", "冰", _kind_weapon, _fn_none, _weapon_needle],
+		["bomb", "火", _kind_weapon, _fn_none, _weapon_bomb],
+		["saw", "雷", _kind_weapon, _fn_none, _weapon_saw],
 	]
 	var edges: Array = [["core", "split"], ["split", "needle"], ["split", "bomb"], ["split", "saw"]]
 	var blueprint: Resource = _build_blueprint(spec, edges, "验收机器丙")
 	return bool(blueprint.call(&"save_to", KIT_PATH)) if blueprint != null else false
 
 
-## 写验收机器甲：CORE → 分流 → 针 ×2。走数据类落盘，于是这份图与玩家在整备界面拖出来的
+## 写验收机器甲：CORE → 分流 → 冰 ×2。走数据类落盘，于是这份图与玩家在整备界面拖出来的
 ## 是同一种东西，机器重建也走同一条路（09 §3.2）。
 func _write_clear_blueprint() -> bool:
 	var spec: Array = [
 		["core", "核心", _kind_core, _fn_none],
-		["split", "分流", _kind_function, _fn_split],
+		["split", "子弹数量", _kind_function, _fn_split],
 		# 第 5 项是武器种类：机器要打的伤害只由它决定，显示名不参与解析
 		# （按显示名反查的那条桥已删，见 scripts/data/weapon_data.gd）。
-		["needle_a", "针", _kind_weapon, _fn_none, _weapon_needle],
-		["needle_b", "针", _kind_weapon, _fn_none, _weapon_needle],
+		["needle_a", "冰", _kind_weapon, _fn_none, _weapon_needle],
+		["needle_b", "冰", _kind_weapon, _fn_none, _weapon_needle],
 	]
 	var edges: Array = [["core", "split"], ["split", "needle_a"], ["split", "needle_b"]]
 	var blueprint: Resource = _build_blueprint(spec, edges, "验收机器甲")
@@ -1110,8 +1111,8 @@ func _finish() -> void:
 	_lines.append("- 单元测试：见 unit_tests.log")
 	_lines.append("- 集成测试：见 unit_tests.log")
 	_lines.append("- 场景冒烟：%d/%d" % [_ctx.passed, _ctx.passed + _ctx.failed])
-	_lines.append("- 手动场景：经路由进 COMBAT(点 CTA) · 验收机器甲 CORE→Split→针×2 · 敌人在真实帧上生成并推进 · 第 %d 拍本波清空并把场景路由到 REWARD · 机器乙的漏怪把 `CORE` 读数打到 %s · 敌人判据色与消失的像素取证" % [CLEAR_TICK, LEAK_READOUT])
-	_lines.append("- 可读反馈（PET-76）：机器甲的开火前 / 齐射 / 击杀 / 第 1 条道挨打 四帧 + 机器丙（针/炸弹/锯）三把形态对照")
+	_lines.append("- 手动场景：经路由进 COMBAT(点 CTA) · 验收机器甲 CORE→Split→冰×2 · 敌人在真实帧上生成并推进 · 第 %d 拍本波清空并把场景路由到 REWARD · 机器乙的漏怪把 `CORE` 读数打到 %s · 敌人判据色与消失的像素取证" % [CLEAR_TICK, LEAK_READOUT])
+	_lines.append("- 可读反馈（PET-76）：机器甲的开火前 / 齐射 / 击杀 / 第 1 条道挨打 四帧 + 机器丙（冰/火/雷）三把形态对照")
 	_lines.append("- 证据图：%s{before,spawn,killed,cleared,read_before,read_fire,read_kill,read_lane,read_kinds}.png 与 %s*_%dx.png、四帧拼图 %sread_sheet.png" % [SHOT_PATH, SHOT_PATH, ZOOM, SHOT_PATH])
 	if _ctx.failures.is_empty():
 		_lines.append("- 失败项：无")

@@ -148,12 +148,22 @@ func _run_constant_checks(ctx: RefCounted) -> void:
 	ctx.check(String(script.CARD_SLICE_DIR).begins_with("res://assets/ui/vb03_component_language/"),
 		"卡片切片应取自 VB-03 已批准目录（实际 '%s'）" % script.CARD_SLICE_DIR)
 	ctx.equal(script.CARD_SLICE_NORMAL.size(), 3, "三种节点类型应各有一张卡片切片")
+	# ④ 类型 -> 切片文件的对应不串位。**不能**再拿枚举成员名去拼文件名：
+	# PET-82 把 `WEAPON` 改名成 `ABILITY`，而切片归 PET-81（`assets/ui/**` 本卡不许动），
+	# 文件名里留着的还是 `weapon`。改名之后两边不再同形，而这条要防的从来不是「名字不像」，
+	# 是「两张卡把切片串了」—— 故改成显式对照表：ABILITY 那格一旦换成 core / function 的
+	# 切片，或者 CORE 与 FUNCTION 互换，下面当场转红。
 	var kind_script: GDScript = load(NODE_DATA_PATH)
-	for kind: int in [kind_script.Kind.CORE, kind_script.Kind.FUNCTION, kind_script.Kind.WEAPON]:
+	var kind_files: Dictionary = {
+		kind_script.Kind.CORE: "ui_node_card_core_24.png",
+		kind_script.Kind.FUNCTION: "ui_node_card_function_24.png",
+		kind_script.Kind.ABILITY: "ui_node_card_weapon_24.png",
+	}
+	for kind: int in [kind_script.Kind.CORE, kind_script.Kind.FUNCTION, kind_script.Kind.ABILITY]:
 		var kind_name: String = String(kind_script.Kind.find_key(kind))
 		var file_name: String = String(script.CARD_SLICE_NORMAL[kind])
-		ctx.check(file_name.contains(kind_name.to_lower()),
-			"%s 应对应同名的切片（实际 '%s'）—— 串位会让玩家看到错误的类型标识" % [kind_name, file_name])
+		ctx.equal(file_name, String(kind_files[kind]),
+			"%s 应对应它自己那一张切片（实际 '%s'）—— 串位会让玩家看到错误的类型标识" % [kind_name, file_name])
 		var card_slice: Texture2D = load(String(script.CARD_SLICE_DIR) + file_name)
 		if not ctx.check(card_slice != null, "卡片切片应能加载：%s" % file_name):
 			continue
@@ -183,7 +193,7 @@ func _run_constant_checks(ctx: RefCounted) -> void:
 	var expected := {
 		kinds.Kind.CORE: Palette.Key.GOLD_400,
 		kinds.Kind.FUNCTION: Palette.Key.BLUE_400,
-		kinds.Kind.WEAPON: Palette.Key.ORANGE_500,
+		kinds.Kind.ABILITY: Palette.Key.ORANGE_500,
 	}
 	for kind: int in expected:
 		ctx.equal(ws.call(&"_kind_color", kind), Palette.get_color(expected[kind]),
@@ -211,18 +221,18 @@ func _run_warehouse_checks(ctx: RefCounted) -> void:
 		ctx.check(not name.is_empty(), "槽位 %d 应有名称" % index)
 		ctx.check(not names.has(name), "槽位名称不得重复（重复则玩家分不清两件同名节点）：'%s'" % name)
 		names[name] = true
-		ctx.check(kind in [kinds.Kind.CORE, kinds.Kind.FUNCTION, kinds.Kind.WEAPON],
+		ctx.check(kind in [kinds.Kind.CORE, kinds.Kind.FUNCTION, kinds.Kind.ABILITY],
 			"槽位 %d 的类型应是三种之一" % index)
 
 	ctx.equal(int(counts.get(kinds.Kind.CORE, 0)), 1, "CORE 数量")
 	ctx.equal(int(counts.get(kinds.Kind.FUNCTION, 0)), 3, "FUNCTION 数量")
-	ctx.equal(int(counts.get(kinds.Kind.WEAPON, 0)), 3, "WEAPON 数量")
+	ctx.equal(int(counts.get(kinds.Kind.ABILITY, 0)), 3, "WEAPON 数量")
 	# 顺序即槽位顺序，也即玩家拖出的顺序：核心在最左，武器在最右。
 	ctx.equal(int(list[0]["kind"]), kinds.Kind.CORE, "槽位 0 应是 CORE")
-	ctx.equal(int(list[list.size() - 1]["kind"]), kinds.Kind.WEAPON, "最后一个槽位应是 WEAPON")
+	ctx.equal(int(list[list.size() - 1]["kind"]), kinds.Kind.ABILITY, "最后一个槽位应是 WEAPON")
 
 	# weapon_kind 列：三张武器槽在卡片上长得一模一样（类型标识只按 Kind 分三色），
-	# 「拖出去的是针还是锯」全靠这一列。它是这条信息的**唯一来源** ——
+	# 「拖出去的是冰还是雷」全靠这一列。它是这条信息的**唯一来源** ——
 	# 从前那条「拿中文显示名反查武器」的桥已删，这里空了就等于玩家的武器全部落到降级分支。
 	_check_warehouse_weapon_column(ctx, kinds, list, counts)
 
@@ -237,19 +247,19 @@ func _check_warehouse_weapon_column(ctx: RefCounted, kinds: GDScript, list: Arra
 		var entry: Dictionary = list[index]
 		var kind: int = int(entry["kind"])
 		var weapon_kind: int = int(entry["weapon_kind"])
-		if kind == kinds.Kind.WEAPON:
-			ctx.check(weapon_kind != kinds.WeaponKind.NONE,
+		if kind == kinds.Kind.ABILITY:
+			ctx.check(weapon_kind != kinds.Ability.NONE,
 				"武器槽位 %d（%s）必须写明武器种类，不得留 NONE" % [index, entry["name"]])
-			ctx.check(int(weapon_kind) in [kinds.WeaponKind.NEEDLE, kinds.WeaponKind.BOMB,
-					kinds.WeaponKind.SAW],
+			ctx.check(int(weapon_kind) in [kinds.Ability.ICE, kinds.Ability.FIRE,
+					kinds.Ability.THUNDER],
 				"武器槽位 %d 的种类应是三把武器之一（实际 %d）" % [index, weapon_kind])
 			ctx.check(not seen.has(weapon_kind),
 				"两个武器槽位不得是同一把武器（重复的种类 %d）" % weapon_kind)
 			seen[weapon_kind] = String(entry["name"])
 		else:
-			ctx.equal(weapon_kind, kinds.WeaponKind.NONE,
+			ctx.equal(weapon_kind, kinds.Ability.NONE,
 				"槽位 %d（%s）不是武器，weapon_kind 必须留 NONE" % [index, entry["name"]])
-	ctx.equal(seen.size(), int(counts.get(kinds.Kind.WEAPON, 0)),
+	ctx.equal(seen.size(), int(counts.get(kinds.Kind.ABILITY, 0)),
 		"三张武器槽应恰好覆盖三把各不相同的武器")
 
 
@@ -358,7 +368,7 @@ func _run_graph_checks(ctx: RefCounted) -> void:
 
 	# PET-80：两个落点随网格 ×2（48→96、72→144），落在**同一批格子**上（第 2 格、第 3 格）。
 	ws.call(&"_add_node", kinds.Kind.CORE, "核心", Vector2(96.0, 96.0))
-	ws.call(&"_add_node", kinds.Kind.FUNCTION, "分流", Vector2(144.0, 144.0))
+	ws.call(&"_add_node", kinds.Kind.FUNCTION, "子弹数量", Vector2(144.0, 144.0))
 	var blueprint: BlueprintData = ws.call(&"blueprint")
 	ctx.equal(blueprint.nodes.size(), 2, "落两个节点后蓝图应有 2 个节点")
 
@@ -437,8 +447,8 @@ func _run_persistence_checks(ctx: RefCounted) -> void:
 
 	# 载回后自增序号必须从既有节点数续起，否则新节点会与存档里的旧 id 撞车 ——
 	# 撞车的后果是 _boxes 这个以 id 为键的字典把旧节点顶掉，图与画面对不上。
-	ws.call(&"_add_node", kinds.Kind.WEAPON, "针", Vector2(120.0, 120.0),
-		kinds.Function.NONE, kinds.WeaponKind.NEEDLE)
+	ws.call(&"_add_node", kinds.Kind.ABILITY, "冰", Vector2(120.0, 120.0),
+		kinds.Function.NONE, kinds.Ability.ICE)
 	var seen: Dictionary = {}
 	for node: NodeData in blueprint.nodes:
 		ctx.check(not seen.has(String(node.id)), "载回后新增节点的 id 不得与既有 id 重复（'%s'）" % node.id)
@@ -451,7 +461,7 @@ func _run_persistence_checks(ctx: RefCounted) -> void:
 ## 这里量的是最后一跳；仓库表本身由 _run_warehouse_checks 钉住，
 ## 中间那一跳（原生拖放的载荷）由 tests/integration/blueprint_smoke.gd 的真实拖拽钉住。
 ##
-## 三段里断掉任何一段，「拖出去的锯」都会变成针（或落到 02 §9 的降级分支）——
+## 三段里断掉任何一段，「拖出去的雷」都会变成冰（或落到 02 §9 的降级分支）——
 ## 而三张武器卡在画面上长得一模一样，玩家看不出来，只有这几条断言能挡住。
 func _run_weapon_kind_checks(ctx: RefCounted) -> void:
 	ctx.begin_case("BlueprintWorkspace · 落节点写入 weapon_kind")
@@ -465,13 +475,13 @@ func _run_weapon_kind_checks(ctx: RefCounted) -> void:
 	if ws == null:
 		return
 
-	var weapons: Array[int] = [kinds.WeaponKind.NEEDLE, kinds.WeaponKind.BOMB, kinds.WeaponKind.SAW]
+	var weapons: Array[int] = [kinds.Ability.ICE, kinds.Ability.FIRE, kinds.Ability.THUNDER]
 	for index: int in weapons.size():
-		ws.call(&"_add_node", kinds.Kind.WEAPON, "w%d" % index, Vector2(96.0, 96.0),
+		ws.call(&"_add_node", kinds.Kind.ABILITY, "w%d" % index, Vector2(96.0, 96.0),
 			kinds.Function.NONE, weapons[index])
 	# 缺省（旧调用方 / 将来的程序化建图）必须落 NONE —— 那是 02 §9 的降级入口，
 	# 而不是「随手指一把武器」：随机的那把会让调试图与玩家的图对不上。
-	ws.call(&"_add_node", kinds.Kind.WEAPON, "w_default", Vector2(144.0, 144.0))
+	ws.call(&"_add_node", kinds.Kind.ABILITY, "w_default", Vector2(144.0, 144.0))
 	ws.call(&"_add_node", kinds.Kind.CORE, "核心", Vector2(192.0, 192.0))
 
 	var blueprint: BlueprintData = ws.call(&"blueprint")
@@ -481,9 +491,9 @@ func _run_weapon_kind_checks(ctx: RefCounted) -> void:
 	for index: int in weapons.size():
 		ctx.equal(blueprint.nodes[index].weapon_kind, weapons[index],
 			"第 %d 个武器节点应带上拖它出来那一槽的种类" % index)
-	ctx.equal(blueprint.nodes[3].weapon_kind, kinds.WeaponKind.NONE,
+	ctx.equal(blueprint.nodes[3].weapon_kind, kinds.Ability.NONE,
 		"不传种类时应落 NONE（降级入口），不得随手指一把武器")
-	ctx.equal(blueprint.nodes[4].weapon_kind, kinds.WeaponKind.NONE,
+	ctx.equal(blueprint.nodes[4].weapon_kind, kinds.Ability.NONE,
 		"CORE 不是武器，weapon_kind 必须留 NONE")
 	ws.free()
 
@@ -507,10 +517,10 @@ func _run_reward_landing_checks(ctx: RefCounted) -> void:
 	var blueprint: BlueprintData = ws.call(&"blueprint")
 	# 载荷就是 reward_screen.reward_payload() 交出来的那份形状（四列，值取自仓库槽位）。
 	var payload := {
-		"kind": kinds.Kind.WEAPON,
+		"kind": kinds.Kind.ABILITY,
 		"function_kind": kinds.Function.NONE,
-		"weapon_kind": kinds.WeaponKind.BOMB,
-		"name": "炸弹",
+		"weapon_kind": kinds.Ability.FIRE,
+		"name": "火",
 	}
 	var cell := Vector2(CARD, CARD)
 
@@ -542,11 +552,11 @@ func _run_reward_landing_checks(ctx: RefCounted) -> void:
 			break
 		ctx.equal(boxes[landed.id], Rect2(expected[index], cell),
 			"第 %d 个奖励的落点（第一个空闲格，行优先）" % (index + 1))
-		# 类型三列原样取自载荷，一个都不许改写：按显示名反推的话「炸弹」会落成针。
-		ctx.equal(landed.kind, kinds.Kind.WEAPON, "第 %d 个奖励的节点类型" % (index + 1))
-		ctx.equal(landed.weapon_kind, kinds.WeaponKind.BOMB, "第 %d 个奖励的 weapon_kind" % (index + 1))
+		# 类型三列原样取自载荷，一个都不许改写：按显示名反推的话「火」会落成冰。
+		ctx.equal(landed.kind, kinds.Kind.ABILITY, "第 %d 个奖励的节点类型" % (index + 1))
+		ctx.equal(landed.weapon_kind, kinds.Ability.FIRE, "第 %d 个奖励的 weapon_kind" % (index + 1))
 		ctx.equal(landed.function_kind, kinds.Function.NONE, "第 %d 个奖励的 function_kind" % (index + 1))
-		ctx.equal(landed.display_name, "炸弹", "第 %d 个奖励的显示名" % (index + 1))
+		ctx.equal(landed.display_name, "火", "第 %d 个奖励的显示名" % (index + 1))
 		occupied.append(landed.id)
 
 	# 既有节点一个都没少、一个都没被挪走：奖励只加不覆盖。
@@ -567,9 +577,9 @@ func _run_reward_landing_checks(ctx: RefCounted) -> void:
 		ctx.equal(reloaded.nodes.size(), blueprint.nodes.size(), "新实例载回的节点数应与落盘前一致")
 		var bombs: int = 0
 		for node: NodeData in reloaded.nodes:
-			if node.weapon_kind == kinds.WeaponKind.BOMB:
+			if node.weapon_kind == kinds.Ability.FIRE:
 				bombs += 1
-		ctx.equal(bombs, expected.size(), "载回的炸弹节点数应与落地数一致（weapon_kind 没丢）")
+		ctx.equal(bombs, expected.size(), "载回的火节点数应与落地数一致（weapon_kind 没丢）")
 		fresh.free()
 	ws.free()
 
@@ -595,7 +605,7 @@ func _run_selection_checks(ctx: RefCounted) -> void:
 	# 落格以卡片中心给出、且中心本身就是网格点，故 _snapped 的取整不产生歧义：
 	# 格 (col,row) 的中心 = (col*GRID + CARD/2, row*GRID + CARD/2)。
 	var core: NodeData = _place(ws, kinds.Kind.CORE, "核心", _cell_center(0, 0))
-	var gun: NodeData = _place(ws, kinds.Kind.WEAPON, "针", _cell_center(4, 0))
+	var gun: NodeData = _place(ws, kinds.Kind.ABILITY, "冰", _cell_center(4, 0))
 	ctx.check(_link(ws, core.id, gun.id) == 0, "前置：两个节点之间应能连一条边")
 	var blueprint: BlueprintData = ws.call(&"blueprint")
 	var core_box: Rect2 = _box_of(ws, core.id)
@@ -664,8 +674,8 @@ func _run_delete_checks(ctx: RefCounted) -> void:
 		return
 	var kinds: GDScript = load(NODE_DATA_PATH)
 	var core: NodeData = _place(ws, kinds.Kind.CORE, "核心", _cell_center(0, 0))
-	var mid: NodeData = _place(ws, kinds.Kind.FUNCTION, "分流", _cell_center(2, 0))
-	var gun: NodeData = _place(ws, kinds.Kind.WEAPON, "针", _cell_center(4, 0))
+	var mid: NodeData = _place(ws, kinds.Kind.FUNCTION, "子弹数量", _cell_center(2, 0))
+	var gun: NodeData = _place(ws, kinds.Kind.ABILITY, "冰", _cell_center(4, 0))
 	ctx.equal(_link(ws, core.id, mid.id), 0, "前置：core → mid")
 	ctx.equal(_link(ws, mid.id, gun.id), 1, "前置：mid → gun")
 	var blueprint: BlueprintData = ws.call(&"blueprint")
@@ -732,7 +742,7 @@ func _run_undo_checks(ctx: RefCounted) -> void:
 
 	# 撤「连线」：两个节点都还在，只是那根线没了。
 	core = _place(ws, kinds.Kind.CORE, "核心", _cell_center(0, 0))
-	var gun: NodeData = _place(ws, kinds.Kind.WEAPON, "针", _cell_center(4, 0))
+	var gun: NodeData = _place(ws, kinds.Kind.ABILITY, "冰", _cell_center(4, 0))
 	ctx.check(_link(ws, core.id, gun.id) == 0, "前置：连一条边")
 	ctx.check(bool(ws.call(&"undo")), "撤掉一次连线")
 	ctx.equal(blueprint.connections.size(), 0, "撤销连线后的连线数")
@@ -741,7 +751,7 @@ func _run_undo_checks(ctx: RefCounted) -> void:
 	ctx.check(bool(ws.call(&"can_undo")), "还应能继续撤掉第二个节点的放置")
 
 	# 撤「删除」：节点连同它的两条线一起回来，且回来的就是原来那两个 id。
-	var mid: NodeData = _place(ws, kinds.Kind.FUNCTION, "分流", _cell_center(2, 0))
+	var mid: NodeData = _place(ws, kinds.Kind.FUNCTION, "子弹数量", _cell_center(2, 0))
 	ctx.equal(_link(ws, core.id, mid.id), 0, "前置：core → mid")
 	ctx.equal(_link(ws, mid.id, gun.id), 1, "前置：mid → gun")
 	var mid_id: StringName = mid.id
@@ -781,7 +791,7 @@ func _run_undo_checks(ctx: RefCounted) -> void:
 	var script: GDScript = load(WORKSPACE_SCRIPT_PATH)
 	ctx.check(int(script.HISTORY_MAX) >= 1, "撤销栈深至少应为 1 步（本卡的下限要求）")
 	for index: int in int(script.HISTORY_MAX) + 3:
-		_place(ws, kinds.Kind.WEAPON, "w%d" % index, _cell_center(index % 4, index / 4))
+		_place(ws, kinds.Kind.ABILITY, "w%d" % index, _cell_center(index % 4, index / 4))
 	var depth: int = _history_of(ws).size()
 	ctx.check(depth <= int(script.HISTORY_MAX),
 		"撤销栈不得超过 %d 步（实际 %d）" % [script.HISTORY_MAX, depth])
@@ -805,7 +815,7 @@ func _run_clear_checks(ctx: RefCounted) -> void:
 	ctx.check(not bool(ws.call(&"has_content")), "空图应报告「没有内容」")
 
 	var core: NodeData = _place(ws, kinds.Kind.CORE, "核心", _cell_center(0, 0))
-	var gun: NodeData = _place(ws, kinds.Kind.WEAPON, "针", _cell_center(4, 0))
+	var gun: NodeData = _place(ws, kinds.Kind.ABILITY, "冰", _cell_center(4, 0))
 	ctx.check(_link(ws, core.id, gun.id) == 0, "前置：连一条边")
 	var blueprint: BlueprintData = ws.call(&"blueprint")
 	ctx.check(bool(ws.call(&"clear_blueprint")), "有内容的图应能清空")
@@ -910,7 +920,7 @@ func _run_action_ui_checks(ctx: RefCounted) -> void:
 	# 清空刻意**不挂**快捷键：一下就能毁掉整张图的动作，必须走二次确认那一按，
 	# 而快捷键的每一次触发都等价于一次按下 —— 挂上它就等于给了一条绕过确认的路。
 	ctx.check(clear_button.shortcut == null,
-		"「清空蓝图」不得挂单键快捷键（否则它会绕过二次确认）")
+		"「清空能力卡书」不得挂单键快捷键（否则它会绕过二次确认）")
 	scene.free()
 
 

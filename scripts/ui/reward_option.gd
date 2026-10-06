@@ -13,9 +13,13 @@
 class_name RewardOption
 extends RefCounted
 
-## 选项类型。前三个沿用 06 §4 的类型标识语义（CORE / FUNCTION / WEAPON）；
+## 选项类型。前三个沿用 06 §4 的类型标识语义，PET-82 起用魔法词汇
+## （核心卡 / 功能卡 / 能力卡，对应 NodeData.Kind 的三档）；
 ## SKIP 是 06 §9 的「跳过」补齐项，**不是**一种节点类型。
-enum Kind { CORE, FUNCTION, WEAPON, SKIP }
+##
+## 名字换了，**取值一个没动**：reward_screen.OPTION_SLOTS 靠「下标即 Kind」定位仓库槽位，
+## 重排会让第一张卡落到第二个槽位的东西上，而画面上两张卡都长得像真的。
+enum Kind { CORE, FUNCTION, ABILITY, SKIP }
 
 ## 「跳过」补齐项的名称。06 §9 只给了这个词，未规定配色与图标 —— 见 RewardCard.icon_color()。
 const SKIP_NAME_KEY: String = "跳过"

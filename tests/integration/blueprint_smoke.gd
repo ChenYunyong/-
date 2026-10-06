@@ -185,7 +185,7 @@ func _run_drag_out_case() -> void:
 	# 类型与顺序：槽位 0/1/2/4 依次是 CORE、两个 FUNCTION、WEAPON。
 	var kinds: GDScript = _node_script
 	var expected: Array[int] = [
-		kinds.Kind.CORE, kinds.Kind.FUNCTION, kinds.Kind.FUNCTION, kinds.Kind.WEAPON,
+		kinds.Kind.CORE, kinds.Kind.FUNCTION, kinds.Kind.FUNCTION, kinds.Kind.ABILITY,
 	]
 	for index: int in expected.size():
 		if not _ctx.check(index < _nodes().size(), "第 %d 个节点应存在" % index):
@@ -209,16 +209,16 @@ func _run_drag_out_case() -> void:
 			"节点 %s 应落在画布内（实际 %s）" % [id, rect])
 
 	# 拖出来的武器必须带上**它那一槽**的武器种类 —— 这是本卡新接上的那条路，也是「拖出去的是
-	# 针还是锯」的唯一来源（按显示名反查的那条桥已删）。三张武器卡在画面上长得一模一样，
+	# 冰还是雷」的唯一来源（按显示名反查的那条桥已删）。三张武器卡在画面上长得一模一样，
 	# 这一条断了，三把武器会全部落到 02 §9 的降级分支，而界面上看不出任何异常。
 	# 期望值取自仓库表本身：这里证的是「表里的值真的走到了节点上」，表本身的值由
 	# tests/unit/test_blueprint_workspace.gd 独立钉住。
 	var weapon_slot_kind: int = int(_workspace_script.WAREHOUSE[WEAPON_SLOT]["weapon_kind"])
-	if _ctx.check(weapon_slot_kind != kinds.WeaponKind.NONE,
+	if _ctx.check(weapon_slot_kind != kinds.Ability.NONE,
 			"仓库第 %d 槽应写明武器种类（否则下面这条断言是空的）" % WEAPON_SLOT):
 		var dragged_weapons: int = 0
 		for node: Resource in _nodes():
-			if int(node.get(&"kind")) != kinds.Kind.WEAPON:
+			if int(node.get(&"kind")) != kinds.Kind.ABILITY:
 				continue
 			dragged_weapons += 1
 			_ctx.equal(int(node.get(&"weapon_kind")), weapon_slot_kind,
@@ -235,14 +235,14 @@ func _run_connect_case() -> void:
 	_ctx.begin_case("蓝图冒烟 · 连线（鼠标 ×1 + 触摸 ×1）")
 	var core_id: StringName = _id_at_kind_index(_node_script.Kind.CORE, 0)
 	var split_id: StringName = _id_at_kind_index(_node_script.Kind.FUNCTION, 0)
-	var weapon_id: StringName = _id_at_kind_index(_node_script.Kind.WEAPON, 0)
+	var ability_id: StringName = _id_at_kind_index(_node_script.Kind.ABILITY, 0)
 	if not _ctx.check(not String(core_id).is_empty() and not String(split_id).is_empty()
-		and not String(weapon_id).is_empty(), "三种类型的节点都应存在"):
+		and not String(ability_id).is_empty(), "三种类型的节点都应存在"):
 		return
 
 	await _drag_with_mouse(_card_center(core_id), _card_center(split_id))
 	_ctx.equal(_connections().size(), 1, "鼠标从 CORE 拖到 FUNCTION 后应有 1 条连线")
-	await _drag_with_touch(_card_center(split_id), _card_center(weapon_id))
+	await _drag_with_touch(_card_center(split_id), _card_center(ability_id))
 	_ctx.equal(_connections().size(), 2, "触摸从 FUNCTION 拖到 WEAPON 后应有 2 条连线")
 
 	# 06 §4.2 的端口语义：起点一律输出、终点一律输入。引擎把「按住卡片」翻成连接拖拽时，
@@ -267,16 +267,16 @@ func _run_chain_case() -> void:
 	_ctx.begin_case("蓝图冒烟 · CORE → FUNCTION → WEAPON 链（验收原文）")
 	var cores: Array[StringName] = _ids_of_kind(_node_script.Kind.CORE)
 	var functions: Array[StringName] = _ids_of_kind(_node_script.Kind.FUNCTION)
-	var weapons: Array[StringName] = _ids_of_kind(_node_script.Kind.WEAPON)
+	var weapons: Array[StringName] = _ids_of_kind(_node_script.Kind.ABILITY)
 	var found: bool = false
 	for core_id: StringName in cores:
 		for function_id: StringName in functions:
 			if not _has_edge(core_id, function_id):
 				continue
-			for weapon_id: StringName in weapons:
-				if _has_edge(function_id, weapon_id):
+			for ability_id: StringName in weapons:
+				if _has_edge(function_id, ability_id):
 					_ctx.check(true, "应存在一条 CORE(%s) → FUNCTION(%s) → WEAPON(%s) 链" % [
-						core_id, function_id, weapon_id])
+						core_id, function_id, ability_id])
 					found = true
 	_ctx.check(found, "应存在一条 CORE → FUNCTION → WEAPON 链（实际连线 %d 条）" % _connections().size())
 
@@ -351,17 +351,17 @@ func _run_undo_case() -> void:
 ## 它是唯一一个一下能毁掉整张图的动作，代价不对称。这里把「按一下就清掉」钉死成失败：
 ## 真正危险的实现不是清不掉，而是**一次误触就把玩家的机器拆了**。
 func _run_clear_case() -> void:
-	_ctx.begin_case("蓝图冒烟 · 清空蓝图（二次确认 + 可撤销）")
+	_ctx.begin_case("蓝图冒烟 · 清空法术书（二次确认 + 可撤销）")
 	var clear_button: Button = _find(current_scene, "ButtonClear") as Button
-	if not _ctx.check(clear_button != null, "应有「清空蓝图」按钮"):
+	if not _ctx.check(clear_button != null, "应有「清空法术书」按钮"):
 		return
 
 	_ctx.equal(_nodes().size(), 4, "前置：撤销之后应有 4 个节点")
-	_ctx.equal(clear_button.text, "清空蓝图", "前置：清空按钮的初始文案")
+	_ctx.equal(clear_button.text, "清空法术书", "前置：清空按钮的初始文案")
 
 	await _tap_control(clear_button)
 	_ctx.equal(_nodes().size(), 4, "第一次点「清空」不得真的清空")
-	_ctx.not_equal(clear_button.text, "清空蓝图",
+	_ctx.not_equal(clear_button.text, "清空法术书",
 		"第一次点应把文案换成确认问句（实际 '%s'）" % clear_button.text)
 	await _capture(SHOT_CLEAR_ARMED_PATH, "清空的二次确认：按第二下才真的清")
 
@@ -369,7 +369,7 @@ func _run_clear_case() -> void:
 	_ctx.equal(_nodes().size(), 0, "第二次点「清空」才真的清空")
 	_ctx.equal(_connections().size(), 0, "清空后连线也没了")
 	_ctx.check(clear_button.disabled, "清空之后没内容可清，「清空」应自己变灰")
-	_ctx.equal(clear_button.text, "清空蓝图", "清空之后文案应收回原样")
+	_ctx.equal(clear_button.text, "清空法术书", "清空之后文案应收回原样")
 	var delete_button: Button = _find(current_scene, "ButtonDelete") as Button
 	if _ctx.check(delete_button != null, "应有「删除」按钮"):
 		_ctx.check(delete_button.disabled, "清空之后没有选中，「删除」应也是灰的")
@@ -448,7 +448,7 @@ func _run_persistence_case() -> void:
 	var counts: Dictionary = _kind_counts(loaded)
 	_ctx.equal(int(counts.get(_node_script.Kind.CORE, 0)), 1, "载回的 CORE 数量")
 	_ctx.equal(int(counts.get(_node_script.Kind.FUNCTION, 0)), 2, "载回的 FUNCTION 数量")
-	_ctx.equal(int(counts.get(_node_script.Kind.WEAPON, 0)), 1, "载回的 WEAPON 数量")
+	_ctx.equal(int(counts.get(_node_script.Kind.ABILITY, 0)), 1, "载回的 WEAPON 数量")
 
 	# 让**画布自己**重载一次：它读的必须是同一份文件，且节点要重新落格（而不是全叠在原点）。
 	var canvas: Control = _canvas()
@@ -469,8 +469,8 @@ func _run_persistence_case() -> void:
 			and rect.end.x <= canvas.size.x + 0.01 and rect.end.y <= canvas.size.y + 0.01,
 			"重载后节点 %s 应落在画布内（实际 %s）" % [id, rect])
 	# 载回后继续加节点不得撞 id —— 撞车的后果是 _boxes 这个以 id 为键的字典把旧节点顶掉。
-	canvas.call(&"_add_node", _node_script.Kind.WEAPON, "锯", Vector2(120.0, 120.0),
-		_node_script.Function.NONE, _node_script.WeaponKind.SAW)
+	canvas.call(&"_add_node", _node_script.Kind.ABILITY, "雷", Vector2(120.0, 120.0),
+		_node_script.Function.NONE, _node_script.Ability.THUNDER)
 	_ctx.equal(_nodes().size(), 5, "载回后应能继续加节点")
 	var ids: Dictionary = {}
 	for node: Resource in _nodes():

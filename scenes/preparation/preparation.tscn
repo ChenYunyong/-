@@ -164,7 +164,7 @@ offset_top = 196.0
 offset_right = 142.0
 offset_bottom = 244.0
 theme_type_variation = &"ButtonSecondary"
-text = "清空蓝图"
+text = "清空法术书"
 
 [node name="RegionCenter" type="Control" parent="."]
 unique_name_in_owner = true
@@ -208,7 +208,7 @@ offset_bottom = -16.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-text = "蓝图工作区"
+text = "法术书"
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 3
@@ -263,7 +263,7 @@ offset_bottom = -16.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-text = "节点详情"
+text = "卡片详情"
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 3

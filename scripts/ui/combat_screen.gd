@@ -23,8 +23,8 @@
 ##       本文件只负责「把谁交给它」「把结果写到哪个 Label 上」「把敌人画在哪」；
 ##       不得自己结算伤害 / 生成敌人 / 判死亡 —— 那些全在 CombatSimulation，
 ##       本文件只按它给的 progress / hp_ratio 换算屏幕位置，一个数值都不改；
-##       不得自己判定 Overheat（阈值 / 停火 / 冷却全在 MachineRuntime）—— 本场景只把 heat_changed
-##       的绝对值印成读数，并按 overheat_started / overheat_ended 给 `热量` 那一格换色
+##       不得自己判定 Overload（见底 / 哑火 / 回魔全在 MachineRuntime）—— 本场景只把 mana_changed
+##       的绝对值印成读数，并按 overload_started / overload_ended 给 `魔力` 那一格换色
 ##       （分寸见 _show_overheat：**不加格、不加控件、不改几何**，06 §8.1 的五格冻结不动）；
 ##       不得出现任何需要玩家长按 / 连点的动作控件（00 §5 第 3 条交互硬规则、06 §8）——
 ##       这条带是状态与预览，COMBAT 阶段玩家不直接操控任何单位。
@@ -41,9 +41,9 @@ const NOTICE_FINAL_WAVE: String = "最后一波清空后将进入结算场景（
 ## 而这里玩家按的是 Escape，提示说成 CORE 被摧毁会把人引到错误的方向。
 const NOTICE_ESCAPE: String = "结算场景（RESULT）的路由未就绪，本次留在战斗场景。"
 ## 还没有机器可跑。这是**首次进游戏的正常情况**（玩家没拖过节点），不是错误，故只提示不报错。
-const NOTICE_NO_MACHINE: String = "本局还没有机器：先在整备界面拖出 CORE 与武器并连好线，再开始战斗。"
-## 有图但没有信号源。给一句可读的解释，免得玩家对着不动的机器猜是卡了还是没接线。
-const NOTICE_NO_CORE: String = "这台机器里没有 CORE（信号源），不会有信号流动 —— 补一个 CORE 再开战。"
+const NOTICE_NO_MACHINE: String = "本局还没有法术书：先在整备界面拖出核心卡与能力卡并连好线，再开始战斗。"
+## 有图但没有核心卡。给一句可读的解释，免得玩家对着不动的法术书猜是卡住了还是没接线。
+const NOTICE_NO_CORE: String = "这本法术书里没有核心卡，不会有魔力流动 —— 补一张核心卡再开战。"
 
 ## 机器示意区的高度：24px 网格上的 2 行，贴战场下沿。上方的空档留给占位弹丸上升，
 ## 也留给敌人生成与推进区（PET-65）。
@@ -104,28 +104,33 @@ const KILL_MARK_GROW: float = 2.0
 ## 读数区的**权重分层**落在场景里（标题明暗 + 读数字号），不在这里 —— 它是静态装配，
 ## 归 tests/unit/test_combat.gd 钉。分层口径（13 §5「不要让五块 HUD 像五个同等级菜单按钮」
 ## 与 06 §8.1 的五格冻结取交集）：
-##   一级 = `波次` / `CORE` / `热量` —— 正是 §5 点名的一级 `WAVE` · `CORE / HP` · `HEAT`；
-##   二级 = `能量` / `队列` —— §8.1 冻结的五格里，§5 的一级没有点到的就剩这两个。
+##   一级 = `波次` / `CORE` / `魔力` —— 正是 §5 点名的一级 `WAVE` · `CORE / HP` · `HEAT`
+##          （PET-82 把 `HEAT` 那一格换成了 `魔力`，层级与格数一动不动）；
+##   二级 = `能力位` / `队列` —— §8.1 冻结的五格里，§5 的一级没有点到的就剩这两个。
 ## 注意 §5 的二级是 `GOLD` / `NEXT`，那两块**不在** §8.1 的五格内，故本卡不把它们塞进来 ——
 ## 见交付说明里向 DSH 提的结构问题。
 ##
-## 06 §8.1 的 `热量` 读数格。取的是读数块里那个叫 `Value` 的 Label。
+## 06 §8.1 的 `魔力` 读数格（PET-82：原 `热量`）。取的是读数块里那个叫 `Value` 的 Label。
 ## **不能**给这个 Label 挂 unique_name：5 个读数块的 Value 同名，`%Value` 只会命中其中一个，
-## 而各用例正是按名字 `Value` 逐块找它的。故唯一名挂在读数块（`Heat`）上，再往下走一级。
-@onready var _heat_value: Label = %Heat.get_node(^"Value") as Label
+## 而各用例正是按名字 `Value` 逐块找它的。故唯一名挂在读数块（`Mana`）上，再往下走一级。
+@onready var _mana_value: Label = %Mana.get_node(^"Value") as Label
 
-## 06 §8.1 的 `CORE` 读数格。同 `_heat_value` 的理由：唯一名挂在读数块（`Core`）上，再往下走一级。
+## 06 §8.1 的 `CORE` 读数格。同 `_mana_value` 的理由：唯一名挂在读数块（`Core`）上，再往下走一级。
+## **这一格的语义没变**：它量的是玩家基地的血量（敌人漏过来就掉），
+## 与 NodeData 里那个「信号源」曾经共用 CORE 这个词是巧合 —— 信号源已改叫核心卡（PET-82），
+## 而这一格照旧。把两件事都改叫魔力会让人以为「魔力掉光 = 本局失败」，那是两回事。
 @onready var _core_value: Label = %Core.get_node(^"Value") as Label
 
 ## 06 §8.1 的 `波次` 读数格。同上：唯一名挂在读数块（`Wave`）上，再往下走一级。
 @onready var _wave_value: Label = %Wave.get_node(^"Value") as Label
 
-## `热量` 格的标题。过热时连标题一起换色 —— 只换读数的话，在一条五格同形的带里
+## `魔力` 格的标题。过载时连标题一起换色 —— 只换读数的话，在一条五格同形的带里
 ## 那点色差读不出「这一格进了另一个状态」。
-@onready var _heat_caption: Label = %Heat.get_node(^"Caption") as Label
+@onready var _mana_caption: Label = %Mana.get_node(^"Caption") as Label
 
-## 06 §8.1 的 `能量` 读数格。同上：唯一名挂在读数块（`Energy`）上，再往下走一级。
-@onready var _energy_value: Label = %Energy.get_node(^"Value") as Label
+## 06 §8.1 的 `能力位` 读数格（PET-82：原 `能量`）。同上：唯一名挂在读数块（`AbilitySlots`）上，
+## 再往下走一级。见 _show_ability_slots 说明它为什么不再是原来那个恒为 0% 的死格子。
+@onready var _ability_slots_value: Label = %AbilitySlots.get_node(^"Value") as Label
 
 ## 两块区域容器，下标即 CombatLayout.Region。顺序必须与场景里的节点顺序一致。
 var _regions: Array[Control] = []
@@ -146,7 +151,7 @@ var _tracer_color: Color = Color.BLACK
 var _impact_color: Color = Color.BLACK
 var _kill_color: Color = Color.BLACK
 
-## 这一拍开火的武器（按 weapon_fired 到达的顺序）。由 _on_simulation_ticked 消费后清空 ——
+## 这一拍开火的武器（按 ability_cast 到达的顺序）。由 _on_simulation_ticked 消费后清空 ——
 ## 开火那一刻还不知道打中了谁，故**先记下、后配对**，而不是在回调里就地画一根弹道。
 var _fired: Array[StringName] = []
 
@@ -193,9 +198,9 @@ func _ready() -> void:
 	_kill_color = Palette.get_color(Palette.Key.BLUE_050)
 	# 06 §8.1 硬规则 1 明写「**分格之后才允许**分别套 Heat 橙 / Energy 蓝」——
 	# 这两格既已分格（硬规则 1 的另一半是不得合并），就把语义色落上：
-	# `能量` 取 BLUE_300（04 §3.8 的蓝组：能量 / 激活语义），`热量` 的常态色在
-	# _show_overheat(false) 里给（它与过热态是同一个取色入口，不在这里另写一份）。
-	_energy_value.add_theme_color_override(&"font_color", Palette.get_color(Palette.Key.BLUE_300))
+	# `能力位` 取 BLUE_300（04 §3.8 的蓝组：能量 / 激活语义），`魔力` 的常态色在
+	# _show_overload(false) 里给（它与过载态是同一个取色入口，不在这里另写一份）。
+	_ability_slots_value.add_theme_color_override(&"font_color", Palette.get_color(Palette.Key.BLUE_300))
 	# 敌人的重绘挂在敌人层的 draw 信号上：绘制命令必须落在**这一层**上，
 	# 落在本节点上会被 Backdrop 与机器视图盖住（父节点先于子节点绘制）。
 	_enemy_layer.draw.connect(_draw_enemies)
@@ -232,9 +237,10 @@ func reload_machine() -> void:
 		RunState.start_run()
 	var wave: int = RunState.current_wave()
 	_show_wave(wave)
-	_show_heat(0.0)
-	_show_overheat(false)
+	_show_mana(MachineRuntime.MANA_MAX)
+	_show_overload(false)
 	_show_core_hp(CombatSimulation.CORE_MAX_HP)
+	_show_ability_slots(null)
 	# 读数归零之后必须重画一次敌人层：上一局的尸体否则会留在屏幕上，
 	# 直到本局第一次 tick 才被擦掉 —— 那一段空白里玩家会以为新一局「有敌人但不动」。
 	_enemy_layer.queue_redraw()
@@ -247,17 +253,17 @@ func reload_machine() -> void:
 	_simulation = simulation
 	var machine: MachineRuntime = simulation.machine()
 	_machine_view.runtime = machine
-	machine.heat_changed.connect(_show_heat)
-	# 过热提示的来源：这两个信号是**一次状态变化的通知**，不是每拍心跳
-	# （test_heat.gd 已把「过热期间不得反复广播」钉住），故这里按事件换色即可，
-	# 不必每拍比对 heat() 去推状态 —— 那会把本场景变成第二个判定过热的地方。
-	machine.overheat_started.connect(_on_overheat_started)
-	machine.overheat_ended.connect(_on_overheat_ended)
+	machine.mana_changed.connect(_show_mana)
+	# 过载提示的来源：这两个信号是**一次状态变化的通知**，不是每拍心跳
+	# （test_mana.gd 已把「过载期间不得反复广播」钉住），故这里按事件换色即可，
+	# 不必每拍比对 mana() 去推状态 —— 那会把本场景变成第二个判定过载的地方。
+	machine.overload_started.connect(_on_overload_started)
+	machine.overload_ended.connect(_on_overload_ended)
 	# 重绘挂在本拍推进之后，而不是每帧无条件重画：机器不动时画面就一个像素都不重画。
 	machine.ticked.connect(_machine_view.queue_redraw)
-	# 开火与命中要画在**同一帧**里（见 _on_weapon_fired / _on_simulation_ticked）：
+	# 开火与命中要画在**同一帧**里（见 _on_ability_cast / _on_simulation_ticked）：
 	# 前者只记下本拍开了火的武器，真正的绘制等本拍全部推进完再一起做。
-	machine.weapon_fired.connect(_on_weapon_fired)
+	machine.ability_cast.connect(_on_ability_cast)
 	simulation.ticked.connect(_on_simulation_ticked)
 	simulation.core_hp_changed.connect(_show_core_hp)
 	# 胜负由仿真判定，出口仍走本场景既有的两个语义入口（03 §1.1 R2 只认这两条边）。
@@ -265,48 +271,90 @@ func reload_machine() -> void:
 	simulation.wave_cleared.connect(on_wave_cleared)
 	simulation.run_failed.connect(on_core_destroyed)
 	_driver.bind_combat(simulation)
+	_show_ability_slots(blueprint)
 	if not machine.has_core():
 		_show_notice(NOTICE_NO_CORE)
 
 
-## 06 §8.1 的 `热量` 读数。取整数百分比 —— 读数格只有三位宽（`100%`），小数会被挤掉。
-func _show_heat(heat: float) -> void:
-	_heat_value.text = "%d%%" % roundi(heat)
+## 06 §8.1 的 `魔力` 读数。取整数百分比 —— 读数格只有三位宽（`100%`），小数会被挤掉。
+func _show_mana(mana: float) -> void:
+	_mana_value.text = "%d%%" % roundi(mana)
 
 
-## Overheat 的可辨识提示（PET-66 遗留项：过热当时在画面上只表现为「热量 100% 然后掉回去」，
-## 与「机器没接好、压根不开火」在静帧里分不开）。06 §8.1 把这条带冻结成 5 个只读读数块，
-## 故这里**不加格子、不加控件、不改任何几何** —— 只给已有的 `热量` 那一格换色：
+## 06 §8.1 的 `能力位` 读数：`已装能力卡 / 能力位总数`，例如 `1/3`。
+##
+## PET-82 之前这一格叫 `能量`，**整局恒为 0%**（todo R8 的原话就是「一个永远不动的读数」）——
+## 一个从不变化的格子读起来不像状态，像坏掉的控件。本卡把它接到一个真实存在的量上：
+## 玩家的法术书装了几张能力卡。只做三件事，没有任何新系统：
+##   · 分母 = WAREHOUSE 里 kind 为能力卡的槽位数（法术书**本来就有**三张能力卡槽）；
+##   · 分子 = 蓝图里 kind 为能力卡的节点数（玩家**本来就能**拖出来）；
+##   · 两者都在既有数据里，不新增任何字段、不新增任何玩法。
+##
+## 取 `1/3` 而不是 `33%`：波次那一格已经用了「当前/总数」这种读法，同一块读数带上
+## 两种「部分/整体」的写法会让人以为它们量的不是一回事；而 `1/3` 直接说出「还空着两格」，
+## 百分比说不出这句话。
+##
+## 说明：本波之内它是常量（COMBAT 里图是只读的），**跨波才变** ——
+## 这不违背 R8 的诉求：那个诉求是「格子里得有一个真的量」，而不是「每拍都要跳一下」。
+## 每拍都在动的是 `魔力` 那一格，两格分工不同。
+func _show_ability_slots(blueprint: BlueprintData) -> void:
+	_ability_slots_value.text = "%d/%d" % [ability_slot_used(blueprint), ability_slot_capacity()]
+
+
+## 法术书有几个能力位。分母取自 WAREHOUSE **本身**，不在这里写死一个 3 ——
+## 写死的话，哪天仓库加减一张能力卡槽，画面会继续印 `1/3`，而玩家手里已经有四张槽。
+static func ability_slot_capacity() -> int:
+	var total: int = 0
+	for entry: Dictionary in BlueprintWorkspace.WAREHOUSE:
+		if int(entry["kind"]) == NodeData.Kind.ABILITY:
+			total += 1
+	return total
+
+
+## 这本法术书已经装了几张能力卡。蓝图为空（首次进游戏）时为 0。
+static func ability_slot_used(blueprint: BlueprintData) -> int:
+	if blueprint == null:
+		return 0
+	var used: int = 0
+	for node: NodeData in blueprint.nodes:
+		if node.kind == NodeData.Kind.ABILITY:
+			used += 1
+	return used
+
+
+## Overload 的可辨识提示（PET-66 遗留项：过载当时在画面上只表现为「魔力 0% 然后涨回去」，
+## 与「法术书没接好、压根不施放」在静帧里分不开）。06 §8.1 把这条带冻结成 5 个只读读数块，
+## 故这里**不加格子、不加控件、不改任何几何** —— 只给已有的 `魔力` 那一格换色：
 ##   常态   → 读数 ORANGE_500（04 §3.8「Heat 条、高温」）+ 标题留在正文色
-##   过热中 → 标题与读数一起转 ORANGE_300（「爆炸、过热高光」）—— 标题从冷色转暖橙，
+##   过载中 → 标题与读数一起转 ORANGE_300（「爆炸、过热高光」）—— 标题从冷色转暖橙，
 ##            在一条五格同形的带里一眼能挑出「这一格不在常态」。
 ##
 ## 为什么不用 ORANGE_600（它的名字就叫「Overheat 临界」）：在 NAVY_800 带底上只有 2.93:1，
 ## 04 §3.7 的对比度硬约束不允许拿它当小号文字（RED_500 的 3.21:1 已被判不合格）。
-## 因此「更亮」而不是「更深」才是这块底上可用的过热信号。
+## 因此「更亮」而不是「更深」才是这块底上可用的过载信号。
 ##
 ## 取色写成静态纯函数：颜色与状态的对应关系可以脱离场景树单测，
-## 不必为了断言一行取色去真跑一次过热（那要几百拍）。
-static func heat_readout_color(overheated: bool) -> Color:
-	return Palette.get_color(Palette.Key.ORANGE_300 if overheated else Palette.Key.ORANGE_500)
+## 不必为了断言一行取色去真跑一次过载（那要几百拍）。
+static func mana_readout_color(overloaded: bool) -> Color:
+	return Palette.get_color(Palette.Key.ORANGE_300 if overloaded else Palette.Key.ORANGE_500)
 
 
-func _on_overheat_started() -> void:
-	_show_overheat(true)
+func _on_overload_started() -> void:
+	_show_overload(true)
 
 
-func _on_overheat_ended() -> void:
-	_show_overheat(false)
+func _on_overload_ended() -> void:
+	_show_overload(false)
 
 
-## 切到 / 切回过热态。标题在常态下**移除**覆写而不是写回正文色 ——
+## 切到 / 切回过载态。标题在常态下**移除**覆写而不是写回正文色 ——
 ## 正文色是 Theme 的事（06 §10.7 一处定义），这里只表达「这一格现在不一样」。
-func _show_overheat(overheated: bool) -> void:
-	_heat_value.add_theme_color_override(&"font_color", heat_readout_color(overheated))
-	if overheated:
-		_heat_caption.add_theme_color_override(&"font_color", heat_readout_color(true))
+func _show_overload(overloaded: bool) -> void:
+	_mana_value.add_theme_color_override(&"font_color", mana_readout_color(overloaded))
+	if overloaded:
+		_mana_caption.add_theme_color_override(&"font_color", mana_readout_color(true))
 	else:
-		_heat_caption.remove_theme_color_override(&"font_color")
+		_mana_caption.remove_theme_color_override(&"font_color")
 
 
 ## 06 §8.1 的 `CORE` 读数。同样是整数百分比（§8.1 硬规则 2：CORE 用百分比，不用自然语言状态词）。
@@ -537,11 +585,11 @@ func _draw_vanishing(rect: Rect2, age: int, color: Color) -> void:
 
 ## 武器开火 → 只**记下**这一拍开了火的武器，不在这里画。
 ##
-## 此刻本拍还没结算完（weapon_fired 是在 machine.tick() 里发的，伤害结算挂在同一条链上），
+## 此刻本拍还没结算完（ability_cast 是在 machine.tick() 里发的，伤害结算挂在同一条链上），
 ## 于是这一刻还不知道打中了谁。等 simulation.ticked（本拍全部推进完毕）再一起画，
 ## 「哪把武器发动」与「打到谁」才会出现在**同一帧**里，而不是一先一后。
-func _on_weapon_fired(weapon_id: StringName) -> void:
-	_fired.append(weapon_id)
+func _on_ability_cast(ability_id: StringName) -> void:
+	_fired.append(ability_id)
 
 
 ## 本拍推进完毕：先把上一拍画的东西变老、清掉过期的，再按本拍的掉血情况补上新的记录。

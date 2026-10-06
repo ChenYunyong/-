@@ -284,7 +284,7 @@ func _shoot(label: String) -> void:
 
 
 ## 战斗那一站的证据图：先给场上装一台机器、让它真的跑起来，再拍。
-## 本用例自己不画蓝图（那是整备界面的活），故这里把验收机器 CORE → 针 落到**测试专用目录**
+## 本用例自己不画蓝图（那是整备界面的活），故这里把验收机器 CORE → 冰 落到**测试专用目录**
 ## 再让这一场指向它 —— 落的是数据类，与玩家在整备界面拖出来的是同一种东西（09 §3.2）。
 ## 空战场拍下来什么都证不了：既看不到敌人，也看不到机器在动。
 func _shoot_combat(combat: Node, label: String) -> void:
@@ -367,11 +367,11 @@ func _click(card: Control, pressed: bool) -> void:
 	card.gui_input.emit(event)
 
 
-## 验收卡点名的那台机器：CORE 分三路出去，三条武器各一把 —— 针 / 炸弹 / 锯。
+## 验收卡点名的那台机器：CORE 分三路出去，三条武器各一把 —— 冰 / 火 / 雷。
 ##
 ## 每个武器节点都必须带上自己的 weapon_kind：这是「三把武器各不相同」的**唯一**来源
-## （03 §6；从前那条按显示名反查的桥已随 PET-70 删除）。漏了它，WeaponData.resolve()
-## 会把三把**全部**按 02 §9 降级成针，每把各报一条 push_error —— 而机器照跑、画面照动、
+## （03 §6；从前那条按显示名反查的桥已随 PET-70 删除）。漏了它，AbilityData.resolve()
+## 会把三把**全部**按 02 §9 降级成冰，每把各报一条 push_error —— 而机器照跑、画面照动、
 ## 这一层的断言条数一条不少，只有 09 §5 的 ERROR 计数与「这一场到底覆盖了哪几把武器」看得出来。
 ## 本用例建 5 个 CombatSimulation，故漏一处就是 5 条 ERROR（R1 的账就记在这里）。
 func _machine_blueprint() -> BlueprintData:
@@ -383,15 +383,15 @@ func _machine_blueprint() -> BlueprintData:
 	blueprint.nodes.append(core)
 	# 一把武器一把，逐把显式给种类：本用例的用途之一就是证明三条武器路径都被走到。
 	var weapons: Array[Dictionary] = [
-		{"id": &"needle", "name": "针", "weapon_kind": NodeData.WeaponKind.NEEDLE},
-		{"id": &"bomb", "name": "炸弹", "weapon_kind": NodeData.WeaponKind.BOMB},
-		{"id": &"saw", "name": "锯", "weapon_kind": NodeData.WeaponKind.SAW},
+		{"id": &"needle", "name": "冰", "weapon_kind": NodeData.Ability.ICE},
+		{"id": &"bomb", "name": "火", "weapon_kind": NodeData.Ability.FIRE},
+		{"id": &"saw", "name": "雷", "weapon_kind": NodeData.Ability.THUNDER},
 	]
 	for entry: Dictionary in weapons:
 		var weapon := NodeData.new()
 		weapon.id = StringName(entry["id"])
 		weapon.display_name = String(entry["name"])
-		weapon.kind = NodeData.Kind.WEAPON
+		weapon.kind = NodeData.Kind.ABILITY
 		weapon.weapon_kind = int(entry["weapon_kind"])
 		blueprint.nodes.append(weapon)
 		var edge := ConnectionData.new()

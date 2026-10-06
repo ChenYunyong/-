@@ -154,7 +154,7 @@ func _check_region(scene: Node, index: int) -> void:
 ## 并拿它自己报告的最小尺寸回代坐标换算公式 —— 最小尺寸一旦变化，落位必须跟着变。
 ##
 ## PET-75：判据收窄到**主动作**按钮（无主题变体 = GOLD 填充）。该卡在左栏加了
-## 「删除 / 撤销 / 清空蓝图」三个 ButtonSecondary 辅助按钮，它们不争夺这个位置；
+## 「删除 / 撤销 / 清空能力卡书」三个 ButtonSecondary 辅助按钮，它们不争夺这个位置；
 ## 收窄之后本用例测的正是它标题里写的那件事。
 func _check_cta_case() -> void:
 	_ctx.begin_case("PREPARATION 冒烟 · CTA 唯一性与落位（06 §7）")
@@ -337,7 +337,7 @@ func _collect_buttons(node: Node, found: Array[Button]) -> void:
 
 
 ## 主动作按钮 = 没挂主题变体的 Button（基础变体 = GOLD 填充，06 §3）。
-## PET-75 的「删除 / 撤销 / 清空蓝图」挂的是 ButtonSecondary（NAVY 填充），不在其列。
+## PET-75 的「删除 / 撤销 / 清空能力卡书」挂的是 ButtonSecondary（NAVY 填充），不在其列。
 func _primary_buttons(node: Node) -> Array[Button]:
 	var all: Array[Button] = []
 	_collect_buttons(node, all)

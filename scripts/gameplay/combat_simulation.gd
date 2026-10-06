@@ -1,17 +1,17 @@
 ## combat_simulation.gd
 ## 职责：一场战斗的固定节拍仿真（FIRST PLAYABLE 3/4）—— 一波敌人按固定间隔生成、沿路径推进，
-##       机器的武器开火时结算伤害，敌人血量归零即死亡，全部清空则本波通过、
+##       法术书的能力卡施放时结算伤害，敌人血量归零即死亡，全部清空则本波通过、
 ##       有敌人抵达终点则扣 CORE 血量、扣光即本局失败。
 ##       它把 MachineRuntime（机器怎么跑）与敌人/伤害（这一批新增的玩法）拼成一个整体。
 ## 所属系统：gameplay
-## 依赖：MachineRuntime / EnemyState / EnemyData / WeaponData / BlueprintData / NodeData
+## 依赖：MachineRuntime / EnemyState / EnemyData / AbilityData / BlueprintData / NodeData
 ## 禁止：本文件不得触碰场景树 / 渲染 / 输入 / Palette / 存档 —— 它只推进数值，
 ##       可见反馈由 ui 层读它的只读状态与信号；
 ##       不得使用真实时间、Timer 或自动运行 —— 推进的唯一入口是 tick()，由 MachineDriver 按固定节拍喂
 ##       （03 §2：把时间来源放进仿真内部，仿真就无法在测试里被精确驱动）；
 ##       不得使用 randi() / randf()（03 §6）—— 同一份蓝图 + 同一波敌人必须跑出同一串结果；
-##       不得处理 Heat / Overheat —— 两者全在 MachineRuntime 内部（含「过热期间不开火」），
-##       本文件一个字节都不改它，只是照常接收（或收不到）weapon_fired；
+##       不得处理 Mana / Overload —— 两者全在 MachineRuntime 内部（含「过载期间不施放」），
+##       本文件一个字节都不改它，只是照常接收（或收不到）ability_cast；
 ##       不得自己画任何东西 —— 敌人在屏幕上的位置由 ui 层按 progress 换算。
 
 class_name CombatSimulation
@@ -57,7 +57,7 @@ const LANES: int = 2
 signal ticked()
 
 ## CORE 血量变化。携带的是**绝对值**不是增量 —— 增量语义在重连 / 补跑时会把读数加错
-## （同 MachineRuntime.heat_changed 的理由）。
+## （同 MachineRuntime.mana_changed 的理由）。
 signal core_hp_changed(core_hp: float)
 
 ## 本波清空（全部敌人被击杀，且尸体都已退场）。03 §1.1 R2 的 COMBAT → REWARD 只此一条来路。
@@ -66,15 +66,15 @@ signal wave_cleared()
 ## 本局失败（CORE 血量归零）。03 §1.1 R2 的 COMBAT → RESULT。
 signal run_failed()
 
-## 机器本体。UI 仍要向它取信号火花 / 弹丸 / Heat 读数，故原样交出去。
+## 机器本体。UI 仍要向它取信号火花 / 能力卡 / 魔力读数，故原样交出去。
 var _machine: MachineRuntime = null
 
 ## 场上敌人（含尚未消失的尸体），按出场顺序。**数组顺序即同拍内的结算顺序**，
 ## 与蓝图节点顺序决定机器行为是同一个道理（03 §6）。
 var _enemies: Array[EnemyState] = []
 
-## node_id -> WeaponData。开火时按 id 反查，没查到的（FUNCTION / CORE / 未识别）不结算伤害。
-var _weapons: Dictionary = {}
+## node_id -> AbilityData。施放时按 id 反查，没查到的（功能卡 / 核心卡 / 未识别）不结算伤害。
+var _abilities: Dictionary = {}
 
 var _core_hp: float = CORE_MAX_HP
 var _tick_index: int = 0
@@ -94,11 +94,11 @@ func _init(blueprint: BlueprintData, wave_index: int = 1) -> void:
 	_wave_index = clampi(wave_index, 1, WAVES.size())
 	_wave = WAVES[_wave_index - 1]
 	if blueprint != null:
-		_build_weapons(blueprint)
+		_build_abilities(blueprint)
 	_machine = MachineRuntime.new(blueprint)
-	# 开火与伤害在同一条调用链上：weapon_fired 是即时信号，_machine.tick() 返回时
+	# 开火与伤害在同一条调用链上：ability_cast 是即时信号，_machine.tick() 返回时
 	# 本拍的开火已经全部结算完。这样「哪把武器先开火」就完全由蓝图节点顺序决定（03 §6）。
-	_machine.weapon_fired.connect(_on_weapon_fired)
+	_machine.ability_cast.connect(_on_ability_cast)
 
 
 ## 推进一拍。**本仿真的唯一时间入口** —— 调用它的节拍由 MachineDriver 按固定步长给出。
@@ -123,7 +123,7 @@ func tick() -> void:
 	ticked.emit()
 
 
-## 机器本体（只读用途：UI 画火花 / 弹丸 / Heat，测试读节拍号）。
+## 机器本体（只读用途：UI 画火花 / 能力卡 / 魔力，测试读节拍号）。
 func machine() -> MachineRuntime:
 	return _machine
 
@@ -171,35 +171,35 @@ func is_over() -> bool:
 	return _cleared or _failed
 
 
-## 建武器表。只认得出「是武器」的节点；FUNCTION / CORE 与未识别的武器名都不进表，
-## 于是开火回调里一次 get() 就够，不必每发都重新判定节点类型。
-func _build_weapons(blueprint: BlueprintData) -> void:
+## 建能力卡表。只认得出「是能力卡」的节点；功能卡 / 核心卡与未识别的能力卡名都不进表，
+## 于是施放回调里一次 get() 就够，不必每发都重新判定节点类型。
+func _build_abilities(blueprint: BlueprintData) -> void:
 	for node: NodeData in blueprint.nodes:
-		var weapon: WeaponData = WeaponData.resolve(node)
-		if weapon != null:
-			_weapons[node.id] = weapon
+		var spell: AbilityData = AbilityData.resolve(node)
+		if spell != null:
+			_abilities[node.id] = spell
 
 
-## 武器开火 → 结算伤害。按**打击范围**分支，不按武器 id 分支：
-## 加一把武器只要给它一个 reach 与 damage，本函数一行都不用改。
-func _on_weapon_fired(weapon_id: StringName) -> void:
-	var weapon: WeaponData = _weapons.get(weapon_id) as WeaponData
-	if weapon == null:
-		# 机器里有一把本仿真认不出的武器（或压根不是武器）。开火照旧、Heat 照旧累加，
-		# 只是不掉血 —— 这是「蓝图里出现了未识别的武器名」的可见症状，不是崩溃点。
+## 能力卡施放 → 结算伤害。按**打击范围**分支，不按能力卡 id 分支：
+## 加一种能力卡只要给它一个 reach 与 damage，本函数一行都不用改。
+func _on_ability_cast(ability_id: StringName) -> void:
+	var spell: AbilityData = _abilities.get(ability_id) as AbilityData
+	if spell == null:
+		# 法术书里有一个本仿真认不出的能力卡（或压根不是能力卡）。施放照旧、魔力照旧扣，
+		# 只是不掉血 —— 这是「法术书里出现了未识别的能力卡名」的可见症状，不是崩溃点。
 		return
-	match weapon.reach:
-		WeaponData.Reach.ALL:
+	match spell.reach:
+		AbilityData.Reach.ALL:
 			for enemy: EnemyState in _enemies:
-				_strike(enemy, weapon.damage)
-		WeaponData.Reach.MELEE:
+				_strike(enemy, spell.damage)
+		AbilityData.Reach.MELEE:
 			for enemy: EnemyState in _enemies:
-				if enemy.progress >= WeaponData.MELEE_FROM:
-					_strike(enemy, weapon.damage)
+				if enemy.progress >= AbilityData.MELEE_FROM:
+					_strike(enemy, spell.damage)
 		_:
 			var target: EnemyState = _front_enemy()
 			if target != null:
-				_strike(target, weapon.damage)
+				_strike(target, spell.damage)
 
 
 func _strike(enemy: EnemyState, damage: float) -> void:
@@ -207,7 +207,7 @@ func _strike(enemy: EnemyState, damage: float) -> void:
 		enemy.take_damage(damage, _tick_index)
 
 
-## 最靠前（离 CORE 最近）的活敌人 —— 单体武器打它。
+## 最靠前（离终点最近）的活敌人 —— 单体能力卡打它。
 ## 平手时取**先出场**的那只（比较用严格大于），于是同拍内的选择是确定的：数组顺序即出场顺序。
 func _front_enemy() -> EnemyState:
 	var best: EnemyState = null

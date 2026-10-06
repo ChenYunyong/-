@@ -17,7 +17,7 @@
 ## 于是结论与帧率、机器快慢完全无关。
 ##
 ## 判别力（09 §4：每条断言都要能被一次「故意改坏」打红）：
-##   负对照一 —— 把 CombatSimulation._on_weapon_fired 的 Reach.MELEE 分支改成不过滤进度，
+##   负对照一 —— 把 CombatSimulation._on_ability_cast 的 Reach.MELEE 分支改成不过滤进度，
 ##               「还在远处的敌人不掉血」必须转红。
 ##   负对照二 —— 把 take_damage 的 `hp > 0.0` 改成 `hp >= 0.0`，击杀判定与死亡拍号必须转红。
 ##   负对照三 —— 把 _spawn_due 的间隔换成 1，生成节奏那几条必须转红。
@@ -37,7 +37,7 @@ const MELEE_FROM: float = 0.7
 ## 时间模型（03 §2 的固定节拍）。
 const CORE_PERIOD: int = 10
 const TRAVEL: int = 4
-const DELAY_TICKS: int = 12
+const COOLDOWN_TICKS: int = 12
 
 ## 本波的生成节奏与 CORE 血量。
 const SPAWN_FIRST: int = 10
@@ -49,7 +49,7 @@ const VANISH_TICKS: int = 4
 ## 由上面几项推出来的几个拍号。首发拍号 = CORE 节拍 + 途经的每条边各 TRAVEL 拍。
 const FIRE_DIRECT: int = CORE_PERIOD + TRAVEL
 const FIRE_SPLIT: int = CORE_PERIOD + TRAVEL * 2
-const FIRE_DELAY: int = CORE_PERIOD + TRAVEL + DELAY_TICKS + TRAVEL
+const FIRE_DELAY: int = CORE_PERIOD + TRAVEL + COOLDOWN_TICKS + TRAVEL
 
 ## 占位敌人的出场顺序（EnemyData.Kind 的整数值：0 = Slime / 1 = Runner）。
 const WAVE_ORDER: Array[int] = [0, 1, 0, 1]
@@ -96,64 +96,64 @@ func _run_enemy_data_checks(ctx: RefCounted) -> void:
 
 ## 三把武器：单体高频 / 范围 / 近身。差异只在 reach + damage 上。
 func _run_weapon_data_checks(ctx: RefCounted) -> void:
-	ctx.begin_case("WeaponData · 三把武器的数值与打击范围")
-	var needle := WeaponData.for_kind(WeaponData.Kind.NEEDLE)
-	var bomb := WeaponData.for_kind(WeaponData.Kind.BOMB)
-	var saw := WeaponData.for_kind(WeaponData.Kind.SAW)
-	ctx.equal(needle.damage, NEEDLE_DAMAGE, "针的伤害")
-	ctx.equal(needle.reach, WeaponData.Reach.SINGLE, "针是单体")
-	ctx.equal(bomb.damage, BOMB_DAMAGE, "炸弹的伤害")
-	ctx.equal(bomb.reach, WeaponData.Reach.ALL, "炸弹是范围")
-	ctx.equal(saw.damage, SAW_DAMAGE, "锯的伤害")
-	ctx.equal(saw.reach, WeaponData.Reach.MELEE, "锯是近身")
+	ctx.begin_case("AbilityData · 三把武器的数值与打击范围")
+	var needle := AbilityData.for_kind(AbilityData.Kind.ICE)
+	var bomb := AbilityData.for_kind(AbilityData.Kind.FIRE)
+	var saw := AbilityData.for_kind(AbilityData.Kind.THUNDER)
+	ctx.equal(needle.damage, NEEDLE_DAMAGE, "冰的伤害")
+	ctx.equal(needle.reach, AbilityData.Reach.SINGLE, "冰是单体")
+	ctx.equal(bomb.damage, BOMB_DAMAGE, "火的伤害")
+	ctx.equal(bomb.reach, AbilityData.Reach.ALL, "火是范围")
+	ctx.equal(saw.damage, SAW_DAMAGE, "雷的伤害")
+	ctx.equal(saw.reach, AbilityData.Reach.MELEE, "雷是近身")
 	ctx.check(saw.damage < needle.damage and needle.damage < bomb.damage,
-		"三者的伤害关系：锯（持续）< 针（单体高频）< 炸弹（范围）")
+		"三者的伤害关系：雷（持续）< 冰（单体高频）< 火（范围）")
 
-	ctx.begin_case("WeaponData · 节点上的武器种类 → 武器数值")
+	ctx.begin_case("AbilityData · 节点上的武器种类 → 武器数值")
 	# 三把武器的种类，本文件独立复写一遍（不转抄 WAREHOUSE 表）。
 	var node_kinds: Array[int] = [
-		NodeData.WeaponKind.NEEDLE, NodeData.WeaponKind.BOMB, NodeData.WeaponKind.SAW,
+		NodeData.Ability.ICE, NodeData.Ability.FIRE, NodeData.Ability.THUNDER,
 	]
-	var kinds: Array[int] = [WeaponData.Kind.NEEDLE, WeaponData.Kind.BOMB, WeaponData.Kind.SAW]
+	var kinds: Array[int] = [AbilityData.Kind.ICE, AbilityData.Kind.FIRE, AbilityData.Kind.THUNDER]
 	for index: int in node_kinds.size():
-		var resolved: WeaponData = WeaponData.resolve(
-			_node(&"w", "任意名字", NodeData.Kind.WEAPON, 0, node_kinds[index]))
+		var resolved: AbilityData = AbilityData.resolve(
+			_node(&"w", "任意名字", NodeData.Kind.ABILITY, 0, node_kinds[index]))
 		if ctx.check(resolved != null, "武器种类 %d 应能解析成武器" % node_kinds[index]):
 			ctx.equal(resolved.kind, kinds[index], "武器种类 %d 解析出的武器种类" % node_kinds[index])
 	# 显示名**不再参与解析**：改名字（或 I18N 之后换成译文）不得影响打出去的是什么。
 	# 这正是删掉按显示名反查那条桥的理由，故这里正面钉一条。
-	var renamed: WeaponData = WeaponData.resolve(
-		_node(&"w", "Saw（英文名）", NodeData.Kind.WEAPON, 0, NodeData.WeaponKind.SAW))
+	var renamed: AbilityData = AbilityData.resolve(
+		_node(&"w", "Saw（英文名）", NodeData.Kind.ABILITY, 0, NodeData.Ability.THUNDER))
 	if ctx.check(renamed != null, "换了显示名的武器节点仍应能解析"):
-		ctx.equal(renamed.kind, WeaponData.Kind.SAW, "解析只看 weapon_kind，不看显示名")
+		ctx.equal(renamed.kind, AbilityData.Kind.THUNDER, "解析只看 weapon_kind，不看显示名")
 	# 不是武器节点的一律返回 null —— 否则 CORE / FUNCTION 也会被当成武器去打人。
-	ctx.equal(WeaponData.resolve(_node(&"c", "核心", NodeData.Kind.CORE, 0)), null,
+	ctx.equal(AbilityData.resolve(_node(&"c", "核心", NodeData.Kind.CORE, 0)), null,
 		"CORE 节点不得被解析成武器")
-	ctx.equal(WeaponData.resolve(_node(&"f", "分流", NodeData.Kind.FUNCTION, 1)), null,
+	ctx.equal(AbilityData.resolve(_node(&"f", "子弹数量", NodeData.Kind.FUNCTION, 1)), null,
 		"FUNCTION 节点不得被解析成武器")
-	ctx.equal(WeaponData.resolve(null), null, "空节点不得被解析成武器")
+	ctx.equal(AbilityData.resolve(null), null, "空节点不得被解析成武器")
 
 	# 旧存档（没有 weapon_kind 这一字段）载回后是 NONE，这里正面验一次降级：
-	# 落到 Needle 而不是 null —— 降成 null 会让玩家的武器「开火但不掉血」，最难查的那一类。
+	# 落到冰而不是 null —— 降成 null 会让玩家的武器「开火但不掉血」，最难查的那一类。
 	# 这一条会触发一条 push_error，属 09 §5 明文豁免的「被断言的负路径用例」。
-	ctx.begin_case("WeaponData · 缺字段（旧存档）→ 02 §9 降级到 Needle")
-	var legacy: WeaponData = WeaponData.resolve(
-		_node(&"w_old", "锯", NodeData.Kind.WEAPON, 0, NodeData.WeaponKind.NONE))
+	ctx.begin_case("AbilityData · 缺字段（旧存档）→ 02 §9 降级到冰")
+	var legacy: AbilityData = AbilityData.resolve(
+		_node(&"w_old", "雷", NodeData.Kind.ABILITY, 0, NodeData.Ability.NONE))
 	if ctx.check(legacy != null, "缺 weapon_kind 的旧节点不得解析成 null（武器会变成开火不掉血）"):
-		ctx.equal(legacy.kind, WeaponData.Kind.NEEDLE, "缺字段时降级到 Needle")
+		ctx.equal(legacy.kind, AbilityData.Kind.ICE, "缺字段时降级到冰")
 
-	# NodeData.WeaponKind 与 WeaponData.Kind 是两份**各自写下**的枚举（不能互相引用：
-	# WeaponData 依赖 NodeData，反过来引用就成了循环依赖），故这条对应关系必须由测试顶住 ——
-	# 哪一边插了一个成员而另一边没跟上，这里当场转红，而不是等到玩家发现锯打出了针的伤害。
-	ctx.begin_case("NodeData.WeaponKind 与 WeaponData.Kind 的对应关系")
-	ctx.equal(int(NodeData.WeaponKind.NEEDLE), int(WeaponData.Kind.NEEDLE) + 1,
-		"NEEDLE 在两份枚举里的相对位置")
-	ctx.equal(int(NodeData.WeaponKind.BOMB), int(WeaponData.Kind.BOMB) + 1,
-		"BOMB 在两份枚举里的相对位置")
-	ctx.equal(int(NodeData.WeaponKind.SAW), int(WeaponData.Kind.SAW) + 1,
-		"SAW 在两份枚举里的相对位置")
-	ctx.equal(NodeData.WeaponKind.size(), WeaponData.Kind.size() + 1,
-		"WeaponKind 应恰好比 Kind 多一个 NONE")
+	# NodeData.Ability 与 AbilityData.Kind 是两份**各自写下**的枚举（不能互相引用：
+	# AbilityData 依赖 NodeData，反过来引用就成了循环依赖），故这条对应关系必须由测试顶住 ——
+	# 哪一边插了一个成员而另一边没跟上，这里当场转红，而不是等到玩家发现雷打出了冰的伤害。
+	ctx.begin_case("NodeData.Ability 与 AbilityData.Kind 的对应关系")
+	ctx.equal(int(NodeData.Ability.ICE), int(AbilityData.Kind.ICE) + 1,
+		"冰在两份枚举里的相对位置")
+	ctx.equal(int(NodeData.Ability.FIRE), int(AbilityData.Kind.FIRE) + 1,
+		"火在两份枚举里的相对位置")
+	ctx.equal(int(NodeData.Ability.THUNDER), int(AbilityData.Kind.THUNDER) + 1,
+		"雷在两份枚举里的相对位置")
+	ctx.equal(NodeData.Ability.size(), AbilityData.Kind.size() + 1,
+		"Ability 应恰好比 Kind 多一个 NONE")
 
 
 ## 一只敌人自己的规则：挨打、死亡、退场。
@@ -235,13 +235,13 @@ func _run_spawn_checks(ctx: RefCounted) -> void:
 	ctx.equal(sim.core_hp(), CORE_MAX, "还没有敌人抵达终点，CORE 不掉血")
 
 
-## 针：单体、高频，打的是离 CORE 最近的那一只。
+## 冰：单体、高频，打的是离 CORE 最近的那一只。
 func _run_needle_checks(ctx: RefCounted) -> void:
-	ctx.begin_case("CombatSimulation · 针（单体高频）")
+	ctx.begin_case("CombatSimulation · 冰（单体高频）")
 	var sim := CombatSimulation.new(_blueprint(
 		[
 			["core", "核心", NodeData.Kind.CORE, 0],
-			["w", "针", NodeData.Kind.WEAPON, 0, NodeData.WeaponKind.NEEDLE],
+			["w", "冰", NodeData.Kind.ABILITY, 0, NodeData.Ability.ICE],
 		],
 		[["core", "w"]]))
 	_step(sim, FIRE_DIRECT - 1)
@@ -260,20 +260,20 @@ func _run_needle_checks(ctx: RefCounted) -> void:
 	ctx.equal(back.hp, RUNNER_HP, "单体武器只打最靠前的一只，后排一发都没挨")
 	ctx.check(front.progress > back.progress, "挨打的那只确实是离 CORE 最近的一只")
 	_step(sim, 10)
-	ctx.equal(front.died_at_tick, 44, "Slime（%d 血）挨 4 发针（每发 %d）应在第 44 拍死亡"
+	ctx.equal(front.died_at_tick, 44, "Slime（%d 血）挨 4 发冰（每发 %d）应在第 44 拍死亡"
 		% [int(SLIME_HP), int(NEEDLE_DAMAGE)])
 	ctx.check(not front.is_alive(), "血量归零即死亡")
 
 
-## 炸弹：范围。一次开火同时打中场上**全部**活着的敌人。
+## 火：范围。一次开火同时打中场上**全部**活着的敌人。
 ## 挂一个 Delay 是为了让首发落在第 30 拍 —— 那时场上正好有两只（第 10 拍与第 30 拍出场的各一只）。
 func _run_bomb_checks(ctx: RefCounted) -> void:
-	ctx.begin_case("CombatSimulation · 炸弹（范围）")
+	ctx.begin_case("CombatSimulation · 火（范围）")
 	var sim := CombatSimulation.new(_blueprint(
 		[
 			["core", "核心", NodeData.Kind.CORE, 0],
-			["d", "延迟", NodeData.Kind.FUNCTION, NodeData.Function.DELAY],
-			["w", "炸弹", NodeData.Kind.WEAPON, 0, NodeData.WeaponKind.BOMB],
+			["d", "冷却", NodeData.Kind.FUNCTION, NodeData.Function.COOLDOWN],
+			["w", "火", NodeData.Kind.ABILITY, 0, NodeData.Ability.FIRE],
 		],
 		[["core", "d"], ["d", "w"]]))
 	_step(sim, FIRE_DELAY - 1)
@@ -282,7 +282,7 @@ func _run_bomb_checks(ctx: RefCounted) -> void:
 	_step(sim, 1)
 	ctx.equal(sim.enemies()[0].hp, SLIME_HP - BOMB_DAMAGE, "第 %d 拍首发命中" % FIRE_DELAY)
 
-	# 第 30 拍出场第 2 只；第 40 拍炸弹再开一次火，此时场上两只都在。
+	# 第 30 拍出场第 2 只；第 40 拍火再开一次火，此时场上两只都在。
 	_step(sim, 40 - FIRE_DELAY - 1)
 	ctx.equal(sim.enemies().size(), 2, "第 39 拍场上应有 2 只")
 	var front: EnemyState = sim.enemies()[0]
@@ -295,17 +295,17 @@ func _run_bomb_checks(ctx: RefCounted) -> void:
 	ctx.equal(sim.core_hp(), CORE_MAX, "两只都是被打死的，CORE 不该掉血")
 
 
-## 锯：近身。只有走进 [MELEE_FROM, 1.0] 的敌人才在范围内 ——
+## 雷：近身。只有走进 [MELEE_FROM, 1.0] 的敌人才在范围内 ——
 ## 「还在远处的不掉血」是这条打击范围的定义，不是优化。
 func _run_saw_checks(ctx: RefCounted) -> void:
-	ctx.begin_case("CombatSimulation · 锯（近身持续）")
+	ctx.begin_case("CombatSimulation · 雷（近身持续）")
 	var sim := CombatSimulation.new(_blueprint(
 		[
 			["core", "核心", NodeData.Kind.CORE, 0],
-			["w", "锯", NodeData.Kind.WEAPON, 0, NodeData.WeaponKind.SAW],
+			["w", "雷", NodeData.Kind.ABILITY, 0, NodeData.Ability.THUNDER],
 		],
 		[["core", "w"]]))
-	# 第 94 拍：锯已经开了 9 次火（14…94），但**一只都没进窗** ——
+	# 第 94 拍：雷已经开了 9 次火（14…94），但**一只都没进窗** ——
 	# 场上三只的进度是 0.672 / 0.352 / 0.480（第 2 只已在第 80 拍抵达终点退场）。
 	_step(sim, 94)
 	ctx.equal(sim.enemies().size(), 3, "第 94 拍场上应有 3 只（第 2 只已在第 80 拍抵达终点）")
@@ -321,25 +321,25 @@ func _run_saw_checks(ctx: RefCounted) -> void:
 	ctx.equal(sim.enemies()[1].hp, SLIME_HP, "同一发开火里，还在窗口外的那只一点血都没掉")
 
 
-## 一波敌人全灭 → 本波清空。用「CORE → 分流 → 两把针」把伤害翻倍，
-## 好让四只在漏掉之前全部被打死（单把针的输出不足以在本卡的推进速度下清空 —— 那是平衡问题，不是缺陷）。
+## 一波敌人全灭 → 本波清空。用「CORE → 分流 → 两把冰」把伤害翻倍，
+## 好让四只在漏掉之前全部被打死（单把冰的输出不足以在本卡的推进速度下清空 —— 那是平衡问题，不是缺陷）。
 func _run_clear_checks(ctx: RefCounted) -> void:
 	ctx.begin_case("CombatSimulation · 一波全灭 → 本波清空（03 §1.1 R2）")
 	var sim := CombatSimulation.new(_blueprint(
 		[
 			["core", "核心", NodeData.Kind.CORE, 0],
-			["s", "分流", NodeData.Kind.FUNCTION, NodeData.Function.SPLIT],
-			["wa", "针", NodeData.Kind.WEAPON, 0, NodeData.WeaponKind.NEEDLE],
-			["wb", "针", NodeData.Kind.WEAPON, 0, NodeData.WeaponKind.NEEDLE],
+			["s", "子弹数量", NodeData.Kind.FUNCTION, NodeData.Function.BULLET_COUNT],
+			["wa", "冰", NodeData.Kind.ABILITY, 0, NodeData.Ability.ICE],
+			["wb", "冰", NodeData.Kind.ABILITY, 0, NodeData.Ability.ICE],
 		],
 		[["core", "s"], ["s", "wa"], ["s", "wb"]]))
 	_cleared_count = 0
 	sim.wave_cleared.connect(_on_wave_cleared)
-	# 第 58 拍：第 3 只（Slime）出场后挨的第一发 —— 分流的两把针同拍各来一发。
+	# 第 58 拍：第 3 只（Slime）出场后挨的第一发 —— 分流的两把冰同拍各来一发。
 	_step(sim, 58)
 	ctx.equal(sim.enemies().size(), 1, "第 58 拍场上应只剩第 3 只")
 	ctx.equal(sim.enemies()[0].hp, SLIME_HP - 2 * NEEDLE_DAMAGE,
-		"分流的两把针同拍各打一发（共 %d）" % int(2 * NEEDLE_DAMAGE))
+		"分流的两把冰同拍各打一发（共 %d）" % int(2 * NEEDLE_DAMAGE))
 	ctx.check(not sim.is_cleared(), "还没打完就不算清空")
 	ctx.equal(_cleared_count, 0, "还没打完不该报清空")
 	_step(sim, 24)
@@ -416,9 +416,9 @@ func _on_run_failed() -> void:
 
 
 ## 造一个蓝图节点。spec = [id, display_name, kind, function_kind, weapon_kind?]。
-## weapon_kind 只对 WEAPON 节点有意义，缺省 NONE（02 §9 的降级入口，由 WeaponData.resolve 兜）。
+## weapon_kind 只对 WEAPON 节点有意义，缺省 NONE（02 §9 的降级入口，由 AbilityData.resolve 兜）。
 func _node(id: StringName, display_name: String, kind: int, function_kind: int,
-		weapon_kind: int = NodeData.WeaponKind.NONE) -> NodeData:
+		weapon_kind: int = NodeData.Ability.NONE) -> NodeData:
 	var node := NodeData.new()
 	node.id = id
 	node.display_name = display_name
@@ -432,7 +432,7 @@ func _node(id: StringName, display_name: String, kind: int, function_kind: int,
 func _blueprint(nodes: Array, edges: Array) -> BlueprintData:
 	var blueprint := BlueprintData.new()
 	for item: Array in nodes:
-		var weapon_kind: int = int(item[4]) if item.size() > 4 else NodeData.WeaponKind.NONE
+		var weapon_kind: int = int(item[4]) if item.size() > 4 else NodeData.Ability.NONE
 		blueprint.nodes.append(_node(item[0], item[1], int(item[2]), int(item[3]), weapon_kind))
 	for edge: Array in edges:
 		var link := ConnectionData.new()

@@ -230,7 +230,7 @@ func _check_region_literals(ctx: RefCounted, scene: Node, index: int) -> void:
 ## 06 §7：「开始战斗」是右下角**唯一**的主动作按钮，也是 PREPARATION → COMBAT 的唯一入口。
 ##
 ## PET-75：判据收窄到**主动作**按钮（无主题变体 = 基础 Button = GOLD 填充）。
-## 该卡在左栏加了「删除 / 撤销 / 清空蓝图」三个 ButtonSecondary 辅助按钮 ——
+## 该卡在左栏加了「删除 / 撤销 / 清空能力卡书」三个 ButtonSecondary 辅助按钮 ——
 ## 它们不争夺「右下角唯一主动作」这个位置，而本函数原先按 `is Button` 全数计数，
 ## 会把辅助按钮一起算成主动作。收窄之后这条断言测的正是它注释里写的那件事；
 ## 同时把「辅助按钮必须挂变体」这条反向要求也钉上，否则它们会跟 CTA 一样是金色。

@@ -46,7 +46,9 @@ const EDGE_ROWS: int = 2
 const SHIFT: float = 8.0
 
 ## 06 §8.1（v0.1.10，Codex 裁定）的 5 个只读读数块，按带内从左到右的顺序，节点名同 combat.tscn。
-const READOUT_BLOCKS: PackedStringArray = ["Wave", "Core", "Heat", "Energy", "Queue"]
+## PET-82 只换第 3 / 第 4 格的语义（热量→魔力、能量→能力位），格数与顺序一动不动，
+## 故这里跟着换的也只是两个节点名 —— 下面那几条像素判据（墨迹 / 未被裁 / 格间空带）一条没改。
+const READOUT_BLOCKS: PackedStringArray = ["Wave", "Core", "Mana", "AbilitySlots", "Queue"]
 ## 反向对照三：把读数行的行距撑到远大于格宽，排在后面的格会被挤出视口。
 ## PET-80：格宽随坐标系 ×2，故这个「远大于」的取值也跟着 ×2（200 → 400），
 ## 否则它就从「远大于格宽」退化成「约等于格宽」——判别力会悄悄变弱。

@@ -77,8 +77,8 @@ func _run_roundtrip_checks(ctx: RefCounted) -> void:
 		ctx.equal(String(got.id), String(want.id), "节点 %d 的 id" % index)
 		ctx.equal(got.display_name, want.display_name, "节点 %d 的 display_name" % index)
 		ctx.equal(got.kind, want.kind, "节点 %d 的 kind" % index)
-		# weapon_kind 必须真的落盘再载回 —— 它是「拖出去的是针还是锯」的唯一来源，
-		# 丢了它，玩家的锯重进场景就会变成针（而这正是本卡要接上的那条路）。
+		# weapon_kind 必须真的落盘再载回 —— 它是「拖出去的是冰还是雷」的唯一来源，
+		# 丢了它，玩家的雷重进场景就会变成冰（而这正是本卡要接上的那条路）。
 		ctx.equal(got.weapon_kind, want.weapon_kind, "节点 %d 的 weapon_kind" % index)
 
 	var link_count: int = mini(reloaded.connections.size(), original.connections.size())
@@ -97,7 +97,7 @@ func _run_negative_controls(ctx: RefCounted) -> void:
 	# 这是本用例防止「往返测试空转」的主保险。
 	ctx.begin_case("BlueprintData · 反向对照：载回的确为文件内容")
 	var solo: BlueprintData = BlueprintData.new()
-	solo.nodes.append(_make_node(&"solo", NodeData.Kind.WEAPON, "Solo"))
+	solo.nodes.append(_make_node(&"solo", NodeData.Kind.ABILITY, "Solo"))
 	ctx.check(solo.save_to(PATH_B), "第二份蓝图应能落盘")
 
 	var loaded_a: BlueprintData = BlueprintData.load_from(PATH_A)
@@ -133,7 +133,7 @@ func _run_negative_controls(ctx: RefCounted) -> void:
 func _run_old_save_checks(ctx: RefCounted) -> void:
 	ctx.begin_case("BlueprintData · 旧存档（无 weapon_kind 字段）仍能载入")
 	var blueprint: BlueprintData = BlueprintData.new()
-	blueprint.nodes.append(_make_node(&"weapon_old", NodeData.Kind.WEAPON, "锯", NodeData.WeaponKind.SAW))
+	blueprint.nodes.append(_make_node(&"weapon_old", NodeData.Kind.ABILITY, "雷", NodeData.Ability.THUNDER))
 	if not ctx.check(blueprint.save_to(PATH_OLD_SAVE), "对照用的蓝图应能落盘"):
 		return
 
@@ -161,13 +161,13 @@ func _run_old_save_checks(ctx: RefCounted) -> void:
 	if not ctx.check(loaded.nodes.size() == 1, "旧存档的节点数应原样载回（实际 %d）" % loaded.nodes.size()):
 		return
 	var node: NodeData = loaded.nodes[0]
-	ctx.equal(node.kind, NodeData.Kind.WEAPON, "旧存档里的武器节点仍是武器")
-	ctx.equal(node.weapon_kind, NodeData.WeaponKind.NONE,
+	ctx.equal(node.kind, NodeData.Kind.ABILITY, "旧存档里的武器节点仍是武器")
+	ctx.equal(node.weapon_kind, NodeData.Ability.NONE,
 		"缺字段的旧存档载回后 weapon_kind 应为 NONE（02 §9 的降级入口）")
 
 
 func _make_node(id: StringName, kind: NodeData.Kind, display_name: String,
-		weapon_kind: NodeData.WeaponKind = NodeData.WeaponKind.NONE) -> NodeData:
+		weapon_kind: NodeData.Ability = NodeData.Ability.NONE) -> NodeData:
 	var node: NodeData = NodeData.new()
 	node.id = id
 	node.kind = kind
@@ -192,6 +192,6 @@ func _build_blueprint() -> BlueprintData:
 	var blueprint: BlueprintData = BlueprintData.new()
 	blueprint.nodes.append(_make_node(&"core_a", NodeData.Kind.CORE, "Core A"))
 	# 刻意取一个非 NONE 的武器种类：两边都是缺省值的话，往返断言恒真、等于没测。
-	blueprint.nodes.append(_make_node(&"weapon_b", NodeData.Kind.WEAPON, "Weapon B", NodeData.WeaponKind.SAW))
+	blueprint.nodes.append(_make_node(&"weapon_b", NodeData.Kind.ABILITY, "Weapon B", NodeData.Ability.THUNDER))
 	blueprint.connections.append(_make_connection(&"core_a", &"out", &"weapon_b", &"in"))
 	return blueprint

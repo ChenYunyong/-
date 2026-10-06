@@ -310,7 +310,7 @@ func _run_payload_checks(ctx: RefCounted) -> void:
 
 	# 三个选项的类型各不相同，且与卡面的 Kind 一一对应 —— 仓库表重排时这里当场转红。
 	var expected: Array[int] = [option_script.Kind.CORE, option_script.Kind.FUNCTION,
-		option_script.Kind.WEAPON]
+		option_script.Kind.ABILITY]
 	for index: int in expected.size():
 		ctx.equal(int(defaults[index].kind), expected[index], "第 %d 项的卡面类型" % (index + 1))
 
@@ -334,16 +334,16 @@ func _run_payload_checks(ctx: RefCounted) -> void:
 		"「跳过」不得落下任何东西（Kind.SKIP 不在 OPTION_SLOTS 之内）")
 	ctx.check(screen_script.payload_for(null).is_empty(), "空选项不得落下任何东西")
 
-	# 验收点名的三项，逐个反向对照：炸弹必须真的带 BOMB（它一旦落成针，验收的
-	# 「伤害 25 / 打全场」就整条落空）；核心 / 增幅 的 weapon_kind 必须留 NONE。
+	# 验收点名的三项，逐个反向对照：火必须真的带 FIRE（它一旦落成冰，验收的
+	# 「伤害 25 / 打全场」就整条落空）；核心 / 附魔 的 weapon_kind 必须留 NONE。
 	var third: int = 2
-	ctx.equal(defaults[third].name_key, "炸弹", "第 3 项应是炸弹")
+	ctx.equal(defaults[third].name_key, "火", "第 3 项应是火")
 	ctx.equal(int(screen_script.reward_payload(int(slots[third]))["weapon_kind"]),
-		kinds.WeaponKind.BOMB, "炸弹落地后的 weapon_kind")
+		kinds.Ability.FIRE, "火落地后的 weapon_kind")
 	ctx.equal(int(screen_script.reward_payload(int(slots[0]))["weapon_kind"]),
-		kinds.WeaponKind.NONE, "核心不是武器，weapon_kind 必须留 NONE")
+		kinds.Ability.NONE, "核心不是武器，weapon_kind 必须留 NONE")
 	ctx.equal(int(screen_script.reward_payload(int(slots[1]))["function_kind"]),
-		kinds.Function.AMPLIFY, "增幅落地后的 function_kind 应是 AMPLIFY")
+		kinds.Function.ENCHANT, "附魔落地后的 function_kind 应是 AMPLIFY")
 	ctx.equal(int(screen_script.reward_payload(int(slots[0]))["function_kind"]),
 		kinds.Function.NONE, "核心不是功能节点，function_kind 必须留 NONE")
 
@@ -372,12 +372,12 @@ func _run_icon_color_checks(ctx: RefCounted) -> void:
 		palette_script.get_color(palette_script.Key.GOLD_400), "CORE 的类型色")
 	ctx.equal(card_script.icon_color(option_script.Kind.FUNCTION),
 		palette_script.get_color(palette_script.Key.BLUE_400), "FUNCTION 的类型色")
-	ctx.equal(card_script.icon_color(option_script.Kind.WEAPON),
+	ctx.equal(card_script.icon_color(option_script.Kind.ABILITY),
 		palette_script.get_color(palette_script.Key.ORANGE_500), "WEAPON 的类型色")
 	# 「跳过」不是一种节点类型，06 §4 没有它 —— 只要求它不与三种类型混同。
 	# 具体取哪个中性色是观感判断，已回报 DSH（由 Codex 定），故这里不钉死色号。
 	var skip_color: Color = card_script.icon_color(option_script.Kind.SKIP)
-	for kind: int in [option_script.Kind.CORE, option_script.Kind.FUNCTION, option_script.Kind.WEAPON]:
+	for kind: int in [option_script.Kind.CORE, option_script.Kind.FUNCTION, option_script.Kind.ABILITY]:
 		ctx.not_equal(skip_color, card_script.icon_color(kind), "「跳过」的图标色不得与类型色混同")
 
 

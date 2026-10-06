@@ -1,6 +1,6 @@
 ## signal_flow_smoke.gd
 ## 职责：机器运行的**真实运行**取证（FIRST PLAYABLE 2/4）—— 经 GameFlow 路由进 COMBAT 之后，
-##       蓝图机器由 MachineDriver 按固定节拍真的跑起来、武器真的开火、`热量` 读数真的变化，
+##       蓝图机器由 MachineDriver 按固定节拍真的跑起来、能力卡真的施放、`魔力` 读数真的变化，
 ##       并且这些事在画面上**真的看得见**（信号火花与占位弹丸的像素证据 + 截图）。
 ## 所属系统：tests（场景冒烟层）
 ## 依赖：test_context, render_probe_harness, Palette, assets/ui/theme_main.tres,
@@ -60,7 +60,14 @@ const ZOOM: int = 4
 ## 03 §2 与本卡的固定常数，独立复写一遍 —— 期望值若与被测实现同源，实现改错时两边一起错。
 const CORE_PERIOD: int = 10
 const TRAVEL: int = 4
-const HEAT_PER_STEP: String = "2%"
+## `魔力` 读数的期望值。**独立复写**，不问 MachineRuntime 要 —— 同源的期望值
+## 在实现改错时会跟着一起错。PET-82：这一格原叫 `热量`（每发 +2），现在叫 `魔力`。
+const MANA_FULL: String = "100%"
+## 首发之后的 `魔力` 区间。**不钉死一个数**：每发 -12，而回魔是每拍 2.5，
+## 「首发之后」取到哪一拍由取样时机决定，读数会在 [88, 91] 之间浮动。
+## 钉死某个数等于把取样时机一起钉死，而这条要证的只是「读数真的掉下来了」。
+const MANA_AFTER_FIRST_MIN: int = 88
+const MANA_AFTER_FIRST_MAX: int = 91
 ## 验收机器 CORE → Split → Amplify → Needle：三条边，故首发落在 10 + 3×4 = 22 拍。
 const CHAIN_EDGES: int = 3
 const FIRST_FIRE_TICK: int = CORE_PERIOD + CHAIN_EDGES * TRAVEL
@@ -115,10 +122,10 @@ func _initialize() -> void:
 	_backdrop = _palette.get_color(_palette.Key.NAVY_900)
 	_kind_core = int(_node_script.Kind.CORE)
 	_kind_function = int(_node_script.Kind.FUNCTION)
-	_kind_weapon = int(_node_script.Kind.WEAPON)
+	_kind_weapon = int(_node_script.Kind.ABILITY)
 	_fn_none = int(_node_script.Function.NONE)
-	_fn_split = int(_node_script.Function.SPLIT)
-	_fn_amplify = int(_node_script.Function.AMPLIFY)
+	_fn_split = int(_node_script.Function.BULLET_COUNT)
+	_fn_amplify = int(_node_script.Function.ENCHANT)
 
 	_h.backdrop = _backdrop
 	_h.fill = _spark
@@ -184,13 +191,13 @@ func _run_routed_case(written: bool) -> void:
 	if not _ctx.check(runtime != null, "载入验收机器后应建出运行时"):
 		return
 	_ctx.check(bool(runtime.call(&"has_core")), "验收机器应有 CORE（没有它一步都不会动）")
-	_ctx.equal(_heat_text(combat), "0%", "开战瞬间的 `热量` 读数")
+	_ctx.equal(_mana_text(combat), MANA_FULL, "开战瞬间的 `魔力` 读数（还没施放，应当是满的）")
 	_ctx.check(not _notice_visible(combat), "有机器时不得显示「还没有机器」的提示")
 	_ctx.equal(int(runtime.call(&"tick_index")), 0, "刚载入时应停在 0 拍")
 
 	# 探针必须在第一帧之前挂上：晚一拍就抓不到首发。
 	_driven = runtime
-	runtime.connect(&"weapon_fired", _on_weapon_fired)
+	runtime.connect(&"ability_cast", _on_ability_cast)
 	var reached: bool = await _advance_until(runtime, FIRST_FIRE_TICK)
 	_driven = null
 	if not _ctx.check(reached, "应在 %d ms 内跑到第 %d 拍（实际第 %d 拍）" % [
@@ -201,7 +208,7 @@ func _run_routed_case(written: bool) -> void:
 		_ctx.equal(_fire_ticks[0], FIRST_FIRE_TICK,
 			"首发的**节拍号**（CORE 节拍 %d + %d 条边各 %d 拍）—— 与帧率无关" % [
 				CORE_PERIOD, CHAIN_EDGES, TRAVEL])
-	_ctx.equal(_heat_text(combat), HEAT_PER_STEP, "首发的 `热量` 读数（每发 +2）")
+	_check_mana_dropped(combat, "首发之后")
 
 
 ## 像素取证：同一份 combat.tscn，挂到离屏画布上跑同一台机器，量屏幕上真的出现了什么。
@@ -265,7 +272,7 @@ func _run_visibility_case(written: bool) -> void:
 	_ctx.check(at >= FIRST_FIRE_TICK and at <= FIRST_FIRE_TICK + MAX_CATCH_UP,
 		"取样拍号应落在 [%d, %d]（实际第 %d 拍）—— 下面两条像素断言依赖它落在弹丸存活期内" % [
 			FIRST_FIRE_TICK, FIRST_FIRE_TICK + MAX_CATCH_UP, at])
-	_ctx.equal(_heat_text(scene), HEAT_PER_STEP, "取样时的 `热量` 读数")
+	_check_mana_dropped(scene, "取样时")
 
 	var after: Image = (await _h.settle())["image"]
 	if not _ctx.check(after != null, "应能取到离屏图像"):
@@ -299,9 +306,9 @@ func _write_acceptance_blueprint() -> bool:
 	var blueprint: Resource = _blueprint_script.new()
 	var spec: Array = [
 		["core", "核心", _kind_core, _fn_none],
-		["split", "分流", _kind_function, _fn_split],
-		["amp", "增幅", _kind_function, _fn_amplify],
-		["needle", "针", _kind_weapon, _fn_none],
+		["split", "子弹数量", _kind_function, _fn_split],
+		["amp", "附魔", _kind_function, _fn_amplify],
+		["needle", "冰", _kind_weapon, _fn_none],
 	]
 	for item: Array in spec:
 		var node: Resource = _node_script.new()
@@ -332,7 +339,7 @@ func _advance_until(runtime: Object, target: int) -> bool:
 	return _tick_of(runtime) >= target
 
 
-func _on_weapon_fired(_weapon_id: StringName) -> void:
+func _on_ability_cast(_ability_id: StringName) -> void:
 	if _driven != null:
 		_fire_ticks.append(_tick_of(_driven))
 
@@ -367,8 +374,17 @@ func _save(image: Image, tag: String) -> void:
 		"应能写出 %d× 放大的证据图 %s" % [ZOOM, tag])
 
 
-func _heat_text(combat: Node) -> String:
-	var block: Node = _find(combat, "Heat")
+## 断言 `魔力` 读数已经从满格掉到了首发之后的区间里。拆不出数字时按 -1 判红。
+func _check_mana_dropped(combat: Node, when: String) -> void:
+	var text: String = _mana_text(combat)
+	var percent: int = int(text.trim_suffix("%")) if text.ends_with("%") else -1
+	_ctx.check(percent >= MANA_AFTER_FIRST_MIN and percent <= MANA_AFTER_FIRST_MAX,
+		"%s的 `魔力` 读数应已从满格掉到 [%d, %d]（每发 -12，回魔每拍 +2.5；实际 %s）" % [
+			when, MANA_AFTER_FIRST_MIN, MANA_AFTER_FIRST_MAX, text])
+
+
+func _mana_text(combat: Node) -> String:
+	var block: Node = _find(combat, "Mana")
 	if block == null:
 		return ""
 	var value: Label = block.get_node_or_null(^"Value") as Label
@@ -417,7 +433,7 @@ func _finish() -> void:
 	_lines.append("- 单元测试：见 unit_tests.log")
 	_lines.append("- 集成测试：见 unit_tests.log")
 	_lines.append("- 场景冒烟：%d/%d" % [_ctx.passed, _ctx.passed + _ctx.failed])
-	_lines.append("- 手动场景：经路由进 COMBAT(点 CTA) · 验收机器 CORE→Split→Amplify→Needle 在真实帧上跑起来 · 首发拍号 · `热量` 读数 · 信号火花与占位弹丸的像素取证")
+	_lines.append("- 手动场景：经路由进 COMBAT(点 CTA) · 验收机器 CORE→Split→Amplify→Needle 在真实帧上跑起来 · 首发拍号 · `魔力` 读数 · 信号火花与占位弹丸的像素取证")
 	_lines.append("- 证据图：%s{before,after}.png 与 %s{before,after}_%dx.png" % [SHOT_PATH, SHOT_PATH, ZOOM])
 	if _ctx.failures.is_empty():
 		_lines.append("- 失败项：无")
