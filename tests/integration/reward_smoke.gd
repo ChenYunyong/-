@@ -37,17 +37,21 @@ const NODE_DATA_PATH: String = "res://scripts/data/node_data.gd"
 const BLUEPRINT_DATA_PATH: String = "res://scripts/data/blueprint_data.gd"
 const LOG_PATH: String = "res://tests/output/reward_smoke.log"
 
-## 06 §1 基准与 §7.1 的窄屏取样。
-const REFERENCE_VIEWPORT: Vector2 = Vector2(320.0, 180.0)
-const NARROW_VIEWPORT: Vector2 = Vector2(180.0, 320.0)
+## 06 §1 基准与 §7.1 的窄屏取样。PET-80：两者都 ×2（它们是**逻辑像素**，与布局矩形同一套单位）。
+const REFERENCE_VIEWPORT: Vector2 = Vector2(640.0, 360.0)
+const NARROW_VIEWPORT: Vector2 = Vector2(360.0, 640.0)
 
 ## R1 实测：停留 600 秒（10 分钟）模拟时间不得自动离开 REWARD。
 const R1_SIMULATED_SECONDS: float = 600.0
 ## 漏加 --fixed-fps 时的兜底上限，与 run_tests.gd 同值。
 const WALL_CLOCK_BUDGET_MS: int = 120_000
 
-## 06 §1：卡片本身就是可点击区域，下限 44 设备像素。
-const MIN_TOUCH_SIZE: float = 44.0
+## 06 §1：卡片本身就是可点击区域。PET-80：44 → 88 **设备像素**。
+## 06 §1 的硬门槛是「≥44 **设备像素**」，而设备像素 = 逻辑像素 × 整数缩放倍率。
+## PET-80 前：44 逻辑 × 4× = 176；PET-80 后：88 逻辑 × 2× = 176。同一批设备像素。
+## 门槛值本身不可协商（它由手指尺寸决定，与画布分辨率无关），故随坐标系数值翻倍而
+## **设备像素下限不变** —— 这正是 ×2 变换要保住的东西。
+const MIN_TOUCH_SIZE: float = 88.0
 
 ## 06 §9 的三个选项位，顺序即场景节点顺序。
 const CARD_NAMES: PackedStringArray = ["Card0", "Card1", "Card2"]
@@ -59,17 +63,20 @@ const SKIP_HIDDEN_FIELDS: PackedStringArray = ["Type", "Value", "Rule"]
 
 ## 卡片矩形**相对卡片区原点**，在本文件独立复写一遍
 ## （期望值若与被测实现同源，实现改错时两边一起错）。推导依据见 reward_layout.gd 的文件头。
-const CARDS_AREA_WIDE: Rect2 = Rect2(8.0, 32.0, 304.0, 140.0)
+## PET-80：全部 ×2。安全边 8→16、标题带下沿 32→64、卡宽 96→192、卡间距 8→16、
+## 窄屏卡高 88→176、窄屏行距 96→192 —— 每个长度都恰好是原来的两倍，
+## 故「三列等宽 + 两处等距 + 窄屏三行等高」这些**关系**在 ×2 前后逐条相同。
+const CARDS_AREA_WIDE: Rect2 = Rect2(16.0, 64.0, 608.0, 280.0)
 const CARD_RECTS_WIDE: Array[Rect2] = [
-	Rect2(0.0, 0.0, 96.0, 140.0),
-	Rect2(104.0, 0.0, 96.0, 140.0),
-	Rect2(208.0, 0.0, 96.0, 140.0),
+	Rect2(0.0, 0.0, 192.0, 280.0),
+	Rect2(208.0, 0.0, 192.0, 280.0),
+	Rect2(416.0, 0.0, 192.0, 280.0),
 ]
-const CARDS_AREA_NARROW: Rect2 = Rect2(8.0, 32.0, 164.0, 280.0)
+const CARDS_AREA_NARROW: Rect2 = Rect2(16.0, 64.0, 328.0, 560.0)
 const CARD_RECTS_NARROW: Array[Rect2] = [
-	Rect2(0.0, 0.0, 164.0, 88.0),
-	Rect2(0.0, 96.0, 164.0, 88.0),
-	Rect2(0.0, 192.0, 164.0, 88.0),
+	Rect2(0.0, 0.0, 328.0, 176.0),
+	Rect2(0.0, 192.0, 328.0, 176.0),
+	Rect2(0.0, 384.0, 328.0, 176.0),
 ]
 
 var _ctx: RefCounted = null
@@ -179,10 +186,10 @@ func _run_card_layout_case() -> void:
 		_check_card_rect(screen, index, CARD_RECTS_WIDE[index], "初始")
 
 	screen.call(&"apply_layout_for", REFERENCE_VIEWPORT)
-	_ctx.begin_case("REWARD 冒烟 · 按 320×180 重落一次布局")
-	_check_cards_area(screen, CARDS_AREA_WIDE, "320×180")
+	_ctx.begin_case("REWARD 冒烟 · 按 640×360 重落一次布局")
+	_check_cards_area(screen, CARDS_AREA_WIDE, "640×360")
 	for index: int in CARD_NAMES.size():
-		_check_card_rect(screen, index, CARD_RECTS_WIDE[index], "320×180")
+		_check_card_rect(screen, index, CARD_RECTS_WIDE[index], "640×360")
 
 
 func _check_cards_area(screen: Node, expected: Rect2, label: String) -> void:
@@ -315,10 +322,10 @@ func _run_narrow_case() -> void:
 	var state_before: int = _state_of_flow()
 
 	screen.call(&"apply_layout_for", NARROW_VIEWPORT)
-	_ctx.check(bool(screen.call(&"is_narrow_layout")), "180×320 应切到折叠布局")
-	_check_cards_area(screen, CARDS_AREA_NARROW, "180×320")
+	_ctx.check(bool(screen.call(&"is_narrow_layout")), "360×640 应切到折叠布局")
+	_check_cards_area(screen, CARDS_AREA_NARROW, "360×640")
 	for index: int in CARD_NAMES.size():
-		_check_card_rect(screen, index, CARD_RECTS_NARROW[index], "180×320")
+		_check_card_rect(screen, index, CARD_RECTS_NARROW[index], "360×640")
 	var first: Control = _find(screen, CARD_NAMES[0]) as Control
 	var third: Control = _find(screen, CARD_NAMES[2]) as Control
 	_ctx.equal(first.position.x, third.position.x, "折叠后三张卡片应同处一列")

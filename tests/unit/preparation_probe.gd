@@ -18,25 +18,49 @@ extends RefCounted
 
 const SCENE_PATH: String = "res://scenes/preparation/preparation.tscn"
 const THEME_SCRIPT_PATH: String = "res://scripts/data/palette_theme.gd"
+## CTA 落位的唯一真值来源。探针只借它的 ACTION_RECT 做**锚点**断言（块底 / 块宽），
+## 四条边的像素读数仍写死在下面 —— 探针要证的正是「公式的结果真的落在了那几个像素上」。
+const LAYOUT_SCRIPT_PATH: String = "res://scripts/ui/preparation_layout.gd"
 
-## 画布 = 06 §1 的 320×180 基准，与布局常量同一坐标系，于是「第几个像素」可以直接读。
-const CANVAS: Vector2i = Vector2i(320, 180)
-const VIEWPORT: Vector2 = Vector2(320.0, 180.0)
+## 画布 = 06 §1 的 640×360 基准（PET-80 前 320×180），与布局常量同一坐标系，
+## 于是「第几个像素」可以直接读。
+const CANVAS: Vector2i = Vector2i(640, 360)
+const VIEWPORT: Vector2 = Vector2(640.0, 360.0)
 
 ## 四个面板分区（CTA 是按钮，单独一组）。顺序与 PreparationLayout.Region 的前四项一致。
+## PET-80：§7 的实测读数逐项 ×2（15→30 / 8→16 / 73→146 / 124→248 …）。
+##
+## 注意这些是**分区外沿**，而面板那圈 chrome 用的是九宫格切片的**纹素**边距
+## （FRAME_MARGIN_LEFT/TOP = 4/19，本卡不动 assets/**，故不变）。二者互不影响：
+## 本探针量的是「分区矩形的四条边上是不是那圈描边」，与描边自身多厚无关，
+## 故布局 ×2 之后这四条断言（以及「往内挪一像素就不再是描边」那条反向对照）
+## 逐条仍然成立，不必跟着改。
 const PANEL_NAMES: PackedStringArray = ["RegionLeft", "RegionCenter", "RegionRight", "RegionBottom"]
 const PANEL_BOXES: Array[Rect2] = [
-	Rect2(15.0, 8.0, 73.0, 124.0),
-	Rect2(98.0, 8.0, 128.0, 124.0),
-	Rect2(226.0, 8.0, 83.0, 124.0),
-	Rect2(15.0, 132.0, 294.0, 48.0),
+	Rect2(30.0, 16.0, 146.0, 248.0),
+	Rect2(196.0, 16.0, 256.0, 248.0),
+	Rect2(452.0, 16.0, 166.0, 248.0),
+	Rect2(30.0, 264.0, 588.0, 96.0),
 ]
 
-## 06 §7 的 CTA 区块（64×14）装不下按钮，落位取「右下角照抄、高度向上长」→ 64×20。
-const CTA_BOX: Rect2 = Rect2(246.0, 142.0, 64.0, 20.0)
-## PET-77：CTA 的**按钮面**。已批准的 `ui_button_primary_normal_64x20` 在 64×20 里
-## 自带一行烘焙投影（y19，半透明暗色），故 20px 的控件画出来是「19px 面 + 1px 投影」。
-const CTA_FACE_BOX: Rect2 = Rect2(246.0, 142.0, 64.0, 19.0)
+## 06 §7 的 CTA 区块（PET-80 后 128×28）装不下按钮，落位取「右下角照抄、高度向上长」，
+## 高度 = max(区块高, 按钮的最小高度)。
+##
+## PET-80：这个「最小高度」由 20 变成 **39**，不是 40 —— 字号 8 → 16 之后引擎量出的行高并非
+## 线性翻倍（16px 的行高比 8px 的两倍少 1px），故 `action_button_rect()` 取 max(28, 39) = 39，
+## 块底对齐 324、向上长到 285。这是**引擎量出来的事实**，不是布局写错。
+## 于是下面两条读数随之改：块顶 284 → 285、块高 40 → 39。
+## 判别力**不降**：`_probe_cta()` 里另加了一条锚点断言，把「块底 = §7 区块底边、块宽 = 区块宽」
+## 钉死 —— 高度可以随字体度量浮动，锚点不许漂。
+const CTA_BOX: Rect2 = Rect2(492.0, 285.0, 128.0, 39.0)
+## PET-77：CTA 的**按钮面**。已批准的 `ui_button_primary_normal_64x20` 自带一行烘焙投影
+## （源图最后一行，半透明暗色），故控件画出来是「面 + 1 行投影」。
+##
+## PET-80：那行投影来自切片的 `texture_margin_bottom = 4` 底带（**纹素**读数，本卡不动 assets/**），
+## 底带在设计坐标下仍是 4px 高，故源图那一行落在控件的**最后一行**（y = 285+38 = 323），
+## 面高 39 − 1 = **38**。这与 PET-80 前「20px 控件、投影落在 y19、面高 19」是同一个关系：
+## 投影永远占控件的最后一行，面永远是其余各行。
+const CTA_FACE_BOX: Rect2 = Rect2(492.0, 285.0, 128.0, 38.0)
 
 ## 蓝图工作区的两个宿主：PREPARATION 的画布与底部仓库。节点卡切片（已批准素材）
 ## 自带 GOLD_500 类型标识，故金色的「唯一性」断言必须把它们排除在外 —— 见 _probe_cta()。
@@ -110,8 +134,8 @@ func _probe_regions() -> void:
 ## 四条边各断言一次（而不是只报一个总数）：描边一旦整体偏移，失败信息要能指出是哪条边。
 ##
 ## occluder 非空时，右边缘被它盖住的那几行要按覆盖数扣掉：06 §7 的 CTA 区块
-## （246–310 × 148–162）本来就压在底条（15–309 × 132–180）的右下角上 —— 那是参考图实测的
-## 样子，不是缺陷，探针得照着实际画面临认，而不是断言一个画面上不存在的整条边。
+## （PET-80 后 492–620 × 296–324，按钮再向上长到 285）本来就压在底条（30–618 × 264–360）的右下角上
+## —— 那是参考图实测的样子，不是缺陷，探针得照着实际画面临认，而不是断言一个画面上不存在的整条边。
 func _assert_edges(image: Image, box: Rect2, label: String, wanted: Color,
 		occluder: Rect2 = Rect2()) -> void:
 	var left: int = int(box.position.x)
@@ -159,9 +183,18 @@ func _probe_cta() -> void:
 	var live: Rect2 = button.get_global_rect()
 	_h.check(live.is_equal_approx(CTA_BOX),
 		"CTA 的实机矩形应是 §7 区块换算出的 %s（实际 %s）" % [CTA_BOX, live])
+	# 锚点断言：块底与块宽必须仍锚在 06 §7 的 ACTION_RECT 上 —— 那才是「右下角照抄」这条实测约束。
+	# 高度是引擎量出的按钮最小高度（本卡 39，不是 40），会随字体度量浮动；锚点不许跟着漂。
+	# 这一条替下了原来「高度必然 = 区块高 ×2」那份判别力：高度写死的那份是巧合，锚点才是契约。
+	var layout: GDScript = load(LAYOUT_SCRIPT_PATH)
+	if _h.check(layout != null, "preparation_layout.gd 应能加载"):
+		_h.check(is_equal_approx(live.end.y, layout.ACTION_RECT.end.y)
+				and is_equal_approx(live.size.x, layout.ACTION_RECT.size.x),
+			"CTA 的底边与宽度应仍锚在 §7 区块 %s 上（实际底边 %s / 宽 %s）" % [
+				str(layout.ACTION_RECT), str(live.end.y), str(live.size.x)])
 	# —— PET-77 接入说明（本节四条改动的统一理由）——
 	# 原来钉：「CTA 的 64×20 整块 = GOLD_600 描边圈 + GOLD_500 填充」，四边各占满 20 / 64。
-	# 现在钉：同一条描边圈，但量的是**按钮面** 64×19；第 20 行（y161）是切片自带的投影，
+	# 现在钉：同一条描边圈，但量的是**按钮面** 128×39；最后一行（y323）是切片自带的投影，
 	#         单独反向断言它既不是金边也不是金填充。
 	# 为什么是同一件事：这四条要证的从来是「CTA 是一块金色按钮、边缘整圈同色、内部是填充」。
 	#   已批准的切片在它自己的 64×20 里烘焙了一行投影（y19，alpha 200 的暗色），
@@ -233,7 +266,7 @@ func _count_gold_outside_hosts(image: Image, wanted: Color) -> int:
 	return total
 
 
-## 把 preparation.tscn 挂上画布、按 320×180 落一次布局，再取像素。
+## 把 preparation.tscn 挂上画布、按 640×360 落一次布局，再取像素。
 ## 显式调 apply_layout_for 而不是依赖画布尺寸推断 —— 探针要证的是「布局画在哪」，
 ## 折叠与否这件事已由 test_preparation.gd 单独覆盖，这里把它钉死在宽屏档。
 func _open_scene() -> Image:

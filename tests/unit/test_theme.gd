@@ -10,9 +10,20 @@ const THEME_PATH: String = "res://assets/ui/theme_main.tres"
 const THEME_SCRIPT_PATH: String = "res://scripts/data/palette_theme.gd"
 
 ## 06 §1：正文 ≥ 8px。06 §2.2：主面板外框 3px，其余描边 1px。
-const EXPECTED_BODY_FONT_SIZE: int = 8
-const EXPECTED_BORDER_WIDTH: int = 1
-const EXPECTED_FRAME_BORDER_WIDTH: int = 3
+## PET-80：基准画布 320×180 → 640×360，**设计尺寸逐项 ×2** —— 正文 8→16、
+## 主面板外框 3→6、其余描边 1→2。×2 之后在 1280×720 窗口（整数倍由 4× 降到 2×）下
+## 折合的设备像素数不变，故这是「布局等价」而不是「描边变粗」。
+const EXPECTED_BODY_FONT_SIZE: int = 16
+const EXPECTED_BORDER_WIDTH: int = 2
+const EXPECTED_FRAME_BORDER_WIDTH: int = 6
+
+## PET-80：主面板切片的**九宫格纹素读数**。这两个数**不属于**上面那组设计尺寸 ——
+## 九宫格边距的语义是「源图的第几行 / 第几列属于边框」，单位是**纹素**，
+## 而本卡不动 `assets/**`（切片 2× 重产归 PET-81），所以它们保持 1×。
+## 写成字面量而不是读 `PaletteTheme.FRAME_MARGIN_*`：读常量只能证明「脚本与自己一致」，
+## 把值抄进测试才能在有人把它改回 manifest 的 16 或提前 ×2 成 38 时当场转红。
+const EXPECTED_FRAME_MARGIN_TOP: int = 19
+const EXPECTED_FRAME_MARGIN_LEFT: int = 4
 
 ## PET-77：VB-03 已批准切片的落盘目录。按钮五态与两种面板框改由切片装配，
 ## 它们的底色 / 描边色从此只存在于素材里，本文件改为钉「哪一个槽接了哪一张已批准切片」。
@@ -93,7 +104,8 @@ func _run_button_checks(ctx: RefCounted, theme: Theme, theme_script: GDScript) -
 	_check_box(ctx, theme.get_stylebox(&"normal", theme_script.TYPE_BUTTON_SECONDARY), Palette.Key.NAVY_700, Palette.Key.NAVY_600, "辅助按钮 Normal", EXPECTED_BORDER_WIDTH)
 
 
-## 06 §2.2：主面板 = 3px 木质外框；内芯 = NAVY_800 + 1px NAVY_600；次级面板 = 1px BROWN_600。
+## 06 §2.2：主面板 = 6px 木质外框；内芯 = NAVY_800 + 2px NAVY_600；次级面板 = 2px BROWN_600。
+## （PET-80：以上是 ×2 后的设计尺寸；改动前依次是 3 / 1 / 1。）
 func _run_panel_checks(ctx: RefCounted, theme: Theme, theme_script: GDScript) -> void:
 	ctx.begin_case("Theme · Panel 三层（06 §2.2）")
 	var variations: PackedStringArray = theme.get_type_variation_list(&"Panel")
@@ -109,18 +121,38 @@ func _run_panel_checks(ctx: RefCounted, theme: Theme, theme_script: GDScript) ->
 	#   上边距这条是本卡最容易出错的地方：`asset_manifest.json` 写的是 16（少了外框那 3 行），
 	#   照抄会把标题栏底下那条 1px 金线拉成 3 行（违反 06 §1「描边统一 1px」）；
 	#   这里把它钉死，将来谁改回 16 都会当场转红。
+	#
+	# —— PET-80 复述 ——
+	# 原来钉：frame_top ≥ FRAME_BORDER_WIDTH + TITLE_BAR_HEIGHT（设计空间），frame_left ≥ FRAME_BORDER_WIDTH。
+	# 现在钉：① frame_top / frame_left 等于**切片纹素读数的字面量**（19 / 4）；
+	#         ② 上带严格高于左带（`margin_top > margin_left`）—— 标题栏只存在于上边；
+	#         ③ 边距不吞掉整张切片（`2 × margin < 图宽 / 图高`），否则九宫格退化、中心区被拉伸。
+	# 为什么是同一件事：这三条合起来要证的仍是「边距盖住切片里那段非内芯的带子，
+	#   少一行就把金线拉粗、多一行就把内芯画成边框」。PET-80 把基准画布 ×2，但**没有**重产切片
+	#   （assets/** 归 PET-81），于是「画布空间的 3px 外框 + 16px 标题栏」与「切片第几行属于边框」
+	#   在这张卡里**第一次分了家**：前者 ×2 成 6/32，后者仍是纹素读数 4/19。
+	#   再拿设计常量去卡纹素边距，钉的就不是同一件事了 —— 那正是本卡要防的「拿坐标系去卡素材」。
+	# 判别力不降：把 19 改回 manifest 的 16（少一行）→ ① 转红；提前 ×2 成 38（吞掉内芯）→ ①③ 转红；
+	#   把 left 改成 0 或与 top 相等 → ② 转红。
+	# PET-81 以 2× 重产切片后，这两个字面量应更新为 38 / 8 —— 届时 ③ 仍然成立（76 < 128 / 16 < 192）。
 	_check_slice_box(ctx, theme.get_stylebox(&"panel", theme_script.TYPE_PANEL_FRAME),
 		"ui_panel_frame_main_96x64.png", "主面板外框")
 	var frame: StyleBoxTexture = theme.get_stylebox(&"panel", theme_script.TYPE_PANEL_FRAME) as StyleBoxTexture
 	var frame_top: float = frame.texture_margin_top if frame != null else 0.0
 	var frame_left: float = frame.texture_margin_left if frame != null else 0.0
-	ctx.check(frame_top >= float(EXPECTED_FRAME_BORDER_WIDTH + theme_script.TITLE_BAR_HEIGHT),
-		"主面板外框的九宫格上边距应盖住「%dpx 木质外框 + %dpx 标题栏」= %d（实际 %.0f）—— 少一行就会把金线拉粗"
-			% [EXPECTED_FRAME_BORDER_WIDTH, theme_script.TITLE_BAR_HEIGHT,
-				EXPECTED_FRAME_BORDER_WIDTH + theme_script.TITLE_BAR_HEIGHT, frame_top])
-	ctx.check(frame_left >= float(EXPECTED_FRAME_BORDER_WIDTH),
-		"主面板外框的九宫格左边距应盖住 %dpx 木质外框（实际 %.0f）"
-			% [EXPECTED_FRAME_BORDER_WIDTH, frame_left])
+	ctx.equal(frame_top, float(EXPECTED_FRAME_MARGIN_TOP),
+		"主面板外框的九宫格上边距应盖住「木质外框 + 标题栏」= %d 纹素（实际 %.0f）—— 少一行就会把金线拉粗"
+			% [EXPECTED_FRAME_MARGIN_TOP, frame_top])
+	ctx.equal(frame_left, float(EXPECTED_FRAME_MARGIN_LEFT),
+		"主面板外框的九宫格左边距应盖住「木质外框 + 左高光」= %d 纹素（实际 %.0f）"
+			% [EXPECTED_FRAME_MARGIN_LEFT, frame_left])
+	ctx.check(frame_top > frame_left,
+		"上带应严格高于左带（%.0f vs %.0f）—— 标题栏只在上边，两侧等高说明标题栏掉了" % [frame_top, frame_left])
+	if frame != null and frame.texture != null:
+		var tex: Vector2 = frame.texture.get_size()
+		ctx.check(frame.texture_margin_left * 2.0 < tex.x and frame.texture_margin_top * 2.0 < tex.y,
+			"九宫格边距不得吞掉切片（左右 %.0f / 上下 %.0f，图 %.0f×%.0f）—— 越界会让中心区被拉伸"
+				% [frame.texture_margin_left * 2.0, frame.texture_margin_top * 2.0, tex.x, tex.y])
 	_check_box(ctx, theme.get_stylebox(&"panel", theme_script.TYPE_PANEL_CORE), Palette.Key.NAVY_800, Palette.Key.NAVY_600, "面板内芯", EXPECTED_BORDER_WIDTH)
 	# 次级面板同理：原来钉 StyleBoxFlat 的 NAVY_800 底 + 1px BROWN_600 描边，现钉切片身份。
 	_check_slice_box(ctx, theme.get_stylebox(&"panel", theme_script.TYPE_PANEL_SECONDARY),
@@ -156,12 +188,12 @@ func _run_shadow_checks(ctx: RefCounted, theme: Theme, theme_script: GDScript) -
 		return
 	var flat: StyleBoxFlat = box
 	ctx.equal(flat.border_color, Palette.get_color(Palette.Key.NAVY_900), "阴影色")
-	ctx.equal(flat.border_width_right, EXPECTED_BORDER_WIDTH, "右侧 1px")
-	ctx.equal(flat.border_width_bottom, EXPECTED_BORDER_WIDTH, "下侧 1px")
+	ctx.equal(flat.border_width_right, EXPECTED_BORDER_WIDTH, "右侧 %dpx" % EXPECTED_BORDER_WIDTH)
+	ctx.equal(flat.border_width_bottom, EXPECTED_BORDER_WIDTH, "下侧 %dpx" % EXPECTED_BORDER_WIDTH)
 	ctx.equal(flat.border_width_left, 0, "左侧不得有边")
 	ctx.equal(flat.border_width_top, 0, "上侧不得有边")
-	ctx.equal(flat.expand_margin_right, float(EXPECTED_BORDER_WIDTH), "右边应外扩 1px（落到矩形外）")
-	ctx.equal(flat.expand_margin_bottom, float(EXPECTED_BORDER_WIDTH), "下边应外扩 1px（落到矩形外）")
+	ctx.equal(flat.expand_margin_right, float(EXPECTED_BORDER_WIDTH), "右边应外扩 %dpx（落到矩形外）" % EXPECTED_BORDER_WIDTH)
+	ctx.equal(flat.expand_margin_bottom, float(EXPECTED_BORDER_WIDTH), "下边应外扩 %dpx（落到矩形外）" % EXPECTED_BORDER_WIDTH)
 	ctx.equal(flat.expand_margin_left, 0.0, "左边不得外扩")
 	ctx.equal(flat.expand_margin_top, 0.0, "上边不得外扩")
 	ctx.check(not flat.draw_center, "阴影层应只画边、不填中心")
@@ -169,13 +201,14 @@ func _run_shadow_checks(ctx: RefCounted, theme: Theme, theme_script: GDScript) -
 	ctx.equal(flat.shadow_size, 0, "不得再叠 shadow_*（实测会引入 1px 羽化）")
 
 
-## 06 §2.2 的面板标题栏：高度 16px（规格常量）、底色 NAVY_700、**底部** 1px GOLD_600 分隔线。
+## 06 §2.2 的面板标题栏：高度 32px（规格常量，PET-80 前 16）、底色 NAVY_700、
+## **底部** 2px GOLD_600 分隔线（PET-80 前 1px）。
 ##
 ## 复用不了 _check_box()：那个 helper 断言四边同宽，而本变体的定义就是「只有底边有边」——
 ## 套用它会逼着实现改成四边整圈，等于让 helper 反过来改规格。
 func _run_title_bar_checks(ctx: RefCounted, theme: Theme, theme_script: GDScript) -> void:
 	ctx.begin_case("Theme · 面板标题栏（06 §2.2）")
-	ctx.equal(theme_script.TITLE_BAR_HEIGHT, 16, "标题栏高度（06 §2.2）")
+	ctx.equal(theme_script.TITLE_BAR_HEIGHT, 32, "标题栏高度（06 §2.2；PET-80 起 ×2）")
 	ctx.check(theme.get_type_variation_list(&"Panel").has(theme_script.TYPE_PANEL_TITLE_BAR),
 		"应注册标题栏变体")
 
@@ -185,7 +218,7 @@ func _run_title_bar_checks(ctx: RefCounted, theme: Theme, theme_script: GDScript
 	var flat: StyleBoxFlat = box
 	ctx.equal(flat.bg_color, Palette.get_color(Palette.Key.NAVY_700), "标题栏底色")
 	ctx.equal(flat.border_color, Palette.get_color(Palette.Key.GOLD_600), "分隔线颜色")
-	ctx.equal(flat.border_width_bottom, EXPECTED_BORDER_WIDTH, "底部分隔线 1px")
+	ctx.equal(flat.border_width_bottom, EXPECTED_BORDER_WIDTH, "底部分隔线 %dpx" % EXPECTED_BORDER_WIDTH)
 	ctx.equal(flat.border_width_left, 0, "左边不得有描边")
 	ctx.equal(flat.border_width_top, 0, "上边不得有描边")
 	ctx.equal(flat.border_width_right, 0, "右边不得有描边")
@@ -194,7 +227,7 @@ func _run_title_bar_checks(ctx: RefCounted, theme: Theme, theme_script: GDScript
 	ctx.check(not flat.anti_aliasing, "不得开抗锯齿")
 	ctx.equal(flat.shadow_size, 0, "不得带 shadow_*")
 	# 内容边距清零：本变体紧贴「Panel + 手工定位的 Label」，一旦被塞进容器，
-	# 非零的默认边距会把最小高度凭空撑到 16px 以上（规格就守不住了）。
+	# 非零的默认边距会把最小高度凭空撑到 32px（PET-80 前 16px）以上（规格就守不住了）。
 	ctx.equal(flat.content_margin_top, 0.0, "内容边距应为 0")
 	ctx.equal(flat.content_margin_bottom, 0.0, "内容边距应为 0")
 	ctx.check(_theme_uses_token(theme, Palette.Key.NAVY_700), "Theme 必须实际引用 NAVY_700")

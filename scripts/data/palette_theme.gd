@@ -34,33 +34,53 @@ const SB_OVERLAY_DISABLED: String = "ui_overlay_disabled_32.stylebox.tres"
 ## ProgressBar 的填充子矩形。切片是「满条预览」而非可复用的 track/fill 对：
 ## 轨道 = 其中的空轨道段（BROWN_600 外框 + NAVY_800 内里），填充 = 其中的蓝色段。
 ## 数值来自切片逐像素读数（96×12）：蓝色段占列 2..61、行 2..9。
+## PET-80：同 FRAME_MARGIN_*，这是**切片读数**（纹素），本卡不动 assets/**，故不变。
+## PET-81 以 2× 重产该切片后应变为 Rect2(4, 4, 120, 16)。
 const PROGRESS_FILL_REGION: Rect2 = Rect2(2, 2, 60, 8)
 
 ## 禁用遮罩的取样子矩形。切片 32×32 中部烘焙了一行示例内容（GREY_500，列 6..25、行 12），
 ## 九宫格的中心区会把那一行拉伸成横贯整层的灰带，故中心改取左上角这块**纯色** scrim。
+## PET-80：同上，切片读数，保持不变。
 const OVERLAY_DISABLED_REGION: Rect2 = Rect2(0, 0, 2, 2)
 
-## 06 §1：基准 320×180，描边统一 1px，间距只用 4/8/12/16/24，像素角（直角）。
-const BORDER_WIDTH: int = 1
-const FRAME_BORDER_WIDTH: int = 3
-const CONTENT_MARGIN: int = 4
-const PANEL_CONTENT_MARGIN: int = 12
-const PANEL_SECONDARY_CONTENT_MARGIN: int = 8
-const BODY_FONT_SIZE: int = 8
+## 06 §1：基准 **640×360**（PET-80 起；此前 320×180），描边统一 **2px**（此前 1px），
+## 间距只用 8/16/24/32/48（此前 4/8/12/16/24），像素角（直角）。
+##
+## PET-80：下列**设计尺寸**逐项 ×2。它们是坐标系里的长度，×2 之后在 1280×720 的窗口
+## （2× 整数放大，此前 4×）下折合的设备像素数不变 —— 这正是「布局等价」的来源。
+const BORDER_WIDTH: int = 2
+const FRAME_BORDER_WIDTH: int = 6
+const CONTENT_MARGIN: int = 8
+const PANEL_CONTENT_MARGIN: int = 24
+const PANEL_SECONDARY_CONTENT_MARGIN: int = 16
+const BODY_FONT_SIZE: int = 16
 
-## 06 §2.2：面板标题栏高度 16px。数值放在 Theme 侧是因为标题栏尺寸属面板规格，
+## 06 §2.2：面板标题栏高度 16px（PET-80 起 32px）。数值放在 Theme 侧是因为标题栏尺寸属面板规格，
 ## 由组件场景（scenes/components/panel_title_bar.tscn）在 _ready() 里取用，
-## 避免同一个 16 在 Theme 与场景里各写一份。
-const TITLE_BAR_HEIGHT: int = 16
+## 避免同一个数在 Theme 与场景里各写一份。
+const TITLE_BAR_HEIGHT: int = 32
 
 ## 主面板框的九宫格边距。**刻意不等于 asset_manifest.json 的 `[3, 16, 3, 3]`** —— 依据见 _frame_slice()。
 ##   左 = 3px 木质外框 + 1px GOLD_200 左高光；
 ##   上 = 3px 木质外框 + 16px 标题栏。
-const FRAME_MARGIN_LEFT: int = FRAME_BORDER_WIDTH + 1
-const FRAME_MARGIN_TOP: int = FRAME_BORDER_WIDTH + TITLE_BAR_HEIGHT
+##
+## **PET-80：这四个值读的是「切片本身」，本卡不动 assets/**，故它们保持 1× 不变。**
+## 九宫格边距的语义是「源图的第几行 / 第几列属于边框」，单位是**纹素**，不随设计坐标系缩放。
+## 把它们 ×2 会让顶带去取源图第 38 行 —— 而那张 96×64 的图从第 19 行起已经是内芯 ——
+## 结果是把标题栏区域画成一片被拉伸的内芯，不是「更粗的框」。
+## 所以这里**不再从 FRAME_BORDER_WIDTH / TITLE_BAR_HEIGHT 推导**：那两个是**设计尺寸**（已 ×2），
+## 这四个是**素材读数**（不变）。二者在本卡之前恰好同值，纯属 1× 切片与 1× 坐标系重合。
+##
+## 代价（DSH 已裁定接受）：本卡落地后，切片画的 chrome（外框 / 标题栏 / 描边）在 2× 窗口下
+## **厚度减半**，这是**中间态**。PET-81 以 2× 重产切片（192×128：外框 6px、标题带 32 行）后，
+## 这四个数随之变成 8 / 38 / 4 / 4，届时 1 纹素 = 1 设计像素 = 2 设备像素，
+## 与旧的「1 纹素 = 4 设备像素」视觉厚度一致 —— 那才是终态等价。
+const FRAME_MARGIN_LEFT: int = 4
+const FRAME_MARGIN_TOP: int = 19
 
 ## 次级框 / Tooltip 的九宫格边距，比 manifest 的 `[1, 1, 1, 1]` 各多一列 / 一行，理由同上：
 ## 这两种切片都是「1px 描边 + 1px 高光」，manifest 把高光那一条漏在了中心区里。
+## PET-80：同上，读的是切片，保持不变（PET-81 后为 4 / 4）。
 const THIN_FRAME_MARGIN_LEFT: int = 2
 const THIN_FRAME_MARGIN_TOP: int = 2
 

@@ -29,9 +29,13 @@ const ROUND_PATH: PackedStringArray = [
 ]
 ## R1 实测的停留时长：10 分钟模拟时间（09 §3.1）。
 const HOLD_SECONDS: float = 600.0
-## 场景语义尺寸。与工程视口一致（project.godot 的 320×180），
+## 场景语义尺寸。与工程视口一致（project.godot 的 640×360，PET-80 前 320×180），
 ## 也让 apply_layout_for() 拿到真实档位 —— CTA / 卡片的命中矩形要在这个尺寸下才有面积。
-const VIEWPORT: Vector2 = Vector2(320.0, 180.0)
+##
+## 这个数**必须**与 project.godot 的设计尺寸同步，且运行本用例的窗口也必须是它
+## （`--resolution 640x360`）：_click() 合成的坐标经 root.push_input 折算，
+## 窗口 ≠ 设计尺寸时缩放不为 1，所有合成点击会整体偏移。
+const VIEWPORT: Vector2 = Vector2(640.0, 360.0)
 ## 本局固定种子（03 §6：全项目随机必须且只能来自 RunState，且必须可复现）。
 const RUN_SEED: int = 20261003
 ## 本文件（run_tests.gd 里唯一的 integration 用例）至少应有的断言条数。

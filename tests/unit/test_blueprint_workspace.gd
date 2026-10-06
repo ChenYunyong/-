@@ -24,18 +24,23 @@ const SAVE_PATH: String = SAVE_DIR + "/_workspace_01.tres"
 
 ## 06 §4 的节点卡记法，在本文件**独立复写一遍**。刻意不从 blueprint_workspace.gd 取：
 ## 测试若与被测实现同源，实现里把 28 写成 26 时两边一起错，断言就永远是绿的。
-const GRID: float = 24.0
-const CARD: float = 24.0
-const MARKER: float = 4.0
-const SLOT_PITCH: float = 28.0
+## PET-80：基准画布 320×180 → 640×360，下列**长度**逐项 ×2（改动前依次是 24 / 24 / 4 / 28 / 8）。
+## `DRAG_ALPHA` 是不透明度、不是长度，保持 0.7。
+const GRID: float = 48.0
+const CARD: float = 48.0
+const MARKER: float = 8.0
+const SLOT_PITCH: float = 56.0
 const DRAG_ALPHA: float = 0.7
-const LABEL_FONT_SIZE: int = 8
+const LABEL_FONT_SIZE: int = 16
 
-## 06 §7 分区内缩 2px 后的真实可用区（RegionCenter 128×124、RegionBottom 294×48 减掉 CTA）。
-const CANVAS_SIZE: Vector2 = Vector2(124.0, 120.0)
-const WAREHOUSE_SIZE: Vector2 = Vector2(227.0, 44.0)
-## 窄屏（06 §7.1）底条减掉 44px 的 CTA 后只剩这一段。
-const WAREHOUSE_NARROW_SIZE: Vector2 = Vector2(124.0, 44.0)
+## 06 §7 分区内缩 4px（PET-80 前 2px）后的真实可用区
+## （RegionCenter 256×248、RegionBottom 588×96 减掉 CTA）。
+## PET-80：逐项 ×2。**必须一起改** —— `_slot_layout()` 的 pitch / shown 全由 `size.x` 现算，
+## 只翻 CARD 而不翻这个可用区，会量出「48 的卡片往 227 的条里塞」，退让规则被误触发。
+const CANVAS_SIZE: Vector2 = Vector2(248.0, 240.0)
+const WAREHOUSE_SIZE: Vector2 = Vector2(454.0, 88.0)
+## 窄屏（06 §7.1）底条减掉 88px 的 CTA 后只剩这一段。
+const WAREHOUSE_NARROW_SIZE: Vector2 = Vector2(248.0, 88.0)
 
 ## 03 §2 / 06 §10.1 R1：不得存在任何会自动推进的构造。
 const BANNED_TIMING_TOKENS: PackedStringArray = [
@@ -122,13 +127,24 @@ func _run_constant_checks(ctx: RefCounted) -> void:
 	# —— PET-77 接入说明（原「端口标记边长」一条）——
 	# 原来钉：`script.PORT == 3.0` —— 06 §4 卡片记法里那个**代码手绘**的插座点边长。
 	# 现在钉：卡片面整张取自 VB-03 已批准切片，且① 取自批准目录、② 三种类型各一张、
-	#         ③ 切片与卡片格子 **1:1**（24×24，不被缩放）、④ 类型→切片文件的对应不串位。
+	#         ③ 切片与卡片格子**成整数倍**、④ 类型→切片文件的对应不串位。
 	# 为什么是同一件事：这条要证的是「卡片上的记法元素都画在自己的像素格上」。
 	#   接入前插座点是代码画的，所以它的边长是个常量；接入后插座点烘焙进 `ui_node_card_*_24`，
 	#   常量本身随之消失（`PORT` 已从 blueprint_workspace.gd 删除，因为它不再有落点）。
 	#   判据于是从「某一个手绘元素的边长」升级为「整张卡片面与格子同尺寸」—— 覆盖了原来那个点，
 	#   也覆盖了新接进来的整张图。③ 是新的风险点：换一张 32×32 的切片进来，非整数缩放会把
 	#   卡片上那圈 1px 描边糊掉；④ 则钉住我这次新引入的 `CARD_SLICE_NORMAL[kind]` 下标关系。
+	#
+	# —— PET-80 改法（③ 从「1:1」改为「整数倍」）——
+	# 原来钉：`切片边长 == CARD`（24×24 == 24）。
+	# 现在钉：`CARD % 切片边长 == 0`（48 / 24 == 2，整数倍）。
+	# 为什么是同一件事：这条要防的从来不是「切片不等于格子」，而是「切片被**非整数**缩放，
+	#   于是 1px 描边糊掉」。24 进 48 是精确 2×，nearest 过滤下每个纹素变 2×2 方块，不糊。
+	#   仍具判别力：换 25×25 或 30×30 的切片进来，取模不为 0，这条立刻转红。
+	# 为什么不能照抄 24：`assets/**` 归 PET-81（该卡把全部切片按 2× 重导出，24×24 → 48×48），
+	#   写死 24 会在 PET-81 合入当天就失效；而 ×2 之后 48/48 又重新取模为 0，本条一路上都成立。
+	# DSH 已裁定接受「本卡之后外框 / 标题栏 / 描边在 2× 窗口里只有一半厚度」这一中间态
+	#   （背景、描边这些切片仍是 1× 素材，PET-81 换 2× 切片后恢复）。
 	ctx.check(String(script.CARD_SLICE_DIR).begins_with("res://assets/ui/vb03_component_language/"),
 		"卡片切片应取自 VB-03 已批准目录（实际 '%s'）" % script.CARD_SLICE_DIR)
 	ctx.equal(script.CARD_SLICE_NORMAL.size(), 3, "三种节点类型应各有一张卡片切片")
@@ -141,8 +157,10 @@ func _run_constant_checks(ctx: RefCounted) -> void:
 		var card_slice: Texture2D = load(String(script.CARD_SLICE_DIR) + file_name)
 		if not ctx.check(card_slice != null, "卡片切片应能加载：%s" % file_name):
 			continue
-		ctx.equal(card_slice.get_size(), Vector2(CARD, CARD),
-			"%s 应与卡片格子 1:1（不缩放，否则 1px 描边会被糊掉）" % file_name)
+		var slice_size: Vector2 = card_slice.get_size()
+		ctx.check(slice_size.x > 0.0 and slice_size.y > 0.0, "%s 不得是零尺寸切片" % file_name)
+		ctx.check(fmod(CARD, slice_size.x) == 0.0 and fmod(CARD, slice_size.y) == 0.0,
+			"%s（%s）应与卡片格子 %.0f 成整数倍 —— 非整数缩放会把 1px 描边糊掉" % [file_name, slice_size, CARD])
 	ctx.check(not String(script.CARD_SLICE_SELECTED).is_empty(), "选中态应也有一张切片")
 	ctx.equal(script.SLOT_PITCH_MAX, SLOT_PITCH, "仓库槽位间距上限")
 	ctx.equal(script.DRAG_ALPHA, DRAG_ALPHA, "拖动预览的不透明度")
@@ -235,8 +253,8 @@ func _check_warehouse_weapon_column(ctx: RefCounted, kinds: GDScript, list: Arra
 		"三张武器槽应恰好覆盖三把各不相同的武器")
 
 
-## 06 §4 的 28px 间距优先；装不下时退到「不重叠的最小间距 + 少放几个」。
-## 底条在窄屏（06 §7.1）被 CTA 占去 44px，7 个槽位几何上放不下 —— 退让规则是这里的主断言。
+## 06 §4 的 56px 间距优先（PET-80 前 28px）；装不下时退到「不重叠的最小间距 + 少放几个」。
+## 底条在窄屏（06 §7.1）被 CTA 占去 88px（PET-80 前 44px），7 个槽位几何上放不下 —— 退让规则是这里的主断言。
 func _run_slot_layout_checks(ctx: RefCounted) -> void:
 	ctx.begin_case("BlueprintWorkspace · 槽位布局（06 §4 间距 / 窄屏退让）")
 	var script: GDScript = load(WORKSPACE_SCRIPT_PATH)
@@ -248,7 +266,7 @@ func _run_slot_layout_checks(ctx: RefCounted) -> void:
 		return
 	var layout: Dictionary = wide.call(&"_slot_layout")
 	ctx.equal(int(layout["shown"]), 7, "宽屏底条应放得下全部 7 个槽位")
-	ctx.equal(float(layout["pitch"]), SLOT_PITCH, "间距应取 06 §4 的 28px")
+	ctx.equal(float(layout["pitch"]), SLOT_PITCH, "间距应取 06 §4 的 56px（PET-80 前 28px）")
 	_check_slots(ctx, wide, 7, float(layout["pitch"]), WAREHOUSE_SIZE.x, "宽屏")
 	wide.free()
 
@@ -260,7 +278,9 @@ func _run_slot_layout_checks(ctx: RefCounted) -> void:
 	var pitch: float = float(tight["pitch"])
 	ctx.check(shown < 7, "窄屏放不下 7 个槽位时应少放（实际放 %d 个）" % shown)
 	ctx.check(shown >= 1, "至少要放得下 1 个槽位（实际 %d 个）" % shown)
-	ctx.check(pitch >= CARD + 1.0, "退让后的间距不得小于 %.0f，否则卡片会叠在一起（实际 %.1f）" % [CARD + 1.0, pitch])
+	# PET-80：1.0 → 2.0，与 SLOT_GAP_MIN 的 ×2 同步。写 1.0 会变成一条**失效的**断言
+	# （48 的卡片 + 1 的缝在退让后根本不会出现），门槛必须跟着常量一起翻倍才算钉住同一件事。
+	ctx.check(pitch >= CARD + 2.0, "退让后的间距不得小于 %.0f，否则卡片会叠在一起（实际 %.1f）" % [CARD + 2.0, pitch])
 	# 这两个合起来才是「放得下几个就放几个」：最后一个还塞得进，再添一个就塞不进。
 	ctx.check(float(shown - 1) * pitch + CARD <= WAREHOUSE_NARROW_SIZE.x + 0.01,
 		"放下的最后一个槽位应仍在可用宽度内")
@@ -270,12 +290,12 @@ func _run_slot_layout_checks(ctx: RefCounted) -> void:
 	narrow.free()
 
 
-## 06 §4 / 06 §1：每个槽位都得是完整的 24×24（24 逻辑像素 = 2× 下 48 设备像素），不得越界、不得重叠。
+## 06 §4 / 06 §1：每个槽位都得是完整的 48×48（48 逻辑像素 = 2× 下 96 设备像素），不得越界、不得重叠。
 func _check_slots(ctx: RefCounted, ws: Control, shown: int, pitch: float, width: float, label: String) -> void:
 	var previous: Rect2 = Rect2()
 	for index: int in shown:
 		var rect: Rect2 = ws.call(&"_slot_rect", index)
-		ctx.equal(rect.size, Vector2(CARD, CARD), "%s：槽位 %d 应是完整的 24×24 命中区" % [label, index])
+		ctx.equal(rect.size, Vector2(CARD, CARD), "%s：槽位 %d 应是完整的 48×48 命中区" % [label, index])
 		ctx.check(rect.position.x >= 0.0 and rect.end.x <= width + 0.01,
 			"%s：槽位 %d 不得越出可用宽度（%s）" % [label, index, rect])
 		ctx.check(rect.position.y >= 0.0 and rect.end.y <= WAREHOUSE_SIZE.y,
@@ -285,7 +305,7 @@ func _check_slots(ctx: RefCounted, ws: Control, shown: int, pitch: float, width:
 		previous = rect
 
 
-## 06 §4：落点吸附到 24px 网格，且卡片不得被拖出画布可视区。
+## 06 §4：落点吸附到 48px 网格（PET-80 前 24px），且卡片不得被拖出画布可视区。
 func _run_snapping_checks(ctx: RefCounted) -> void:
 	ctx.begin_case("BlueprintWorkspace · 网格吸附（06 §4）")
 	var script: GDScript = load(WORKSPACE_SCRIPT_PATH)
@@ -296,27 +316,31 @@ func _run_snapping_checks(ctx: RefCounted) -> void:
 		return
 
 	# 画布内、画布外、负坐标、远超出 —— 四种落点都要收敛到同一个合法域。
+	# PET-80：六个落点全部 ×2（画布 124×120 → 248×240，网格 24 → 48）。
+	# 这些点是按**相对画布的位置**选的（正中间、右下角内 1px、画布外…），
+	# 类别不变，故 ×2 之后仍覆盖原来那六种情形。
 	var drops: Array[Vector2] = [
-		Vector2(12.0, 24.0), Vector2(50.0, 50.0), Vector2(60.0, 60.0),
-		Vector2(123.0, 119.0), Vector2(-40.0, -40.0), Vector2(999.0, 999.0),
+		Vector2(24.0, 48.0), Vector2(100.0, 100.0), Vector2(120.0, 120.0),
+		Vector2(246.0, 238.0), Vector2(-80.0, -80.0), Vector2(1998.0, 1998.0),
 	]
 	for at: Vector2 in drops:
 		var rect: Rect2 = ws.call(&"_snapped", at)
 		ctx.equal(rect.size, Vector2(CARD, CARD), "落点 %s 的卡片尺寸" % at)
-		ctx.check(_is_on_grid(rect.position), "落点 %s 的卡片左上角应吸附到 24px 网格（实际 %s）" % [at, rect.position])
+		ctx.check(_is_on_grid(rect.position), "落点 %s 的卡片左上角应吸附到 48px 网格（实际 %s）" % [at, rect.position])
 		ctx.check(rect.position.x >= 0.0 and rect.position.y >= 0.0,
 			"落点 %s 不得越出画布左 / 上缘（实际 %s）" % [at, rect.position])
 		ctx.check(rect.end.x <= CANVAS_SIZE.x + 0.01 and rect.end.y <= CANVAS_SIZE.y + 0.01,
 			"落点 %s 不得越出画布右 / 下缘（实际 %s）" % [at, rect])
 	# 画布内的落点即卡片中心（06 §4）：卡片必须盖住落点本身。
-	var centered: Rect2 = ws.call(&"_snapped", Vector2(60.0, 60.0))
-	ctx.check(centered.has_point(Vector2(60.0, 60.0)), "画布内的落点应落在卡片内（卡片以落点为中心）")
+	var centered: Rect2 = ws.call(&"_snapped", Vector2(120.0, 120.0))
+	ctx.check(centered.has_point(Vector2(120.0, 120.0)), "画布内的落点应落在卡片内（卡片以落点为中心）")
 	# 两个具体值把吸附规则钉死：落点正好在格子中心时卡片与它**精确**同心；
-	# 落点在格子边界（24 的奇数倍半格）时按四舍五入（Godot 的 snapped 是 half-away-from-zero）
+	# 落点在格子边界（48 的奇数倍半格）时按四舍五入（Godot 的 snapped 是 half-away-from-zero）
 	# 落到相邻格，故卡片可能与落点最多偏半格 —— 这是网格吸附的固有代价，不是 bug。
-	ctx.equal(centered, Rect2(Vector2(48.0, 48.0), Vector2(CARD, CARD)), "落点 (60,60) 的卡片应精确以它为中心")
-	ctx.equal(ws.call(&"_snapped", Vector2(48.0, 48.0)), Rect2(Vector2(48.0, 48.0), Vector2(CARD, CARD)),
-		"落点 (48,48) 的卡片应吸附到最近的格子（36 → 48）")
+	# PET-80：三个坐标随网格 ×2（60→120、48→96、36→72）。
+	ctx.equal(centered, Rect2(Vector2(96.0, 96.0), Vector2(CARD, CARD)), "落点 (120,120) 的卡片应精确以它为中心")
+	ctx.equal(ws.call(&"_snapped", Vector2(96.0, 96.0)), Rect2(Vector2(96.0, 96.0), Vector2(CARD, CARD)),
+		"落点 (96,96) 的卡片应吸附到最近的格子（72 → 96）")
 	ws.free()
 
 
@@ -332,8 +356,9 @@ func _run_graph_checks(ctx: RefCounted) -> void:
 	if ws == null:
 		return
 
-	ws.call(&"_add_node", kinds.Kind.CORE, "核心", Vector2(48.0, 48.0))
-	ws.call(&"_add_node", kinds.Kind.FUNCTION, "分流", Vector2(72.0, 72.0))
+	# PET-80：两个落点随网格 ×2（48→96、72→144），落在**同一批格子**上（第 2 格、第 3 格）。
+	ws.call(&"_add_node", kinds.Kind.CORE, "核心", Vector2(96.0, 96.0))
+	ws.call(&"_add_node", kinds.Kind.FUNCTION, "分流", Vector2(144.0, 144.0))
 	var blueprint: BlueprintData = ws.call(&"blueprint")
 	ctx.equal(blueprint.nodes.size(), 2, "落两个节点后蓝图应有 2 个节点")
 
@@ -412,7 +437,7 @@ func _run_persistence_checks(ctx: RefCounted) -> void:
 
 	# 载回后自增序号必须从既有节点数续起，否则新节点会与存档里的旧 id 撞车 ——
 	# 撞车的后果是 _boxes 这个以 id 为键的字典把旧节点顶掉，图与画面对不上。
-	ws.call(&"_add_node", kinds.Kind.WEAPON, "针", Vector2(60.0, 60.0),
+	ws.call(&"_add_node", kinds.Kind.WEAPON, "针", Vector2(120.0, 120.0),
 		kinds.Function.NONE, kinds.WeaponKind.NEEDLE)
 	var seen: Dictionary = {}
 	for node: NodeData in blueprint.nodes:
@@ -442,12 +467,12 @@ func _run_weapon_kind_checks(ctx: RefCounted) -> void:
 
 	var weapons: Array[int] = [kinds.WeaponKind.NEEDLE, kinds.WeaponKind.BOMB, kinds.WeaponKind.SAW]
 	for index: int in weapons.size():
-		ws.call(&"_add_node", kinds.Kind.WEAPON, "w%d" % index, Vector2(48.0, 48.0),
+		ws.call(&"_add_node", kinds.Kind.WEAPON, "w%d" % index, Vector2(96.0, 96.0),
 			kinds.Function.NONE, weapons[index])
 	# 缺省（旧调用方 / 将来的程序化建图）必须落 NONE —— 那是 02 §9 的降级入口，
 	# 而不是「随手指一把武器」：随机的那把会让调试图与玩家的图对不上。
-	ws.call(&"_add_node", kinds.Kind.WEAPON, "w_default", Vector2(72.0, 72.0))
-	ws.call(&"_add_node", kinds.Kind.CORE, "核心", Vector2(96.0, 96.0))
+	ws.call(&"_add_node", kinds.Kind.WEAPON, "w_default", Vector2(144.0, 144.0))
+	ws.call(&"_add_node", kinds.Kind.CORE, "核心", Vector2(192.0, 192.0))
 
 	var blueprint: BlueprintData = ws.call(&"blueprint")
 	if not ctx.equal(blueprint.nodes.size(), 5, "应落出 5 个节点"):
@@ -594,11 +619,13 @@ func _run_selection_checks(ctx: RefCounted) -> void:
 	ctx.equal(String(ws.call(&"selected_node_id")), String(core.id), "选中的应是点到的那个节点")
 	ctx.equal(int(ws.call(&"selected_link_index")), -1, "选中节点时不应同时选中连线")
 
-	# 卡片优先于连线：这个点在卡片里，同时也在连线的命中走廊里（离线的起点锚点 1px）。
+	# 卡片优先于连线：这个点在卡片里，同时也在连线的命中走廊里（离线的起点锚点 2px）。
 	# 不优先的话，贴着卡片边缘点会选中一条穿过去的线 —— 而玩家想删的是那张卡。
+	# PET-80：内缩 1px → 2px、走廊半宽 8 → 16，两者都是**长度**，随坐标系 ×2。
+	# 关键在于「取的点仍在走廊里」这一条前置仍然成立：2 < 16，与 1 < 8 是同一个不等式。
 	var anchor: Vector2 = ws.call(&"_anchor", core_box, false)
-	var hot: Vector2 = Vector2(core_box.end.x - 1.0, anchor.y)
-	ctx.check(hot.distance_to(anchor) <= 8.0,
+	var hot: Vector2 = Vector2(core_box.end.x - 2.0, anchor.y)
+	ctx.check(hot.distance_to(anchor) <= 16.0,
 		"取的点应同时落在连线的命中走廊内（否则本条不在考「卡片优先」）")
 	ws.call(&"select_at", hot)
 	ctx.equal(String(ws.call(&"selected_node_id")), String(core.id),
@@ -609,7 +636,8 @@ func _run_selection_checks(ctx: RefCounted) -> void:
 	ctx.check(String(ws.call(&"selected_node_id")).is_empty(), "选中连线时不应同时选中节点")
 
 	# 点空白处取消选中 —— 没有这条出口，选中态就只能靠删掉东西来解除。
-	ws.call(&"select_at", Vector2(CANVAS_SIZE.x - 1.0, CANVAS_SIZE.y - 1.0))
+	# PET-80：「画布内缘 1px」也是长度，随坐标系 ×2 —— 取的点仍在最后一格卡片之外，语义不变。
+	ws.call(&"select_at", Vector2(CANVAS_SIZE.x - 2.0, CANVAS_SIZE.y - 2.0))
 	ctx.check(not bool(ws.call(&"has_selection")), "点空白处应取消选中")
 
 	ctx.equal(blueprint.nodes.size(), 2, "点选不得增删节点")
@@ -873,9 +901,9 @@ func _run_action_ui_checks(ctx: RefCounted) -> void:
 		# 断言「主动作只有一块金色」—— 挂错变体等于在画面上又开了一个主入口。
 		ctx.equal(button.theme_type_variation, &"ButtonSecondary",
 			"「%s」是辅助动作，必须挂 ButtonSecondary 变体" % button.name)
-		# 06 §1：24 逻辑像素在 2× 下折合 48 设备像素，够得着。
-		ctx.check(button.offset_bottom - button.offset_top >= 24.0,
-			"「%s」的高度应 ≥ 24 逻辑像素（实际 %.1f）" % [button.name, button.offset_bottom - button.offset_top])
+		# 06 §1：48 逻辑像素在 2× 下折合 96 设备像素，够得着（PET-80 前 24 逻辑像素 / 48 设备像素）。
+		ctx.check(button.offset_bottom - button.offset_top >= 48.0,
+			"「%s」的高度应 ≥ 48 逻辑像素（实际 %.1f）" % [button.name, button.offset_bottom - button.offset_top])
 
 	_check_shortcut(ctx, delete_button, [KEY_DELETE, KEY_BACKSPACE], false)
 	_check_shortcut(ctx, undo_button, [KEY_Z], true)

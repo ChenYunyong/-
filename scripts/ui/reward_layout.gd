@@ -10,12 +10,16 @@
 ##
 ## 每个数字的来源（06 §9 只规定了「3 个选项 + 不足时以跳过补齐」，未给实测矩形，
 ## 故下列取值全部由已经冻结的规范值推导，不发明新尺寸）：
-##   · 安全边距 8   —— 06 §1 的屏幕安全边距（与 PreparationLayout.SAFE_INSET 同值）
-##   · 元素间距 8   —— 06 §1 的间距刻度
-##   · 标题栏高 16  —— 06 §2.2 的面板标题栏高度（= PaletteTheme.TITLE_BAR_HEIGHT）
-##   · 触摸下限 44  —— 06 §1 的可点击区域下限，沿用 PreparationLayout.NARROW_ACTION_SIZE 的先例
+##   · 安全边距 16  —— 06 §1 的屏幕安全边距（与 PreparationLayout.SAFE_INSET 同值）
+##   · 元素间距 16  —— 06 §1 的间距刻度
+##   · 标题栏高 32  —— 06 §2.2 的面板标题栏高度（= PaletteTheme.TITLE_BAR_HEIGHT）
+##   · 触摸下限 88  —— 06 §1 的可点击区域下限，沿用 PreparationLayout.NARROW_ACTION_SIZE 的先例
 ##   · 三列         —— 06 §9「3 个选项」
+## 以上是 PET-80 后的值；改动前（基准 320×180）依次是 8 / 8 / 16 / 44，逐项 ×2。
 ## 这组推导随交付回报 DSH；若与 Codex 的观感判断冲突，以 Codex 为准。
+##
+## PET-80：基准画布 320×180 → 640×360，上述**几何量逐项 ×2**（320→640、8→16、16→32、44→88）。
+## 三个**比值 / 计数**不随坐标系变，故保持原值：`COLUMNS` = 3、`NARROW_ASPECT_MAX` = 1.0。
 
 class_name RewardLayout
 extends RefCounted
@@ -24,22 +28,22 @@ extends RefCounted
 enum Region { TITLE, CARDS }
 
 ## 06 §1 的基准分辨率。布局以它为坐标系，于是「第几个像素」可以直接读。
-const DESIGN_WIDTH: float = 320.0
-const DESIGN_HEIGHT: float = 180.0
+const DESIGN_WIDTH: float = 640.0
+const DESIGN_HEIGHT: float = 360.0
 
 ## 06 §1：屏幕安全边距与元素间距。
-const SAFE_INSET: float = 8.0
-const GAP: float = 8.0
+const SAFE_INSET: float = 16.0
+const GAP: float = 16.0
 
 ## 06 §2.2：面板标题栏高度。此处独立复写而非引用 PaletteTheme ——
 ## 布局层不依赖 Theme 脚本，两边对不上时由测试打红（同 preparation_layout.gd 的做法）。
-const TITLE_HEIGHT: float = 16.0
+const TITLE_HEIGHT: float = 32.0
 
 ## 06 §9：三个选项位。
 const COLUMNS: int = 3
 
 ## 06 §1：可点击区域下限。窄屏下卡片不得低于此值 —— 宁可溢出，也不缩到点不准。
-const MIN_CARD_HEIGHT: float = 44.0
+const MIN_CARD_HEIGHT: float = 88.0
 
 ## 06 §7.1：宽 < 高（aspect < 1.0）判为窄屏。
 const NARROW_ASPECT_MAX: float = 1.0
@@ -64,12 +68,12 @@ static func wide_title_rect() -> Rect2:
 	return Rect2(SAFE_INSET, SAFE_INSET, DESIGN_WIDTH - SAFE_INSET * 2.0, TITLE_HEIGHT)
 
 
-## 宽屏卡片宽：三等分安全区，扣掉两条间距。320 → (320-16-16)/3 = 96。
+## 宽屏卡片宽：三等分安全区，扣掉两条间距。640 → (640-32-32)/3 = 192（PET-80 前 96）。
 static func wide_card_width() -> float:
 	return (DESIGN_WIDTH - SAFE_INSET * 2.0 - GAP * float(COLUMNS - 1)) / float(COLUMNS)
 
 
-## 宽屏卡片高：从卡片区上沿一直铺到底部安全线。180 → 180-32-8 = 140。
+## 宽屏卡片高：从卡片区上沿一直铺到底部安全线。360 → 360-64-16 = 280（PET-80 前 140）。
 static func wide_card_height() -> float:
 	return DESIGN_HEIGHT - cards_top() - SAFE_INSET
 
@@ -98,8 +102,9 @@ static func narrow_card_width(viewport_size: Vector2) -> float:
 	return maxf(viewport_size.x - SAFE_INSET * 2.0, 0.0)
 
 
-## 窄屏卡片高：三等分余下的竖向空间，夹在 [44, 宽屏卡片高] 之间。
-## 180×320 → (280-16)/3 = 88；144×320 这类偏窄的竖屏也能守住 44 的触摸下限。
+## 窄屏卡片高：三等分余下的竖向空间，夹在 [88, 宽屏卡片高] 之间。
+## 360×640 → (560-32)/3 = 176；288×640 这类偏窄的竖屏也能守住 88 的触摸下限。
+## （PET-80 前分别是 [44, 140]、180×320 → 88、144×320。）
 static func narrow_card_height(viewport_size: Vector2) -> float:
 	var area: float = viewport_size.y - cards_top() - SAFE_INSET
 	var share: float = (area - GAP * float(COLUMNS - 1)) / float(COLUMNS)

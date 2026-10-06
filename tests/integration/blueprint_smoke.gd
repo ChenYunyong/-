@@ -12,9 +12,9 @@
 ##       在工程注册这些全局标识之前就被编译（同 preparation_smoke.gd）；一律 load() + 经 /root 取节点。
 ##       不得写进玩家的正式存档目录（01 §7）：把工作区的 blueprint_path 指到 user://test_blueprints。
 ##
-## 运行：**必须** `--resolution 320x180`，且**不得 headless**（要真实渲染与截图）。
-##       工程是 stretch/mode=viewport + content_scale 320×180：合成事件走窗口坐标，
-##       引擎再按「窗口 ÷ 设计尺寸」折算回设计坐标。窗口不是 320×180 时全部坐标会整体缩水，
+## 运行：**必须** `--resolution 640x360`，且**不得 headless**（要真实渲染与截图）。
+##       工程是 stretch/mode=viewport + content_scale 640×360（PET-80 前 320×180）：合成事件走窗口坐标，
+##       引擎再按「窗口 ÷ 设计尺寸」折算回设计坐标。窗口不是 640×360 时全部坐标会整体缩水，
 ##       GUI 拾取一片落空 —— 现象是「一条断言都不报错、就是什么都没发生」。
 ##       本仓库既有的 input_smoke 同此前提，故这里把窗口尺寸直接断言出来，避免误跑。
 ##
@@ -52,12 +52,13 @@ const SHOT_CLEAR_ARMED_PATH: String = "res://tests/output/blueprint_edit_clear_a
 const TEST_DIR: String = "user://test_blueprints"
 const TEST_PATH: String = TEST_DIR + "/_smoke_01.tres"
 
-## 06 §1 基准。合成事件的坐标全部按设计尺寸算，靠 --resolution 320x180 与窗口对齐。
-const DESIGN: Vector2 = Vector2(320.0, 180.0)
+## 06 §1 基准。合成事件的坐标全部按设计尺寸算，靠 --resolution 640x360 与窗口对齐。
+## PET-80：320×180 → 640×360。
+const DESIGN: Vector2 = Vector2(640.0, 360.0)
 ## 一次拖放的中间移动步数：拖放要真的动起来才启动，一步到位不会触发。
 const DRAG_STEPS: int = 4
-## 06 §4 的网格步长（本文件独立复写一遍）。
-const GRID: float = 24.0
+## 06 §4 的网格步长（本文件独立复写一遍）。PET-80：24 → 48。
+const GRID: float = 48.0
 
 ## 仓库槽位下标 -> 落点（画布局部坐标）。顺序即玩家的操作顺序：先核心，再功能，最后武器。
 ## 前三个用鼠标拖、第四个用触摸拖 —— 两条输入路径都要真的产出节点。
@@ -65,10 +66,12 @@ const CORE_SLOT: int = 0
 const FUNCTION_SLOT_A: int = 1
 const FUNCTION_SLOT_B: int = 2
 const WEAPON_SLOT: int = 4
-const CORE_DROP: Vector2 = Vector2(24.0, 24.0)
-const FUNCTION_DROP_A: Vector2 = Vector2(72.0, 24.0)
-const FUNCTION_DROP_B: Vector2 = Vector2(24.0, 72.0)
-const WEAPON_DROP: Vector2 = Vector2(72.0, 72.0)
+## PET-80：四个落点全部 ×2，且仍各自落在 48 网格格心上（48/144 都是 48 的整数倍），
+## 于是「相邻两格 / 对角两格」这个相对关系与 PET-80 前逐格相同。
+const CORE_DROP: Vector2 = Vector2(48.0, 48.0)
+const FUNCTION_DROP_A: Vector2 = Vector2(144.0, 48.0)
+const FUNCTION_DROP_B: Vector2 = Vector2(48.0, 144.0)
+const WEAPON_DROP: Vector2 = Vector2(144.0, 144.0)
 
 var _ctx: RefCounted = null
 var _scene: PackedScene = null
@@ -118,7 +121,7 @@ func _initialize() -> void:
 func _run_entry_case() -> void:
 	_ctx.begin_case("蓝图冒烟 · 前提（窗口尺寸）与经 GameFlow 路由进入")
 	var window: Vector2i = DisplayServer.window_get_size()
-	_ctx.equal(window, Vector2i(DESIGN), "窗口应正好是设计尺寸（漏了 --resolution 320x180？）")
+	_ctx.equal(window, Vector2i(DESIGN), "窗口应正好是设计尺寸（漏了 --resolution 640x360？）")
 	_ctx.check(root.get_final_transform().is_equal_approx(Transform2D.IDENTITY),
 		"设计坐标到窗口坐标应是恒等变换（实际 %s）" % root.get_final_transform())
 
@@ -150,15 +153,19 @@ func _run_entry_case() -> void:
 	_ctx.equal((warehouse.call(&"_slot_layout") as Dictionary)["shown"], 7, "前置：宽屏仓库应有 7 个槽位")
 
 	# 内容区必须与 06 §7 的实测矩形逐值对上。量的是**全局**矩形：分区自己就带偏移
-	# （RegionCenter 在 98,8、RegionBottom 在 15,132），坐标空间搞错时内容会整体平移出去 ——
+	# （RegionCenter 在 196,16、RegionBottom 在 30,264），坐标空间搞错时内容会整体平移出去 ——
 	# 逻辑照样跑得通（合成事件按同一套错坐标发，拖放全都「成功」），屏幕上却什么都看不见。
-	_ctx.equal(canvas.get_global_rect(), Rect2(100.0, 10.0, 124.0, 120.0),
-		"画布的全局矩形（06 §7 中栏 128×124 内缩 2px）")
-	_ctx.equal(warehouse.get_global_rect(), Rect2(17.0, 134.0, 227.0, 44.0),
-		"仓库的全局矩形（06 §7 底条内缩 2px 并让开右下角的 CTA）")
-	# 反向核对：内容既不得盖住 CTA，也不得压到分区那圈 1px 描边上。
+	#
+	# PET-80：两条期望值都**恰好是 PET-80 前的两倍** —— (100,10,124,120) → (200,20,248,240)、
+	# (17,134,227,44) → (34,268,454,88)。它们本就是分区矩形内缩 2px（现在 4px）算出来的，
+	# 而分区矩形与内缩量都随坐标系 ×2，故整条链一起放大、倍率是 1。
+	_ctx.equal(canvas.get_global_rect(), Rect2(200.0, 20.0, 248.0, 240.0),
+		"画布的全局矩形（06 §7 中栏 256×248 内缩 4px）")
+	_ctx.equal(warehouse.get_global_rect(), Rect2(34.0, 268.0, 454.0, 88.0),
+		"仓库的全局矩形（06 §7 底条内缩 4px 并让开右下角的 CTA）")
+	# 反向核对：内容既不得盖住 CTA，也不得压到分区那圈描边上（PET-80：2px → 4px）。
 	var cta: Control = _find(scene, "ButtonStartCombat") as Control
-	_ctx.check(warehouse.get_global_rect().end.x <= cta.get_global_rect().position.x - 2.0,
+	_ctx.check(warehouse.get_global_rect().end.x <= cta.get_global_rect().position.x - 4.0,
 		"仓库不得伸到 CTA 底下（仓库右缘 %.1f，CTA 左缘 %.1f）" % [
 			warehouse.get_global_rect().end.x, cta.get_global_rect().position.x])
 
@@ -196,7 +203,7 @@ func _run_drag_out_case() -> void:
 			continue
 		var rect: Rect2 = boxes[id]
 		_ctx.check(is_zero_approx(fmod(rect.position.x, GRID)) and is_zero_approx(fmod(rect.position.y, GRID)),
-			"节点 %s 应吸附到 24px 网格（实际 %s）" % [id, rect.position])
+			"节点 %s 应吸附到 48px 网格（实际 %s）" % [id, rect.position])
 		_ctx.check(rect.position.x >= 0.0 and rect.position.y >= 0.0
 			and rect.end.x <= canvas.size.x + 0.01 and rect.end.y <= canvas.size.y + 0.01,
 			"节点 %s 应落在画布内（实际 %s）" % [id, rect])
@@ -244,9 +251,10 @@ func _run_connect_case() -> void:
 		_ctx.equal(String(link.get(&"from_port")), "out", "起点的端口应是输出")
 		_ctx.equal(String(link.get(&"to_port")), "in", "终点的端口应是输入")
 
-	# 反向核对：自己连自己必须落空。落点仍在同一张卡片内（卡片 24×24，中心偏移 10 仍在里面），
-	# 所以这是一次真的拖拽，只是终点落在起点自己身上。
-	await _drag_with_mouse(_card_center(core_id), _card_center(core_id) + Vector2(0.0, 10.0))
+	# 反向核对：自己连自己必须落空。落点仍在同一张卡片内（PET-80：卡片 48×48，中心偏移 10 → 20
+	# 仍在里面 —— 20 < 24，与 10 < 12 是同一个不等式），所以这是一次真的拖拽，
+	# 只是终点落在起点自己身上。
+	await _drag_with_mouse(_card_center(core_id), _card_center(core_id) + Vector2(0.0, 20.0))
 	_ctx.equal(_connections().size(), 2, "把卡片拖回它自己不得新增连线（自环应被挡掉）")
 	# 同一对节点再连一次也不得重复（重复边会画成两条重叠的线）。
 	await _drag_with_mouse(_card_center(core_id), _card_center(split_id))
@@ -461,7 +469,7 @@ func _run_persistence_case() -> void:
 			and rect.end.x <= canvas.size.x + 0.01 and rect.end.y <= canvas.size.y + 0.01,
 			"重载后节点 %s 应落在画布内（实际 %s）" % [id, rect])
 	# 载回后继续加节点不得撞 id —— 撞车的后果是 _boxes 这个以 id 为键的字典把旧节点顶掉。
-	canvas.call(&"_add_node", _node_script.Kind.WEAPON, "锯", Vector2(60.0, 60.0),
+	canvas.call(&"_add_node", _node_script.Kind.WEAPON, "锯", Vector2(120.0, 120.0),
 		_node_script.Function.NONE, _node_script.WeaponKind.SAW)
 	_ctx.equal(_nodes().size(), 5, "载回后应能继续加节点")
 	var ids: Dictionary = {}
@@ -524,7 +532,7 @@ func _default_save_dir() -> String:
 
 # ── 坐标 ──────────────────────────────────────────────────────────────────────
 
-## 设计坐标 -> 本次运行的窗口坐标。--resolution 320x180 下是恒等变换（上面已断言），
+## 设计坐标 -> 本次运行的窗口坐标。--resolution 640x360 下是恒等变换（上面已断言），
 ## 写出来是为了让「窗口不是设计尺寸」这件事有一个显式的换算点，而不是让坐标悄悄失配。
 func _to_window(point: Vector2) -> Vector2:
 	return root.get_final_transform() * point

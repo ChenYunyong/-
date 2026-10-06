@@ -14,7 +14,7 @@ extends RefCounted
 ## （节点顺序：RegionLeft / RegionCenter / RegionRight / RegionBottom / RegionAction）。
 enum Region { LEFT, CENTER, RIGHT, WAREHOUSE, ACTION }
 
-## 06 §7 实测的五分区矩形（逻辑像素，基准 320×180，见 06 §1）。
+## 06 §7 实测的五分区矩形（逻辑像素，基准 **640×360**，见 06 §1）。
 ## 出处是 Reference B（1672×941 归一到 320×180）的边界检测，不是估的：
 ##   左栏 x 15–88（宽 73）· 中栏 x 98–226（宽 128）· 右栏 x 226–309（宽 83）
 ##   底条 y 132–180（高 48）
@@ -23,27 +23,33 @@ enum Region { LEFT, CENTER, RIGHT, WAREHOUSE, ACTION }
 ## §7 只实测了各栏的 **x** 区间与底条的 **y** 区间，没给三栏的上边缘（y=8）。
 ## 这里取 06 §1 安全区的「四周内缩 8px」—— 那是本主题里唯一已冻结的顶部内缩值，
 ## 比再估一个数有据。该取值已随本批报备。
-const LEFT_RECT: Rect2 = Rect2(15.0, 8.0, 73.0, 124.0)
-const CENTER_RECT: Rect2 = Rect2(98.0, 8.0, 128.0, 124.0)
-const RIGHT_RECT: Rect2 = Rect2(226.0, 8.0, 83.0, 124.0)
-const WAREHOUSE_RECT: Rect2 = Rect2(15.0, 132.0, 294.0, 48.0)
-const ACTION_RECT: Rect2 = Rect2(246.0, 148.0, 64.0, 14.0)
+##
+## PET-80：基准画布 320×180 → 640×360，故上述实测值**逐项 ×2**（坐标系放大一倍，
+## 窗口仍是 1280×720 = 2× 整数放大，于是物理版面与改动前逐像素一致）。
+## 上面那段 320×180 的原始读数保留，是这组新值的出处。
+const LEFT_RECT: Rect2 = Rect2(30.0, 16.0, 146.0, 248.0)
+const CENTER_RECT: Rect2 = Rect2(196.0, 16.0, 256.0, 248.0)
+const RIGHT_RECT: Rect2 = Rect2(452.0, 16.0, 166.0, 248.0)
+const WAREHOUSE_RECT: Rect2 = Rect2(30.0, 264.0, 588.0, 96.0)
+const ACTION_RECT: Rect2 = Rect2(492.0, 296.0, 128.0, 28.0)
 
 ## 06 §7.1：竖屏 / 窄屏才折叠。判定用可用区的宽高比 —— 宽 < 高 即竖屏；
 ## 320×180 基准的 1.78 自然落在宽屏一侧。
 const NARROW_ASPECT_MAX: float = 1.0
 ## 06 §7.1：左栏收起为「顶部一条 16px 信息条」。
-const INFO_BAR_HEIGHT: float = 16.0
+const INFO_BAR_HEIGHT: float = 32.0
 ## 06 §7.1：右下 CTA「固定在右下角安全区内，始终可见，尺寸不小于 44×44」。
 ## §1 的触摸下限是 44 **设备像素**，这里按逻辑像素给足 44 —— 任何 ≥1× 的缩放下都必然 ≥44 设备像素。
-const NARROW_ACTION_SIZE: float = 44.0
+## PET-80：随基准画布 ×2（44 → 88 逻辑像素）。在 2× 参考窗口下折合 176 设备像素，
+## 仍远高于 HitMinimum 的 88 设备像素硬下限。
+const NARROW_ACTION_SIZE: float = 88.0
 ## 06 §7.1 没给「右栏改成的底部弹层」的高度。取可用高度的 1/3 —— 这一项是视觉数值，
 ## 已随本批报备待 Codex 裁定；改的话只动这一处。
 const NARROW_SHEET_RATIO: float = 1.0 / 3.0
 ## 06 §1 的安全区。06 §7.1 要求窄屏的 CTA 落在「右下角安全区内」，即按它内缩。
-const SAFE_INSET: float = 8.0
+const SAFE_INSET: float = 16.0
 ## 06 §7.1：「下：节点仓库 | 保留为底部条」—— 窄屏下高度不变，只是改成横向滚动。
-const NARROW_WAREHOUSE_HEIGHT: float = 48.0
+const NARROW_WAREHOUSE_HEIGHT: float = 96.0
 
 
 ## 是否采用 06 §7.1 的折叠布局。viewport_size 为可用区尺寸（逻辑像素）。
@@ -108,8 +114,9 @@ static func narrow_info_rect(viewport_size: Vector2, expanded: bool) -> Rect2:
 
 ## CTA 按钮的落位：宽度与右下角照抄区块，高度向上取到按钮自身的最小高度。
 ##
-## 为什么不能直接用 ACTION_RECT：06 §7 实测的 CTA 区块高 14px，而 06 §1 规定正文字号 ≥ 8px、
-## §3 规定按钮内边距 4px —— 一个写着「开始战斗」的按钮最小高度实测是 20px，14px 装不下。
+## 为什么不能直接用 ACTION_RECT：06 §7 实测的 CTA 区块高 14px（PET-80 后为 28px），
+## 而 06 §1 规定正文字号 ≥ 8px（PET-80 后为 16px）、§3 规定按钮内边距 4px（PET-80 后为 8px）
+## —— 一个写着「开始战斗」的按钮最小高度实测是 20px（PET-80 后为 40px），14px（28px）装不下。
 ## 折中取「区块的右下角 = 按钮的右下角，高度向上长」：区块右下角这一条实测约束不丢，
 ## 按钮也不会被引擎的最小尺寸顶出「右下角」这个位置。冲突已随本批报备。
 static func action_button_rect(region: Rect2, minimum: Vector2) -> Rect2:

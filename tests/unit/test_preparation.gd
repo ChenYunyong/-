@@ -20,12 +20,15 @@ const GAME_FLOW_SCRIPT_PATH: String = "res://scripts/core/game_flow.gd"
 ## 06 §7 对 Reference B 的实测值，在本文件**独立复写一遍**。刻意不从 PreparationLayout 取：
 ## 测试若与被测实现同源，实现里把 88 写成 98 时两边一起错，断言就永远是绿的。
 ## 规范 / 常量 / .tscn 字面量三处必须同时对得上 —— 这正是 06 §2.2 裁定③要的联动。
+## PET-80：基准画布 320×180 → 640×360，§7 的实测读数**逐项 ×2**。
+## 改动前的原始读数（就是下面这些数 ÷2）：(15,8,73,124) / (98,8,128,124) / (226,8,83,124)
+## / (15,132,294,48) / (246,148,64,14)。
 const EXPECTED_WIDE: Array[Rect2] = [
-	Rect2(15.0, 8.0, 73.0, 124.0),
-	Rect2(98.0, 8.0, 128.0, 124.0),
-	Rect2(226.0, 8.0, 83.0, 124.0),
-	Rect2(15.0, 132.0, 294.0, 48.0),
-	Rect2(246.0, 148.0, 64.0, 14.0),
+	Rect2(30.0, 16.0, 146.0, 248.0),
+	Rect2(196.0, 16.0, 256.0, 248.0),
+	Rect2(452.0, 16.0, 166.0, 248.0),
+	Rect2(30.0, 264.0, 588.0, 96.0),
+	Rect2(492.0, 296.0, 128.0, 28.0),
 ]
 
 ## 分区节点名，下标即 PreparationLayout.Region。枚举顺序与场景节点顺序一旦错位，
@@ -39,19 +42,24 @@ const BANNED_TIMING_TOKENS: PackedStringArray = [
 	"Timer", "create_timer", "_process", "_physics_process", "timeout", "wait_time", "autostart",
 ]
 
-## 窄屏取样的可用区尺寸（180×320 竖屏）与 §7.1 折叠后的期望矩形。
-const NARROW_VIEWPORT: Vector2 = Vector2(180.0, 320.0)
+## 窄屏取样的可用区尺寸（360×640 竖屏）与 §7.1 折叠后的期望矩形。
+##
+## PET-80：取样尺寸随基准画布 ×2（180×320 → 360×640）。**必须一起改** ——
+## §7.1 的折叠矩形每一处都乘了可用区尺寸（宽度直接取 viewport.x、弹层高取 height/3），
+## 只翻常量不翻取样尺寸，量到的就是「旧尺寸的框装新尺寸的常量」，两边对不上。
+const NARROW_VIEWPORT: Vector2 = Vector2(360.0, 640.0)
 const EXPECTED_NARROW: Array[Rect2] = [
-	Rect2(0.0, 0.0, 180.0, 16.0),
-	Rect2(8.0, 16.0, 164.0, 149.33333),
-	Rect2(0.0, 165.33333, 180.0, 106.66667),
-	Rect2(0.0, 272.0, 180.0, 48.0),
-	Rect2(128.0, 268.0, 44.0, 44.0),
+	Rect2(0.0, 0.0, 360.0, 32.0),
+	Rect2(16.0, 32.0, 328.0, 298.66666),
+	Rect2(0.0, 330.66666, 360.0, 213.33333),
+	Rect2(0.0, 544.0, 360.0, 96.0),
+	Rect2(256.0, 536.0, 88.0, 88.0),
 ]
 
-## CTA 按钮的实测最小尺寸。06 §7 的 CTA 区块只有 14px 高，装不下它 —— 见
+## CTA 按钮的实测最小尺寸。06 §7 的 CTA 区块只有 28px 高（PET-80 前 14px），装不下它 —— 见
 ## PreparationLayout.action_button_rect 的说明；冒烟用例会在真实树上重量一次。
-const CTA_MEASURED_MINIMUM: Vector2 = Vector2(40.0, 20.0)
+## PET-80：(40,20) → (80,40)。高 40 已在 `CTA 上缘` 那条上实测到（324 − 284 = 40）。
+const CTA_MEASURED_MINIMUM: Vector2 = Vector2(80.0, 40.0)
 
 
 func run(ctx: RefCounted, _tree: SceneTree) -> void:
@@ -124,13 +132,15 @@ func _run_layout_checks(ctx: RefCounted) -> void:
 	ctx.equal(layout.Region.WAREHOUSE, 3, "Region.WAREHOUSE 的序号")
 	ctx.equal(layout.Region.ACTION, 4, "Region.ACTION 的序号")
 
-	# 06 §7 只实测了各栏 x 区间与底条 y 区间；三栏上边缘取 §1 安全区的 8px 内缩。
-	ctx.equal(layout.LEFT_RECT.end.x, layout.CENTER_RECT.position.x - 10.0, "左栏右缘与中栏左缘之间留 10px")
+	# 06 §7 只实测了各栏 x 区间与底条 y 区间；三栏上边缘取 §1 安全区的 16px 内缩（PET-80 前 8px）。
+	# 这条钉的是「两栏之间那道缝」，是**长度**故随坐标系 ×2（10 → 20）；
+	# 它同样是 06 §7 实测的一部分（左栏右缘 88 与中栏左缘 98 之间那 10 个像素）。
+	ctx.equal(layout.LEFT_RECT.end.x, layout.CENTER_RECT.position.x - 20.0, "左栏右缘与中栏左缘之间留 20px")
 	ctx.equal(layout.CENTER_RECT.end.x, layout.RIGHT_RECT.position.x, "中栏右缘应与右栏左缘重合")
-	ctx.equal(layout.RIGHT_RECT.end.x, 309.0, "右栏右缘（06 §7 实测 309）")
-	ctx.equal(layout.WAREHOUSE_RECT.size.y, 48.0, "底条高度（06 §7 实测 48）")
-	# CTA 区块比底条右缘多出 1px（310 vs 309）—— 这是 §7 实测的结果，不是笔误，故不强行对齐。
-	ctx.equal(layout.ACTION_RECT.end.x, 310.0, "CTA 区块右缘（06 §7 实测 310）")
+	ctx.equal(layout.RIGHT_RECT.end.x, 618.0, "右栏右缘（06 §7 实测 309，PET-80 后 618）")
+	ctx.equal(layout.WAREHOUSE_RECT.size.y, 96.0, "底条高度（06 §7 实测 48，PET-80 后 96）")
+	# CTA 区块比底条右缘多出 2px（620 vs 618）—— 这是 §7 实测的结果（310 vs 309），不是笔误，故不强行对齐。
+	ctx.equal(layout.ACTION_RECT.end.x, 620.0, "CTA 区块右缘（06 §7 实测 310，PET-80 后 620）")
 	# CTA 区块落在底条的纵向带内（148–162 ⊂ 132–180），即 06 §7 的「右下角」。
 	ctx.check(layout.WAREHOUSE_RECT.position.y <= layout.ACTION_RECT.position.y
 		and layout.ACTION_RECT.end.y <= layout.WAREHOUSE_RECT.end.y,
@@ -144,9 +154,9 @@ func _run_narrow_layout_checks(ctx: RefCounted) -> void:
 	if not ctx.check(layout != null, "preparation_layout.gd 应能加载"):
 		return
 
-	ctx.check(layout.is_narrow(NARROW_VIEWPORT), "180×320 竖屏应判定为窄屏")
-	ctx.check(not layout.is_narrow(Vector2(320.0, 180.0)), "320×180 基准应判定为宽屏")
-	ctx.check(not layout.is_narrow(Vector2(320.0, 320.0)), "1:1 应判定为宽屏（判定是 < 而非 <=）")
+	ctx.check(layout.is_narrow(NARROW_VIEWPORT), "360×640 竖屏应判定为窄屏")
+	ctx.check(not layout.is_narrow(Vector2(640.0, 360.0)), "640×360 基准应判定为宽屏")
+	ctx.check(not layout.is_narrow(Vector2(640.0, 640.0)), "1:1 应判定为宽屏（判定是 < 而非 <=）")
 	ctx.check(not layout.is_narrow(Vector2.ZERO), "拿不到尺寸时应按宽屏处理，不得随手折叠")
 
 	var rects: Array[Rect2] = layout.narrow_rects(NARROW_VIEWPORT)
@@ -155,16 +165,18 @@ func _run_narrow_layout_checks(ctx: RefCounted) -> void:
 	for index: int in EXPECTED_NARROW.size():
 		_check_rect_approx(ctx, rects[index], EXPECTED_NARROW[index], "%s 的折叠矩形" % REGION_NAMES[index])
 
-	# §7.1：左栏收起为 16px 信息条，点击展开为覆盖层。
+	# §7.1：左栏收起为 32px 信息条（PET-80 前 16px），点击展开为覆盖层。
 	_check_rect_approx(ctx, layout.narrow_info_rect(NARROW_VIEWPORT, false),
-		Rect2(0.0, 0.0, 180.0, 16.0), "信息条收起态")
+		Rect2(0.0, 0.0, 360.0, 32.0), "信息条收起态")
 	ctx.equal(layout.narrow_info_rect(NARROW_VIEWPORT, true), layout.LEFT_RECT,
 		"信息条展开态复用 §7 实测的左栏矩形")
 
-	# §7.1：CTA 固定在右下角安全区内，尺寸不小于 44×44。
+	# §7.1：CTA 固定在右下角安全区内，尺寸不小于 88×88。
+	# PET-80：88 就是本卡第 2 条点名的「触摸命中区 ≥44 → ≥88」（06 §1），
+	# 与 HitMinimum.DESIGN_MIN_LOGICAL 同值 —— 窄屏 CTA 是这条下限的第一消费者。
 	var action: Rect2 = rects[layout.Region.ACTION]
-	ctx.equal(action.size, Vector2(44.0, 44.0), "窄屏 CTA 尺寸应达 44×44 触摸下限")
-	ctx.equal(action.end, NARROW_VIEWPORT - Vector2(8.0, 8.0), "窄屏 CTA 应落在右下角安全区内")
+	ctx.equal(action.size, Vector2(88.0, 88.0), "窄屏 CTA 尺寸应达 88×88 触摸下限")
+	ctx.equal(action.end, NARROW_VIEWPORT - Vector2(16.0, 16.0), "窄屏 CTA 应落在右下角安全区内")
 
 
 ## CTA 的落位换算：06 §7 的 14px 区块装不下一个按钮，故取「右下角照抄、高度向上长」。
@@ -180,7 +192,7 @@ func _run_cta_geometry_check(ctx: RefCounted) -> void:
 	ctx.equal(placed.size.x, action.size.x, "按钮宽度与 §7 区块一致")
 	ctx.check(placed.size.y >= CTA_MEASURED_MINIMUM.y, "按钮高度不得低于其最小高度")
 	ctx.check(placed.position.y < action.position.y, "区块装不下时应向上长，而不是被顶出右下角")
-	ctx.equal(layout.action_button_rect(action, Vector2(40.0, 10.0)), action,
+	ctx.equal(layout.action_button_rect(action, Vector2(80.0, 20.0)), action,
 		"最小尺寸装得下时不得改动 §7 区块")
 
 

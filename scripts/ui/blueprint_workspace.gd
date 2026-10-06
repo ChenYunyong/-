@@ -49,17 +49,17 @@ enum Area {
 }
 
 ## 06 §4 的节点卡记法。
-const GRID: float = 24.0
-const CARD: float = 24.0
-const MARKER: float = 4.0
-const SLOT_PITCH_MAX: float = 28.0
-const SLOT_GAP_MIN: float = 1.0
+const GRID: float = 48.0
+const CARD: float = 48.0
+const MARKER: float = 8.0
+const SLOT_PITCH_MAX: float = 56.0
+const SLOT_GAP_MIN: float = 2.0
 const DRAG_ALPHA: float = 0.7
-const LABEL_HEIGHT: float = 10.0
-const LABEL_FONT_SIZE: int = 8
-const MARKER_INSET: float = 2.0
+const LABEL_HEIGHT: float = 20.0
+const LABEL_FONT_SIZE: int = 16
+const MARKER_INSET: float = 4.0
 ## 火花（信号）的边长。04 §3.10 要求 FX 三层（芯 / 体 / 描边），各占 1px 时最小就是 6×6。
-const SPARK: float = 6.0
+const SPARK: float = 12.0
 
 ## 三把武器的**开火形态**（PET-76 可读性）。给的是 FX 三层的**外框**尺寸，逐层内缩 1px。
 ##   针   → 3×8  细长的一条（外框内缩后只剩 1×6 的体）
@@ -68,14 +68,14 @@ const SPARK: float = 6.0
 ## 三者的**长宽比**两两不同（0.4 / 1.0 / 2.8），于是静止的一帧里也读得出是哪把武器开的火。
 ## 颜色不承担这件事：04 §3.10 只给了**一套** FX 三层色（描边 NAVY_900 / 体 BLUE_FX_600 /
 ## 芯 BLUE_050），拿色相去分三把武器会变成第二套色语言，而 04 §3 的语义色是冻结的。
-const CUE_NEEDLE: Vector2 = Vector2(3.0, 8.0)
-const CUE_BOMB: Vector2 = Vector2(7.0, 7.0)
-const CUE_SAW: Vector2 = Vector2(11.0, 4.0)
+const CUE_NEEDLE: Vector2 = Vector2(6.0, 16.0)
+const CUE_BOMB: Vector2 = Vector2(14.0, 14.0)
+const CUE_SAW: Vector2 = Vector2(22.0, 8.0)
 
 ## 开火反馈从卡片上缘升起的高度（像素）。**刻意远小于一条穿过战场的弹道**：
 ## 「打到谁」由 combat_screen 画的弹道线负责（PET-76），这里只回答「哪把武器发动了」，
 ## 于是反馈贴在卡片上缘那一小段里，不会与弹道混成一片。
-const CUE_RISE: float = 8.0
+const CUE_RISE: float = 16.0
 
 ## VB-03 已批准节点卡切片（PET-77 接入）。固定 24×24，**直接当 Texture2D 用，不走 StyleBox** ——
 ## 九宫格是给「会被拉伸的框」用的，而卡片永远画在自己的 24×24 格子上，没有中间那一段要拉。
@@ -92,7 +92,7 @@ const CARD_SLICE_SELECTED: String = "ui_node_card_selected_24.png"
 ## 画在卡片边长上会把卡片自己那圈 BROWN_600 描边盖掉 —— 两种状态要能同时读出来。
 ## 连线的命中走廊半宽。1px 的线在触摸端抓不住，所以要一条走廊；但也不能再宽：
 ## 网格步长只有 24px，走廊一宽就会把「点空白处取消选中」整个吃掉。卡片永远优先于连线。
-const LINK_HIT: float = 8.0
+const LINK_HIT: float = 16.0
 ## 撤销栈的深度上限（本卡只要求一步，多步是顺带做的）。见 _push_history 的快照说明。
 const HISTORY_MAX: int = 20
 
@@ -340,7 +340,7 @@ func _draw_connections() -> void:
 			continue
 		var selected: bool = index == _selected_link
 		draw_line(_anchor(_boxes[link.from_node_id], false), _anchor(_boxes[link.to_node_id], true),
-			picked if selected else color, 2.0 if selected else 1.0)
+			picked if selected else color, 4.0 if selected else 2.0)
 
 
 ## 选中态：整张卡片换成 `ui_node_card_selected_24`（GOLD_500 外圈 + GOLD_200 内圈，
@@ -870,7 +870,7 @@ func _draw_effects() -> void:
 	for node_id: StringName in _boxes:
 		var box: Rect2 = _boxes[node_id]
 		if runtime.is_lit(node_id):
-			draw_rect(box, Palette.get_color(Palette.Key.BLUE_050), false, 1.0)
+			draw_rect(box, Palette.get_color(Palette.Key.BLUE_050), false, 2.0)
 		var age: int = runtime.shot_age(node_id)
 		if age >= 0:
 			_draw_shot_cue(box, _weapon_kind_of(node_id), age)
@@ -934,11 +934,11 @@ func _draw_spark(center: Vector2) -> void:
 ## 而形态正是它们唯一的区分手段（见 CUE_* 的说明）。
 func _draw_fx(rect: Rect2) -> void:
 	draw_rect(rect, Palette.get_color(Palette.Key.NAVY_900), true)
-	var body: Rect2 = rect.grow(-1.0)
+	var body: Rect2 = rect.grow(-2.0)
 	if body.size.x <= 0.0 or body.size.y <= 0.0:
 		return
 	draw_rect(body, Palette.get_color(Palette.Key.BLUE_FX_600), true)
-	var core: Rect2 = body.grow(-1.0)
+	var core: Rect2 = body.grow(-2.0)
 	if core.size.x <= 0.0 or core.size.y <= 0.0:
 		return
 	draw_rect(core, Palette.get_color(Palette.Key.BLUE_050), true)

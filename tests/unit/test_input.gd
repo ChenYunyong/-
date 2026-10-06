@@ -27,9 +27,16 @@ const REWARD_SCENE: String = "res://scenes/reward/reward.tscn"
 const RESULT_SCENE: String = "res://scenes/result/result.tscn"
 
 ## 宽屏 / 窄屏两个档位。窄屏判据是**竖屏**（w/h < 1.0，PreparationLayout.NARROW_ASPECT_MAX），
-## 故这里给 360×720 而不是 720×360 —— 后者是横屏，量出来的还是宽屏布局。
+## 故这里给 720×1440 而不是 1440×720 —— 后者是横屏，量出来的还是宽屏布局。
+##
+## PET-80：两个档位都随基准画布 ×2（窄屏 360×720 → 720×1440）。
+## 宽屏档只用来表达「这是个宽屏比例」——宽屏那一支的矩形全部由
+## `*_layout.gd` 的 DESIGN_WIDTH/HEIGHT 推出，**根本不读传入的 viewport_size**，
+## 故它保持 1280×720（真实窗口尺寸）与 ×2 两种写法结果完全一致。
+## 窄屏那一支则**每一处都乘了 viewport_size**（宽度直接取 viewport_size.x），
+## 所以这个数必须跟着 ×2，否则量到的是「旧尺寸的框装新尺寸的常量」，两边对不上。
 const WIDE: Vector2 = Vector2(1280.0, 720.0)
-const NARROW: Vector2 = Vector2(360.0, 720.0)
+const NARROW: Vector2 = Vector2(720.0, 1440.0)
 
 ## 六个场景根脚本：必须继承统一输入层，且不得判断原始输入事件类型（03 §8、交付物 1）。
 const SCENE_SCRIPT_PATHS: Array[String] = [
@@ -49,59 +56,67 @@ const COMPONENT_SCRIPT_PATHS: Array[String] = [
 ## 命中区量测表（本卡交付物 2 的机器可判定形式）。
 ## 每行 [节点路径, 视觉尺寸, 命中尺寸]；命中尺寸 = hit_rect().size（没有该方法的取 size）。
 ## 数值来自实测（见报告的量测表），不是照着规范反推的期望值 —— 反推的期望值只能证明算术自洽。
+##
+## PET-80：全表随基准画布 ×2 后重新实测。逐项差异见交付说明的对照表，此处只记三处**不是**整倍数的：
+##   · ButtonStartCombat[wide] 高度 20 → **39**（不是 40）：按钮高 = 字号撑出的行高 + 上下内边距，
+##     字号 10→20 时行高不是精确 ×2（字形 ascent/descent 取整），实测 39。
+##   · 窄屏各行的宽度：窄屏布局**直接取 viewport_size.x**（见 NARROW 的说明），
+##     故它们是「NARROW 翻倍」与「SAFE_INSET / INFO_BAR_HEIGHT 翻倍」的合成结果，逐项已重算。
+##   · CardsArea/Card*[narrow] 高度 140 → **280**：窄屏卡高要 clamp 到 [88, 宽屏卡高]，
+##     viewport 翻倍后三等分的份额（1328/3 ≈ 442.7）超过了上限，故被夹到宽屏卡高 280。
 const HIT_TABLE: Dictionary = {
 	MENU_SCENE: {
 		"wide": [
-			["MenuPanel/Body/ButtonStart", Vector2(90.0, 20.0), Vector2(90.0, 24.0)],
-			["MenuPanel/Body/ButtonContinue", Vector2(90.0, 20.0), Vector2(90.0, 24.0)],
-			["MenuPanel/Body/ButtonSettings", Vector2(90.0, 20.0), Vector2(90.0, 24.0)],
-			["MenuPanel/Body/ButtonExit", Vector2(90.0, 20.0), Vector2(90.0, 24.0)],
-			# PET-67：主菜单的语言开关。92×24 已高于 24 逻辑像素下限，命中区 = 自身矩形。
-			["ButtonLang", Vector2(92.0, 24.0), Vector2(92.0, 24.0)],
+			["MenuPanel/Body/ButtonStart", Vector2(180.0, 40.0), Vector2(180.0, 48.0)],
+			["MenuPanel/Body/ButtonContinue", Vector2(180.0, 40.0), Vector2(180.0, 48.0)],
+			["MenuPanel/Body/ButtonSettings", Vector2(180.0, 40.0), Vector2(180.0, 48.0)],
+			["MenuPanel/Body/ButtonExit", Vector2(180.0, 40.0), Vector2(180.0, 48.0)],
+			# PET-67：主菜单的语言开关。184×48 已高于 48 逻辑像素下限，命中区 = 自身矩形。
+			["ButtonLang", Vector2(184.0, 48.0), Vector2(184.0, 48.0)],
 		],
 	},
 	PREP_SCENE: {
-		# PET-75：新增「删除 / 撤销 / 清空蓝图」三个按钮（左栏底部，69×24 = 138×48 设备像素），
+		# PET-75：新增「删除 / 撤销 / 清空蓝图」三个按钮（左栏底部，138×48 = 276×96 设备像素），
 		# 且 BlueprintCanvas 开始接 gui_input（点选节点 / 连线）—— 从本卡起它也是可交互元素。
 		# 四个都是本卡的交付物本身，表必须收录，故随卡报备这处偏离（同 PET-67 的 ButtonLang）。
 		"wide": [
-			["ButtonStartCombat", Vector2(64.0, 20.0), Vector2(64.0, 24.0)],
-			["RegionLeft", Vector2(73.0, 124.0), Vector2(73.0, 124.0)],
-			["RegionCenter/BlueprintCanvas", Vector2(124.0, 120.0), Vector2(124.0, 120.0)],
-			["RegionLeft/ButtonDelete", Vector2(69.0, 24.0), Vector2(69.0, 24.0)],
-			["RegionLeft/ButtonUndo", Vector2(69.0, 24.0), Vector2(69.0, 24.0)],
-			["RegionLeft/ButtonClear", Vector2(69.0, 24.0), Vector2(69.0, 24.0)],
+			["ButtonStartCombat", Vector2(128.0, 39.0), Vector2(128.0, 48.0)],
+			["RegionLeft", Vector2(146.0, 248.0), Vector2(146.0, 248.0)],
+			["RegionCenter/BlueprintCanvas", Vector2(248.0, 240.0), Vector2(248.0, 240.0)],
+			["RegionLeft/ButtonDelete", Vector2(138.0, 48.0), Vector2(138.0, 48.0)],
+			["RegionLeft/ButtonUndo", Vector2(138.0, 48.0), Vector2(138.0, 48.0)],
+			["RegionLeft/ButtonClear", Vector2(138.0, 48.0), Vector2(138.0, 48.0)],
 		],
-		# 窄屏：左栏收起成 16px 信息条，三个动作按钮按 §7.1 一并隐藏（0 行）——
-		# 它们随信息条展开（_info_expanded）才回来，那时左栏是 §7 的 73×124 覆盖层，
-		# 尺寸与宽屏一栏相同，故不另立一行。画布在窄屏是 §7.1 的中栏内缩 2px。
+		# 窄屏：左栏收起成 32px 信息条，三个动作按钮按 §7.1 一并隐藏（0 行）——
+		# 它们随信息条展开（_info_expanded）才回来，那时左栏是 §7 的 146×248 覆盖层，
+		# 尺寸与宽屏一栏相同，故不另立一行。画布在窄屏是 §7.1 的中栏内缩 4px。
 		"narrow": [
-			["ButtonStartCombat", Vector2(44.0, 44.0), Vector2(44.0, 44.0)],
-			["RegionLeft", Vector2(360.0, 16.0), Vector2(360.0, 24.0)],
-			["RegionCenter/BlueprintCanvas", Vector2(340.0, 412.0), Vector2(340.0, 412.0)],
+			["ButtonStartCombat", Vector2(88.0, 88.0), Vector2(88.0, 88.0)],
+			["RegionLeft", Vector2(720.0, 32.0), Vector2(720.0, 48.0)],
+			["RegionCenter/BlueprintCanvas", Vector2(680.0, 824.0), Vector2(680.0, 824.0)],
 		],
 	},
 	COMBAT_SCENE: {"wide": [], "narrow": []},
 	REWARD_SCENE: {
 		"wide": [
-			["CardsArea/Card0", Vector2(96.0, 140.0), Vector2(96.0, 140.0)],
-			["CardsArea/Card1", Vector2(96.0, 140.0), Vector2(96.0, 140.0)],
-			["CardsArea/Card2", Vector2(96.0, 140.0), Vector2(96.0, 140.0)],
+			["CardsArea/Card0", Vector2(192.0, 280.0), Vector2(192.0, 280.0)],
+			["CardsArea/Card1", Vector2(192.0, 280.0), Vector2(192.0, 280.0)],
+			["CardsArea/Card2", Vector2(192.0, 280.0), Vector2(192.0, 280.0)],
 		],
 		"narrow": [
-			["CardsArea/Card0", Vector2(344.0, 140.0), Vector2(344.0, 140.0)],
-			["CardsArea/Card1", Vector2(344.0, 140.0), Vector2(344.0, 140.0)],
-			["CardsArea/Card2", Vector2(344.0, 140.0), Vector2(344.0, 140.0)],
+			["CardsArea/Card0", Vector2(688.0, 280.0), Vector2(688.0, 280.0)],
+			["CardsArea/Card1", Vector2(688.0, 280.0), Vector2(688.0, 280.0)],
+			["CardsArea/Card2", Vector2(688.0, 280.0), Vector2(688.0, 280.0)],
 		],
 	},
 	RESULT_SCENE: {
 		"wide": [
-			["Actions/ButtonMenu", Vector2(148.0, 44.0), Vector2(148.0, 44.0)],
-			["Actions/ButtonRetry", Vector2(148.0, 44.0), Vector2(148.0, 44.0)],
+			["Actions/ButtonMenu", Vector2(296.0, 88.0), Vector2(296.0, 88.0)],
+			["Actions/ButtonRetry", Vector2(296.0, 88.0), Vector2(296.0, 88.0)],
 		],
 		"narrow": [
-			["Actions/ButtonMenu", Vector2(344.0, 44.0), Vector2(344.0, 44.0)],
-			["Actions/ButtonRetry", Vector2(344.0, 44.0), Vector2(344.0, 44.0)],
+			["Actions/ButtonMenu", Vector2(688.0, 88.0), Vector2(688.0, 88.0)],
+			["Actions/ButtonRetry", Vector2(688.0, 88.0), Vector2(688.0, 88.0)],
 		],
 	},
 }
@@ -189,30 +204,41 @@ func _run_reverse_control_checks(ctx: RefCounted) -> void:
 	ctx.check(normalizer.call(&"from_event", _key(KEY_F5)) == null, "未登记的按键不得产出导航动作")
 
 
-## 交付物 2 的算术部分：44 设备像素 ↔ 2× ↔ 22 逻辑像素，以及「按中心扩到下限」。
+## 交付物 2 的算术部分：88 设备像素 ↔ 2× ↔ 44 逻辑像素，以及「按中心扩到下限」。
+##
+## PET-80：这是本卡第 2 条点名的「触摸命中区 ≥44 → ≥88 设备像素」（06 §1）。
+## ×2 的只有**设备像素门槛**这一项，它与 **MIN_SCALE（参考缩放）** 一起决定逻辑下限：
+## 窗口固定 1280×720 而基准画布由 320×180 翻倍到 640×360 ⇒ 参考缩放 4× → 2×，
+## 要维持同一块物理命中区，设备像素口径下的门槛就翻倍。MIN_SCALE 本身没变，是画布翻倍把它改了。
 func _run_hit_minimum_checks(ctx: RefCounted) -> void:
 	ctx.begin_case("输入层 · 命中下限算术（06 §1）")
 	var hit: GDScript = load(HIT_MINIMUM_PATH)
 	if not ctx.check(hit != null, "hit_minimum.gd 应能加载"):
 		return
-	ctx.equal(hit.MIN_TOUCH_DEVICE_PX, 44.0, "06 §1 的触摸下限是 44 设备像素")
-	ctx.equal(hit.MIN_SCALE, 2.0, "双端最小缩放是 2×（03 §8）")
-	ctx.equal(hit.HARD_MIN_LOGICAL, 22.0, "44 设备像素 ÷ 2× = 22 逻辑像素")
-	ctx.equal(hit.required_size(), Vector2(24.0, 24.0), "本层执行的下限是 06 §1 点名的 24 逻辑像素")
-	ctx.equal(hit.device_px(Vector2(24.0, 24.0)), Vector2(48.0, 48.0), "24 逻辑像素在 2× 下折合 48 设备像素")
-	ctx.check(_ge(hit.device_px(hit.required_size()), Vector2(44.0, 44.0)),
-		"本层下限折合的设备像素必须 ≥ 44（实际 %s）" % hit.device_px(hit.required_size()))
+	ctx.equal(hit.MIN_TOUCH_DEVICE_PX, 88.0, "06 §1 的触摸下限是 88 设备像素（PET-80 前 44）")
+	ctx.equal(hit.MIN_SCALE, 2.0, "参考窗口 ÷ 基准画布 = 1280/640 = 2×（03 §8；PET-80 前 1280/320 = 4×）")
+	ctx.equal(hit.HARD_MIN_LOGICAL, 44.0, "88 设备像素 ÷ 2× = 44 逻辑像素")
+	# 新增（PET-80）：钉住「硬下限是算出来的、不是写死的」。
+	# 上面那条只证明 HARD_MIN_LOGICAL 等于 44；若有人把它改成字面量 11（并连带把比值改对），
+	# 单看数值仍可能自洽。这条要求它必须**恒等于两个输入量的商** ——
+	# 反向对照（把 HARD_MIN_LOGICAL 改成 11）正是靠它转红。
+	ctx.equal(hit.HARD_MIN_LOGICAL, hit.MIN_TOUCH_DEVICE_PX / hit.MIN_SCALE,
+		"硬下限必须由「设备像素门槛 ÷ 参考缩放」推出，不得写死")
+	ctx.equal(hit.required_size(), Vector2(48.0, 48.0), "本层执行的下限是 06 §1 点名的 48 逻辑像素（PET-80 前 24）")
+	ctx.equal(hit.device_px(Vector2(48.0, 48.0)), Vector2(96.0, 96.0), "48 逻辑像素在 2× 下折合 96 设备像素")
+	ctx.check(_ge(hit.device_px(hit.required_size()), Vector2(88.0, 88.0)),
+		"本层下限折合的设备像素必须 ≥ 88（实际 %s）" % hit.device_px(hit.required_size()))
 
-	var grown: Rect2 = hit.pad_rect(Rect2(Vector2(0.0, 0.0), Vector2(64.0, 20.0)))
-	ctx.equal(grown.size, Vector2(64.0, 24.0), "64×20 应按中心补到 64×24")
-	ctx.equal(grown.position.y, -2.0, "补高 4px 应上下各让 2px（中心不动）")
+	var grown: Rect2 = hit.pad_rect(Rect2(Vector2(0.0, 0.0), Vector2(64.0, 40.0)))
+	ctx.equal(grown.size, Vector2(64.0, 48.0), "64×40 应按中心补到 64×48")
+	ctx.equal(grown.position.y, -4.0, "补高 8px 应上下各让 4px（中心不动）")
 	ctx.equal(grown.position.x, 0.0, "宽度已达标，横向不得外扩")
-	ctx.equal(hit.pad_rect(Rect2(Vector2(5.0, 6.0), Vector2(148.0, 44.0))),
-		Rect2(Vector2(5.0, 6.0), Vector2(148.0, 44.0)), "已达标的矩形必须原样返回")
+	ctx.equal(hit.pad_rect(Rect2(Vector2(5.0, 6.0), Vector2(296.0, 88.0))),
+		Rect2(Vector2(5.0, 6.0), Vector2(296.0, 88.0)), "已达标的矩形必须原样返回")
 
-	ctx.check(hit.meets(Vector2(24.0, 24.0)), "24×24 应达标")
-	ctx.check(not hit.meets(Vector2(24.0, 23.0)), "只有宽度达标不算达标（命中区是二维的）")
-	ctx.check(not hit.meets(Vector2(23.0, 24.0)), "只有高度达标不算达标")
+	ctx.check(hit.meets(Vector2(48.0, 48.0)), "48×48 应达标")
+	ctx.check(not hit.meets(Vector2(48.0, 47.0)), "只有宽度达标不算达标（命中区是二维的）")
+	ctx.check(not hit.meets(Vector2(47.0, 48.0)), "只有高度达标不算达标")
 
 
 ## 交付物 1 的结构面：六个场景与 reward_card 都不得再碰原始输入事件类型，
@@ -297,8 +323,8 @@ func _measure_row(ctx: RefCounted, scene: Node, node_path: String, mode: String,
 	ctx.equal(hit_size, hit, "%s[%s] 的命中尺寸" % [node_path, mode])
 	var need: Vector2 = load(HIT_MINIMUM_PATH).required_size()
 	ctx.check(_ge(hit_size, need), "%s[%s] 命中区应 ≥ %s（实际 %s）" % [node_path, mode, need, hit_size])
-	ctx.check(_ge(hit_size * 2.0, Vector2(44.0, 44.0)),
-		"%s[%s] 命中区折合设备像素应 ≥ 44（实际 %s）" % [node_path, mode, hit_size * 2.0])
+	ctx.check(_ge(hit_size * 2.0, Vector2(88.0, 88.0)),
+		"%s[%s] 命中区折合设备像素应 ≥ 88（实际 %s）" % [node_path, mode, hit_size * 2.0])
 
 
 ## BOOT 刻意**不入树**：它的 _ready() 会把真实 GameFlow 从 BOOT 推到 MAIN_MENU，

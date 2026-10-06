@@ -47,30 +47,30 @@ const NOTICE_NO_CORE: String = "这台机器里没有 CORE（信号源），不�
 
 ## 机器示意区的高度：24px 网格上的 2 行，贴战场下沿。上方的空档留给占位弹丸上升，
 ## 也留给敌人生成与推进区（PET-65）。
-const MACHINE_VIEW_HEIGHT: float = 48.0
+const MACHINE_VIEW_HEIGHT: float = 96.0
 
 ## 敌人推进区的绘制参数。**全部是表现层的事** —— 玩法侧的推进用归一化 progress
 ## （见 EnemyState），改这里的数不会改变任何一局的胜负。
 ##
 ## 坐标以**战场局部坐标**为准：敌人层铺满战场且原点与战场重合（_place_machine_view 保证），
 ## 于是「第几个像素」可以直接读，像素取证不必再换算一次。
-const ENEMY_BAND_TOP: float = 32.0
+const ENEMY_BAND_TOP: float = 64.0
 ## 一条道占的高度：标签 10px + 身体最长 8px。两条道 = 48px。
-const ENEMY_ROW_HEIGHT: float = 24.0
+const ENEMY_ROW_HEIGHT: float = 48.0
 ## 标签基线在一条道内的偏移，身体顶边在道内的偏移。
-const ENEMY_LABEL_BASELINE: float = 8.0
-const ENEMY_BODY_TOP: float = 10.0
-const ENEMY_LABEL_FONT_SIZE: int = 8
+const ENEMY_LABEL_BASELINE: float = 16.0
+const ENEMY_BODY_TOP: float = 20.0
+const ENEMY_LABEL_FONT_SIZE: int = 16
 ## 敌人层与机器示意区之间留的缝：贴太近会让最后一条道看起来像压在机器上。
-const ENEMY_BAND_GAP: float = 6.0
+const ENEMY_BAND_GAP: float = 12.0
 ## 两种敌人的身体边长。Slime 大（慢、血多），Runner 小（快、血少）——
 ## 用尺寸区分而不是再加一组颜色，是因为 04 §3.7 已把红色定成「危险」语义色，
 ## 在同一个语义里再拆两种红只会让人以为是两种危险等级。
-const ENEMY_SLIME_SIZE: float = 8.0
-const ENEMY_RUNNER_SIZE: float = 6.0
+const ENEMY_SLIME_SIZE: float = 16.0
+const ENEMY_RUNNER_SIZE: float = 12.0
 ## HP 条的厚度与它离身体顶边的缝（条画在身体**上方**，落在战场底色上而不是压在身上）。
-const ENEMY_HP_HEIGHT: float = 2.0
-const ENEMY_HP_GAP: float = 3.0
+const ENEMY_HP_HEIGHT: float = 4.0
+const ENEMY_HP_GAP: float = 6.0
 
 ## ── 可读反馈（PET-76）──────────────────────────────────────────────────────
 ## 13 §5：FIRST PLAYABLE 只要求玩家看清「哪把武器发动 → 攻击谁 → 造成什么结果」，
@@ -80,7 +80,7 @@ const ENEMY_HP_GAP: float = 3.0
 ##
 ## 命中闪光是一枚 2×2 的点，存活 3 拍。**不扩散、不放大**：它要回答的是「这一下打在这只身上」，
 ## 扩散成一团就会盖住敌人 8×8 的身体色，反而看不出是哪一只挨了打。
-const IMPACT_SIZE: float = 2.0
+const IMPACT_SIZE: float = 4.0
 const IMPACT_TICKS: int = 3
 ## 受击抖动：命中当拍起把身体上下抖 1px，抖 3 拍（奇偶交替，见 _hit_shake_of）。
 ##
@@ -89,7 +89,7 @@ const IMPACT_TICKS: int = 3
 ## 既给出命中点，又不遮盖体型与体色。
 const HIT_SHAKE_TICKS: int = 3
 ## 击杀描边相对尸体的外扩量（像素）。
-const KILL_MARK_GROW: float = 1.0
+const KILL_MARK_GROW: float = 2.0
 
 @onready var _backdrop: ColorRect = %Backdrop
 @onready var _battlefield: Control = %Battlefield
@@ -487,7 +487,7 @@ func _hit_shake_of(enemy: EnemyState) -> float:
 ## 于是「这根线是什么颜色」在取色时变得没有确切答案。
 func _draw_tracers() -> void:
 	for tracer: Dictionary in _tracers:
-		_enemy_layer.draw_line(tracer["from"], tracer["to"], _tracer_color, 1.0)
+		_enemy_layer.draw_line(tracer["from"], tracer["to"], _tracer_color, 2.0)
 
 
 ## 命中点的一枚短促闪光。画在敌人**之上**（在 _draw_enemy 之后调用），
@@ -532,7 +532,7 @@ func _draw_vanishing(rect: Rect2, age: int, color: Color) -> void:
 	var side: float = maxf(rect.size.x * (1.0 - float(age) / float(CombatSimulation.VANISH_TICKS)), 1.0)
 	var body := Rect2(center - Vector2(side, side) * 0.5, Vector2(side, side))
 	_enemy_layer.draw_rect(body, color)
-	_enemy_layer.draw_rect(body.grow(KILL_MARK_GROW), _kill_color, false, 1.0)
+	_enemy_layer.draw_rect(body.grow(KILL_MARK_GROW), _kill_color, false, 2.0)
 
 
 ## 武器开火 → 只**记下**这一拍开了火的武器，不在这里画。

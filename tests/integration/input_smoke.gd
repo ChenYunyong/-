@@ -23,8 +23,9 @@ const GAME_FLOW_PATH: String = "res://scripts/core/game_flow.gd"
 const LOG_PATH: String = "res://tests/output/input_smoke.log"
 const TASK_LABEL: String = "S1-11（PET-53）双端输入适配：统一输入层 + 触摸/键鼠双路径"
 
-## 场景语义尺寸。与工程视口一致，也让布局函数拿到真实档位（320×180 是横屏 → 宽屏布局）。
-const VIEWPORT: Vector2 = Vector2(320.0, 180.0)
+## 场景语义尺寸。与工程视口一致，也让布局函数拿到真实档位（640×360 是横屏 → 宽屏布局）。
+## PET-80：320×180 → 640×360。
+const VIEWPORT: Vector2 = Vector2(640.0, 360.0)
 const STATE_NAMES: Array[String] = ["BOOT", "MAIN_MENU", "PREPARATION", "COMBAT", "REWARD", "RESULT"]
 ## 全部用例跑完应有的断言条数（实测值）。少一条就说明某个用例中途没跑完 —— 见 _finish()。
 const MIN_ASSERTIONS: int = 40
@@ -72,8 +73,13 @@ func _case_hit_ring(state_name: String, node_name: String, target_name: String) 
 	if not _ctx.check(control != null, "%s 里应有 %s" % [state_name, node_name]):
 		return
 	var rect: Rect2 = control.get_global_rect()
-	var ring: Vector2 = Vector2(rect.get_center().x, rect.position.y - 1.0)
-	var outside: Vector2 = Vector2(rect.get_center().x, rect.position.y - 5.0)
+	# PET-80：两个取样偏移 1/5 → 2/10，都随基准画布 ×2。
+	# 环带宽度 = (HitMinimum.required_size() - 控件高度) / 2，两项都 ×2，故环带也 ×2。
+	# 「-2 在环带内、-10 在环带外」与 PET-80 前「-1 在内、-5 在外」是同一个不等式组，
+	# 上下的正 / 反断言因此各自仍然只钉一件事。偏移若不跟着翻倍，-5 会落进变宽后的环带里 ——
+	# 反向对照就变成「环带内点一下却断言它没反应」，判据自相矛盾。
+	var ring: Vector2 = Vector2(rect.get_center().x, rect.position.y - 2.0)
+	var outside: Vector2 = Vector2(rect.get_center().x, rect.position.y - 10.0)
 	# 环带内的判据用**控件自己的** hit_rect()（局部坐标），而不是在外面对着两个矩形比大小 ——
 	# 后者即使 _has_point() 被改坏了也照样成立，是自证式的写法。
 	var local: Vector2 = ring - rect.position
@@ -110,7 +116,9 @@ func _case_notice_equivalence() -> void:
 	var settings: Button = _find(menu, "ButtonSettings")
 	if not _ctx.check(notice != null and settings != null, "应有提示面板与『设置』按钮"):
 		return
-	var spot: Vector2 = Vector2(4.0, 4.0)
+	# PET-80：左上角的一个取样点，是**设计坐标**下的长度，随基准画布 ×2（4,4 → 8,8）。
+	# 提示面板铺满整屏，故这一点在两种尺寸下都落在它内部 —— 钉的仍是「按面板任意空白处即关」。
+	var spot: Vector2 = Vector2(8.0, 8.0)
 
 	settings.emit_signal(&"pressed")
 	_ctx.check(notice.visible, "前置：按『设置』应弹出提示")

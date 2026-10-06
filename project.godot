@@ -30,10 +30,11 @@ locale/translations=PackedStringArray("res://assets/i18n/ui.zh_CN.translation", 
 
 [display]
 
-; 06 §1：基准分辨率 320×180（16:9），整数倍缩放。窗口默认 4×（1280×720），
-; 高于 06 §1 规定的最小 2× 下限。
-window/size/viewport_width=320
-window/size/viewport_height=180
+; 06 §1：基准分辨率 640×360（16:9），整数倍缩放。窗口默认 2×（1280×720）。
+; PET-80：基准画布由 320×180 提升到 640×360，窗口保持 1280×720（整数倍由 4× 变 2×）。
+; 全部几何常量随之 ×2，故物理版面与改动前一致（「布局等价」）。
+window/size/viewport_width=640
+window/size/viewport_height=360
 window/size/window_width_override=1280
 window/size/window_height_override=720
 window/stretch/mode="viewport"

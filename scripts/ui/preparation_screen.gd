@@ -23,7 +23,7 @@ extends InputScreen
 
 ## 工作区内容与分区那圈 1px 描边之间留的间距。像素探针逐像素断言四条边都在，
 ## 内容一旦压上去那圈描边就断了 —— 故画布与仓库都按此内缩后再落位。
-const WORKSPACE_INSET: float = 2.0
+const WORKSPACE_INSET: float = 4.0
 
 ## 提示面板文案。COMBAT 与 RESULT 均已由 S1-08 / S1-10 落地，这里的提示只在**路由故障**时出现
 ## （场景文件缺失 / 路径写错），措辞与 main_menu.gd 的同名提示对齐。
@@ -41,8 +41,8 @@ const LABEL_CLEAR_ARMED: String = "确认清空？"
 
 ## 动作列每行的高度与行间距（逻辑像素）。24 是 06 §1 的触摸下限（2× 下 48 设备像素），
 ## 间距 2 让相邻两行不至于看成一整块。
-const ACTION_ROW_HEIGHT: float = 24.0
-const ACTION_ROW_GAP: float = 2.0
+const ACTION_ROW_HEIGHT: float = 48.0
+const ACTION_ROW_GAP: float = 4.0
 
 @onready var _backdrop: ColorRect = %Backdrop
 @onready var _region_left: Control = %RegionLeft

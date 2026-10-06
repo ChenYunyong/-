@@ -19,29 +19,33 @@
 ##   · 两个出口     —— 本批验收：返回主菜单 / 再来一局
 ## 版面本身（分区比重、色量分布、图标）属**观感判断**，随交付回报 DSH 转 Codex 裁定；
 ## 若与 Codex 的判断冲突，以 Codex 为准。
+##
+## PET-80：基准画布 320×180 → 640×360，上述**几何量逐项 ×2**（320→640、8→16、16→32、44→88）。
+## 两个**比值**不随坐标系变，故保持原值：`MIN_SCALE` 仍是 2×、`NARROW_ASPECT_MAX` 仍是 1.0。
 
 class_name ResultLayout
 extends RefCounted
 
 ## 06 §1 的基准分辨率。布局以它为坐标系，于是「第几个像素」可以直接读。
-const DESIGN_WIDTH: float = 320.0
-const DESIGN_HEIGHT: float = 180.0
+const DESIGN_WIDTH: float = 640.0
+const DESIGN_HEIGHT: float = 360.0
 
 ## 06 §1：屏幕安全边距与元素间距。
-const SAFE_INSET: float = 8.0
-const GAP: float = 8.0
+const SAFE_INSET: float = 16.0
+const GAP: float = 16.0
 
 ## 06 §2.2：面板标题栏高度。此处独立复写而非引用 PaletteTheme ——
 ## 布局层不依赖 Theme 脚本，两边对不上时由测试打红（同 preparation_layout.gd 的做法）。
-const TITLE_HEIGHT: float = 16.0
+const TITLE_HEIGHT: float = 32.0
 
 ## 06 §1：可点击区域下限。两个出口按钮在任何档位下都不得低于此值。
-const MIN_TOUCH_SIZE: float = 44.0
+const MIN_TOUCH_SIZE: float = 88.0
 
-## 06 §1 的触摸下限是按**设备像素**写的，最小缩放 2×。
-## 布局用的是逻辑像素，故二者只在 2× 这一档相等 —— 这是本文件把按钮取到 44 逻辑像素的原因。
+## 06 §1 的触摸下限是按**设备像素**写的，参考窗口 1280×720 相对基准画布 640×360 = 2×。
+## 布局用的是逻辑像素，故二者只在 2× 这一档相等 —— 这是本文件把按钮取到 88 逻辑像素的原因
+## （PET-80 前基准画布是 320×180，同一参考窗口是 4×，那时取 44）。
 const MIN_SCALE: float = 2.0
-const MIN_TOUCH_DEVICE_PIXELS: float = 44.0
+const MIN_TOUCH_DEVICE_PIXELS: float = 88.0
 
 ## 出口按钮个数（验收：返回主菜单 / 再来一局）。
 const ACTION_COUNT: int = 2
@@ -69,12 +73,12 @@ static func wide_title_rect() -> Rect2:
 	return Rect2(SAFE_INSET, SAFE_INSET, DESIGN_WIDTH - SAFE_INSET * 2.0, TITLE_HEIGHT)
 
 
-## 宽屏出口按钮宽：二等分安全区，扣掉一条间距。320 → (320-16-8)/2 = 148。
+## 宽屏出口按钮宽：二等分安全区，扣掉一条间距。640 → (640-32-16)/2 = 296（PET-80 前 148）。
 static func wide_action_width() -> float:
 	return (DESIGN_WIDTH - SAFE_INSET * 2.0 - GAP * float(ACTION_COUNT - 1)) / float(ACTION_COUNT)
 
 
-## 宽屏读数区：从读数区上沿铺到出口按钮之上，隔一个间距。180 → 128-8-32 = 88。
+## 宽屏读数区：从读数区上沿铺到出口按钮之上，隔一个间距。360 → 360-16-88-16-64 = 176（PET-80 前 88）。
 static func wide_readout_rect() -> Rect2:
 	return Rect2(SAFE_INSET, readout_top(), DESIGN_WIDTH - SAFE_INSET * 2.0,
 		DESIGN_HEIGHT - SAFE_INSET - MIN_TOUCH_SIZE - GAP - readout_top())
@@ -105,7 +109,7 @@ static func narrow_action_width(viewport_size: Vector2) -> float:
 	return maxf(viewport_size.x - SAFE_INSET * 2.0, 0.0)
 
 
-## 窄屏按钮区高：两个 44 的按钮加一条间距，固定 96 —— 竖排的份额不再随屏高变化，
+## 窄屏按钮区高：两个 88 的按钮加一条间距，固定 192（PET-80 前 96）—— 竖排的份额不再随屏高变化，
 ## 于是触摸下限在极矮的竖屏上也守得住（宁可按钮区上移压到底部安全线以内，
 ## 也不把按钮缩到点不准；这一点与 RewardLayout.narrow_card_height 的取舍同款）。
 static func narrow_actions_height() -> float:
@@ -120,8 +124,9 @@ static func narrow_actions_rect(viewport_size: Vector2) -> Rect2:
 
 ## 窄屏读数区：填满标题栏与按钮区之间余下的空间。
 ## 屏幕矮到按钮区顶到标题栏下方时余量转负，夹到 0 —— 读数区消失也比画出负矩形好。
-## 阈值在**高 144**：上沿 32（8+16+8）+ 按钮区 96（44×2+8）+ 贴底 8 + 间距 8。120×180 还剩
-## 36px，故正案例测不到这条分支；真正走到它的取样与断言见 tests/unit/test_result.gd 的 CLAMP_VIEWPORT。
+## 阈值在**高 288**（PET-80 前 144）：上沿 64（16+32+16）+ 按钮区 192（88×2+16）+ 贴底 16 + 间距 16。
+## 240×360 还剩 72px（PET-80 前 120×180 剩 36px），故正案例测不到这条分支；
+## 真正走到它的取样与断言见 tests/unit/test_result.gd 的 CLAMP_VIEWPORT。
 static func narrow_readout_rect(viewport_size: Vector2) -> Rect2:
 	var bottom: float = narrow_actions_rect(viewport_size).position.y - GAP
 	return Rect2(SAFE_INSET, readout_top(), narrow_action_width(viewport_size),

@@ -24,24 +24,28 @@ const GAME_FLOW_PATH: String = "res://scripts/core/game_flow.gd"
 const PALETTE_PATH: String = "res://scripts/data/palette.gd"
 const LOG_PATH: String = "res://tests/output/combat_smoke.log"
 
-## 06 §1 基准。所有实测值都以它为参照。
-const REFERENCE_VIEWPORT: Vector2 = Vector2(320.0, 180.0)
+## 06 §1 基准。所有实测值都以它为参照。PET-80：320×180 → 640×360。
+const REFERENCE_VIEWPORT: Vector2 = Vector2(640.0, 360.0)
 ## 06 §7.1 的窄屏取样（均为竖屏），与 test_combat.gd 独立复写。
-const NARROW_VIEWPORT: Vector2 = Vector2(180.0, 320.0)
-## 比基准更矮的窄屏取样（120×180 竖屏）。test_combat.gd / test_reward.gd / test_result.gd
-## 与本文件如今一致取这个值。
+## PET-80：三个取样全部 ×2（它们是**逻辑像素**，与布局矩形同一套单位）。
+const NARROW_VIEWPORT: Vector2 = Vector2(360.0, 640.0)
+## 比基准更矮的窄屏取样（240×360 竖屏，PET-80 前 120×180）。
+## test_combat.gd / test_reward.gd / test_result.gd 与本文件如今一致取这个值。
 ##
 ## 它必须**宽 < 高**：本用例是唯一把取样喂给**场景**的（`apply_layout_for` 先问 `is_narrow`），
-## 而 §7.1 的判据就是宽 < 高 —— 取样若写成 180×120 那样的横屏，会被正确地判成宽屏，
-## 下面的折叠断言于是恒假。120×180 才是「窄且矮」的那一档。
-const SHORT_NARROW_VIEWPORT: Vector2 = Vector2(120.0, 180.0)
+## 而 §7.1 的判据就是宽 < 高 —— 取样若写成 360×240 那样的横屏，会被正确地判成宽屏，
+## 下面的折叠断言于是恒假。240×360 才是「窄且矮」的那一档。
+## 它同时仍与基准**同高**（360 = 360），故状态带的 25% 上限恰好不咬住 —— 角色不变。
+const SHORT_NARROW_VIEWPORT: Vector2 = Vector2(240.0, 360.0)
 
 ## 06 §8 的实测值，在本文件独立复写一遍（期望值若与被测实现同源，实现改错时两边一起错）。
 ## 下标即 CombatLayout.Region。两块都全宽 —— §8 明写那条带「横贯全宽」。
+## PET-80：全部 ×2。分割线 135 → 270（= 360 × 0.75），状态带高 45 → 90（= 360 × 0.25）。
+## 比值（75% / 25%）不变 —— 被钉的是同一件事：这条带占画面高的四分之一、横贯全宽。
 const REGION_NAMES: PackedStringArray = ["Battlefield", "StatusBar"]
 const EXPECTED_WIDE: Array[Rect2] = [
-	Rect2(0.0, 0.0, 320.0, 135.0),
-	Rect2(0.0, 135.0, 320.0, 45.0),
+	Rect2(0.0, 0.0, 640.0, 270.0),
+	Rect2(0.0, 270.0, 640.0, 90.0),
 ]
 ## 06 §8：状态带占画面高约 25%。窄屏下它是上限（§7.1「不得挤掉战场可读性」）。
 const STATUS_BAR_SHARE: float = 0.25
@@ -144,7 +148,7 @@ func _run_region_case() -> void:
 		_check_region(scene, index, EXPECTED_WIDE[index], "")
 
 	scene.call(&"apply_layout_for", REFERENCE_VIEWPORT)
-	_ctx.begin_case("COMBAT 冒烟 · 按 320×180 重落一次布局")
+	_ctx.begin_case("COMBAT 冒烟 · 按 640×360 重落一次布局")
 	for index: int in REGION_NAMES.size():
 		_check_region(scene, index, EXPECTED_WIDE[index], "")
 
@@ -192,7 +196,7 @@ func _run_status_bar_case() -> void:
 	for caption: String in READOUT_CAPTIONS:
 		_ctx.check(texts.has(caption), "状态带应展示「%s」（06 §8 点名的状态 / 预览）" % caption)
 
-	# 06 §8 的配色：底色 NAVY_800、上沿 1px NAVY_600。色值必须来自 Palette（06 §10.7）。
+	# 06 §8 的配色：底色 NAVY_800、上沿 NAVY_600。色值必须来自 Palette（06 §10.7）。
 	# 06 §7.1：窄屏下带内读数「改为横向滚动」。
 	var fill: ColorRect = _find(bar, "StatusFill") as ColorRect
 	var edge: ColorRect = _find(bar, "StatusEdge") as ColorRect
@@ -201,7 +205,11 @@ func _run_status_bar_case() -> void:
 		return
 	_ctx.equal(fill.color, _color("NAVY_800"), "状态带底色应取自 Palette 的 NAVY_800")
 	_ctx.equal(edge.color, _color("NAVY_600"), "状态带上沿应取自 Palette 的 NAVY_600")
-	_ctx.equal(edge.size.y, 1.0, "上沿厚度应为 1px（06 §8）")
+	# PET-80：1.0 → 2.0。StatusEdge 是 combat.tscn 里 anchors_preset=10 + offset_bottom 的
+	# **ColorRect**，不是 assets/** 的九宫格切片 —— 它随基准画布 ×2 后，2 逻辑像素在 2× 整数
+	# 缩放下仍是 4 设备像素，与 PET-80 前「1 逻辑像素 × 4× = 4 设备像素」逐设备像素相同。
+	# 故 PET-81 换 2× 切片**不会**推翻这条；它钉的仍是「上沿是一条贴顶的细线」这个布局事实。
+	_ctx.equal(edge.size.y, 2.0, "上沿厚度应为 2 逻辑像素（06 §8；PET-80 前 1）")
 	_ctx.equal(edge.size.x, EXPECTED_WIDE[_layout.Region.STATUS_BAR].size.x, "上沿应铺满整条带宽")
 	if _ctx.check(scroll != null, "带内读数应装在 ScrollContainer 里"):
 		_ctx.check(scroll.horizontal_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED,

@@ -43,16 +43,18 @@ const SHOT_PATH: String = "res://tests/output/signal_flow_"
 const TEST_DIR: String = "user://test_blueprints"
 const TEST_PATH: String = TEST_DIR + "/_flow_smoke.tres"
 
-## 画布 = 06 §1 的 320×180 基准，于是「第几个像素」可以直接读。
-const CANVAS: Vector2i = Vector2i(320, 180)
-const VIEWPORT: Vector2 = Vector2(320.0, 180.0)
-const BAND_TOP: float = 135.0
-## 机器示意区的高度（combat_screen.MACHINE_VIEW_HEIGHT，本文件独立复写）。
-const MACHINE_VIEW_HEIGHT: float = 48.0
-## 弹丸走廊：示意区之上、占位文字带（y 4–28）之下。只在走廊里找弹丸，
+## 画布 = 06 §1 的 640×360 基准（PET-80 前 320×180），于是「第几个像素」可以直接读。
+## 下面这几个长度全部随基准画布 ×2：战场下沿 135→270、示意区高 48→96、走廊上沿 32→64。
+const CANVAS: Vector2i = Vector2i(640, 360)
+const VIEWPORT: Vector2 = Vector2(640.0, 360.0)
+const BAND_TOP: float = 270.0
+## 机器示意区的高度（combat_screen.MACHINE_VIEW_HEIGHT，本文件独立复写）。PET-80：48 → 96。
+const MACHINE_VIEW_HEIGHT: float = 96.0
+## 弹丸走廊：示意区之上、占位文字带（PET-80 后 y 8–56）之下。只在走廊里找弹丸，
 ## 于是「上方出现了判据色」不会被别的文字墨迹污染。
-const LANE_FROM_Y: int = 32
-## 放大倍数：6×6 的火花在一张 320×180 的图里几乎看不出来，证据图放大后再附。
+const LANE_FROM_Y: int = 64
+## 放大倍数：12×12 的火花（PET-80 前 6×6）在一张 640×360 的图里几乎看不出来，证据图放大后再附。
+## 基准画布本身已翻倍，故这个数不跟着翻 —— 同样的 4× 在逻辑像素这一层与 PET-80 前等价。
 const ZOOM: int = 4
 
 ## 03 §2 与本卡的固定常数，独立复写一遍 —— 期望值若与被测实现同源，实现改错时两边一起错。
@@ -174,7 +176,7 @@ func _run_routed_case(written: bool) -> void:
 		return
 	# 06 §8：机器示意区贴战场下沿，上方留给弹丸与（PET-65 的）敌人生成区。
 	_ctx.equal(view.get_global_rect(), Rect2(0.0, BAND_TOP - MACHINE_VIEW_HEIGHT,
-		VIEWPORT.x, MACHINE_VIEW_HEIGHT), "机器示意区应贴战场下沿 48px")
+		VIEWPORT.x, MACHINE_VIEW_HEIGHT), "机器示意区应贴战场下沿 96 逻辑像素（PET-80 前 48）")
 
 	view.set(&"blueprint_path", TEST_PATH)
 	combat.call(&"reload_machine")
@@ -230,11 +232,13 @@ func _run_visibility_case(written: bool) -> void:
 		return
 
 	var view_rect: Rect2 = view.get_global_rect()
-	# 走廊下沿收在示意区上沿**之上 1px**：卡片贴带顶摆，点亮描边那条 1px 描边的外半行落在带外
-	# （实测 y=86，点亮的两张卡合 49px）。不排掉这一行，走廊里的 BLUE_050 就混着描边，
-	# 判据便不再只讲弹丸 —— 而「弹丸真升起来了」正是这一段要证的。
+	# 走廊下沿收在示意区上沿**之上 2 逻辑像素**（PET-80 前 1px）：卡片贴带顶摆，
+	# 点亮描边那条描边的外半行落在带外（实测 y=172，点亮的两张卡合 98px）。
+	# 不排掉这一行，走廊里的 BLUE_050 就混着描边，判据便不再只讲弹丸 ——
+	# 而「弹丸真升起来了」正是这一段要证的。
+	# 排除量是**长度**（描边的半行），故随坐标系 ×2：1 → 2。
 	var lane: Rect2 = Rect2(0.0, float(LANE_FROM_Y), VIEWPORT.x,
-		view_rect.position.y - 1.0 - float(LANE_FROM_Y))
+		view_rect.position.y - 2.0 - float(LANE_FROM_Y))
 	# 冻结在 0 拍再取第一张：机器静止时画面上不该有判据色 —— 这是下面两条正断言的负对照。
 	driver.call(&"bind", null)
 	var before: Image = (await _h.settle())["image"]
@@ -352,7 +356,8 @@ func _count_rect(image: Image, rect: Rect2, wanted: Color) -> int:
 	return hits
 
 
-## 存证据图：原图与最近邻放大各一张。放大是为了让 6×6 的火花在人工复核时看得见。
+## 存证据图：原图与最近邻放大各一张。放大是为了让 12×12 的火花（PET-80 前 6×6）
+## 在人工复核时看得见。
 func _save(image: Image, tag: String) -> void:
 	_ctx.check(image.save_png(SHOT_PATH + tag + ".png") == OK, "应能写出证据图 %s.png" % tag)
 	var big: Image = Image.new()

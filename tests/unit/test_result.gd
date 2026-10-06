@@ -22,48 +22,57 @@ const THEME_SCRIPT_PATH: String = "res://scripts/data/palette_theme.gd"
 const THEME_PATH: String = "res://assets/ui/theme_main.tres"
 
 ## 06 §1 基准与 §7.1 的窄屏取样。
-const REFERENCE_VIEWPORT: Vector2 = Vector2(320.0, 180.0)
-const NARROW_VIEWPORT: Vector2 = Vector2(180.0, 320.0)
-const SHORT_NARROW_VIEWPORT: Vector2 = Vector2(120.0, 180.0)
+## PET-80：全部随基准画布 ×2（640×360 = 2 × 320×180），理由同 test_combat.gd ——
+## `narrow_*` 每一处都直接吃 `viewport_size`，取样不翻倍就会量到「旧尺寸的框装新尺寸的常量」。
+const REFERENCE_VIEWPORT: Vector2 = Vector2(640.0, 360.0)
+const NARROW_VIEWPORT: Vector2 = Vector2(360.0, 640.0)
+const SHORT_NARROW_VIEWPORT: Vector2 = Vector2(240.0, 360.0)
 
-## 06 §7.1（窄屏折叠）+ 06 §9.2（窄屏三区竖排）的**下边界**取样：120×140。
+## 06 §7.1（窄屏折叠）+ 06 §9.2（窄屏三区竖排）的**下边界**取样：240×280（PET-80 前 120×140）。
 ##
-## 为什么非要另一个取样：竖排后按钮区高固定 96（两个 44 加一条间距），贴底部安全线，
-## 屏幕再矮就只剩下压读数区。上面的 320×180 / 180×320 / 120×180 三档余量分别是 88 / 176 / 36，
+## 为什么非要另一个取样：竖排后按钮区高固定 192（两个 88 加一条间距），贴底部安全线，
+## 屏幕再矮就只剩下压读数区。上面的 640×360 / 360×640 / 240×360 三档余量分别是 176 / 352 / 72，
 ## **全为正** —— 于是 result_layout.gd 里 maxf(bottom - readout_top(), 0.0) 的「夹到 0」分支
 ## 从没有任何取样走到过，那条 `size.y >= 0.0` 对现有三个取样恒真。
 ##
-## 140 这个数的来历（**独立推导**，不是抄实现输出）：
-##   读数区上沿   = 安全边距 8 + 标题栏 16 + 间距 8        = 32
-##   按钮区高     = 44 × 2 + 间距 8                        = 96
-##   可用底边     = 140 - 贴底安全边距 8 - 96 - 间距 8      = 28
-##   余量         = 28 - 32 = **-4**，负 —— 夹取分支真的被走到。
-## 宽取 120 是为了同时满足两个前提：宽 < 高（§7.1 判窄屏），且 120-16=104 ≥ 44（按钮仍守住下限）。
-const CLAMP_VIEWPORT: Vector2 = Vector2(120.0, 140.0)
-## 夹到 0 的只是**高**：位置仍是读数区上沿 32，宽度仍是 120-16=104。
-const CLAMP_READOUT_RECT: Rect2 = Rect2(8.0, 32.0, 104.0, 0.0)
+## 280 这个数的来历（**独立推导**，不是抄实现输出；PET-80 后各量已 ×2）：
+##   读数区上沿   = 安全边距 16 + 标题栏 32 + 间距 16       = 64
+##   按钮区高     = 88 × 2 + 间距 16                        = 192
+##   可用底边     = 280 - 贴底安全边距 16 - 192 - 间距 16    = 56
+##   余量         = 56 - 64 = **-8**，负 —— 夹取分支真的被走到。
+## 它还必须在 result_layout.gd 的阈值（高 288 = 64 + 192 + 16 + 16）**之下**，280 < 288 ✓。
+## 宽取 240 是为了同时满足两个前提：宽 < 高（§7.1 判窄屏），且 240-32=208 ≥ 88（按钮仍守住下限）。
+const CLAMP_VIEWPORT: Vector2 = Vector2(240.0, 280.0)
+## 夹到 0 的只是**高**：位置仍是读数区上沿 64，宽度仍是 240-32=208。
+const CLAMP_READOUT_RECT: Rect2 = Rect2(16.0, 64.0, 208.0, 0.0)
 
 ## 06 没有 RESULT 版面，未给实测矩形；下面是本文件**独立复写**的期望值，
 ## 刻意不从 ResultLayout 取 —— 测试若与被测实现同源，实现里把 148 写成 138 时
 ## 两边一起错，断言就永远是绿的。推导依据见 result_layout.gd 的文件头。
-const TITLE_RECT: Rect2 = Rect2(8.0, 8.0, 304.0, 16.0)
-const READOUT_RECT: Rect2 = Rect2(8.0, 32.0, 304.0, 88.0)
-const ACTIONS_RECT: Rect2 = Rect2(8.0, 128.0, 304.0, 44.0)
+## PET-80：以下各行逐项 ×2。改动前依次是 (8,8,304,16) / (8,32,304,88) / (8,128,304,44) /
+## (0,0,148,44) · (156,0,…) / (8,8,164,16) / (8,32,164,176) / (8,216,164,96) /
+## (0,0,164,44) · (0,52,…)。
+## 窄屏三行的推导（360×640）：读数区上沿 = 16+32+16 = 64；按钮区高 = 88×2+16 = 192，
+## 贴底 ⇒ y = 640−16−192 = 432；读数区高 = (432−16) − 64 = 352；按钮行距 = 88+16 = 104。
+const TITLE_RECT: Rect2 = Rect2(16.0, 16.0, 608.0, 32.0)
+const READOUT_RECT: Rect2 = Rect2(16.0, 64.0, 608.0, 176.0)
+const ACTIONS_RECT: Rect2 = Rect2(16.0, 256.0, 608.0, 88.0)
 ## 两个出口的矩形**相对按钮区原点**（按钮是按钮区的子节点）。顺序即场景节点顺序。
 const ACTION_RECTS: Array[Rect2] = [
-	Rect2(0.0, 0.0, 148.0, 44.0),
-	Rect2(156.0, 0.0, 148.0, 44.0),
+	Rect2(0.0, 0.0, 296.0, 88.0),
+	Rect2(312.0, 0.0, 296.0, 88.0),
 ]
-const NARROW_TITLE_RECT: Rect2 = Rect2(8.0, 8.0, 164.0, 16.0)
-const NARROW_READOUT_RECT: Rect2 = Rect2(8.0, 32.0, 164.0, 176.0)
-const NARROW_ACTIONS_RECT: Rect2 = Rect2(8.0, 216.0, 164.0, 96.0)
+const NARROW_TITLE_RECT: Rect2 = Rect2(16.0, 16.0, 328.0, 32.0)
+const NARROW_READOUT_RECT: Rect2 = Rect2(16.0, 64.0, 328.0, 352.0)
+const NARROW_ACTIONS_RECT: Rect2 = Rect2(16.0, 432.0, 328.0, 192.0)
 const NARROW_ACTION_RECTS: Array[Rect2] = [
-	Rect2(0.0, 0.0, 164.0, 44.0),
-	Rect2(0.0, 52.0, 164.0, 44.0),
+	Rect2(0.0, 0.0, 328.0, 88.0),
+	Rect2(0.0, 104.0, 328.0, 88.0),
 ]
 
-## 06 §1：可点击区域下限。两个出口按钮在两种读法下都不得低于该值。
-const MIN_TOUCH_SIZE: float = 44.0
+## 06 §1：可点击区域下限（**逻辑**像素，两个出口在两种读法下都不得低于该值）。
+## PET-80：44 → 88（06 §1 的设备像素门槛同步由 44 翻到 88，参考缩放由 4× 降到 2×）。
+const MIN_TOUCH_SIZE: float = 88.0
 
 ## 节点名。顺序即 ResultLayout.action_rects() 的顺序：0 = 返回主菜单，1 = 再来一局。
 const ACTION_NAMES: PackedStringArray = ["ButtonMenu", "ButtonRetry"]
@@ -165,7 +174,7 @@ func _run_layout_checks(ctx: RefCounted) -> void:
 	var layout: GDScript = load(LAYOUT_SCRIPT_PATH)
 	if not ctx.check(layout != null, "result_layout.gd 应能加载"):
 		return
-	ctx.check(not layout.is_narrow(REFERENCE_VIEWPORT), "320×180 基准应判定为宽屏")
+	ctx.check(not layout.is_narrow(REFERENCE_VIEWPORT), "640×360 基准应判定为宽屏")
 
 	ctx.equal(layout.title_rect(REFERENCE_VIEWPORT), TITLE_RECT, "标题栏矩形")
 	ctx.equal(layout.readout_rect(REFERENCE_VIEWPORT), READOUT_RECT, "读数区矩形")
@@ -177,16 +186,17 @@ func _run_layout_checks(ctx: RefCounted) -> void:
 	for index: int in ACTION_RECTS.size():
 		ctx.equal(rects[index], ACTION_RECTS[index], "%s 的矩形" % ACTION_NAMES[index])
 
-	# 几何关系（由规范推出，不是抄来的魔数）：两端各留 8 安全边距、间距 8、贴底部安全线。
+	# 几何关系（由规范推出，不是抄来的魔数）：两端各留 16 安全边距、间距 16、贴底部安全线。
 	# 按钮矩形以**按钮区原点**为基准，故安全边距要加回按钮区自己的位置才是屏幕坐标。
+	# PET-80：全节 8 → 16（06 §1 的间距刻度 / 安全边距随坐标系 ×2）。
 	var gap: float = rects[1].position.x - rects[0].end.x
-	ctx.equal(gap, 8.0, "两个出口之间的间距（06 §1 间距刻度）")
-	ctx.equal(ACTIONS_RECT.position.x + rects[0].position.x, 8.0, "首按钮的左安全边距（06 §1）")
-	ctx.equal(ACTIONS_RECT.position.x + rects[1].end.x, REFERENCE_VIEWPORT.x - 8.0,
+	ctx.equal(gap, 16.0, "两个出口之间的间距（06 §1 间距刻度）")
+	ctx.equal(ACTIONS_RECT.position.x + rects[0].position.x, 16.0, "首按钮的左安全边距（06 §1）")
+	ctx.equal(ACTIONS_RECT.position.x + rects[1].end.x, REFERENCE_VIEWPORT.x - 16.0,
 		"末按钮的右安全边距（06 §1）")
 	ctx.equal(rects[0].size.x, rects[1].size.x, "两个出口必须等宽")
 	ctx.equal(rects[0].position.y, rects[1].position.y, "两个出口必须同高同起点")
-	ctx.equal(ACTIONS_RECT.end.y, REFERENCE_VIEWPORT.y - 8.0, "出口按钮区应贴底部安全线")
+	ctx.equal(ACTIONS_RECT.end.y, REFERENCE_VIEWPORT.y - 16.0, "出口按钮区应贴底部安全线")
 	ctx.equal(TITLE_RECT.end.y + gap, READOUT_RECT.position.y, "标题栏与读数区之间隔一个间距")
 	ctx.equal(READOUT_RECT.end.y + gap, ACTIONS_RECT.position.y, "读数区与按钮区之间隔一个间距")
 	# 三个分段自上而下铺满安全区，段间不留缝 —— 中间漏一段会露出一整条主面板底色。
@@ -202,9 +212,9 @@ func _run_narrow_layout_checks(ctx: RefCounted) -> void:
 	if not ctx.check(layout != null, "result_layout.gd 应能加载"):
 		return
 
-	ctx.check(layout.is_narrow(NARROW_VIEWPORT), "180×320 竖屏应判定为窄屏")
-	ctx.check(not layout.is_narrow(REFERENCE_VIEWPORT), "320×180 基准应判定为宽屏")
-	ctx.check(not layout.is_narrow(Vector2(320.0, 320.0)), "1:1 应判定为宽屏（判定是 < 而非 <=）")
+	ctx.check(layout.is_narrow(NARROW_VIEWPORT), "360×640 竖屏应判定为窄屏")
+	ctx.check(not layout.is_narrow(REFERENCE_VIEWPORT), "640×360 基准应判定为宽屏")
+	ctx.check(not layout.is_narrow(Vector2(640.0, 640.0)), "1:1 应判定为宽屏（判定是 < 而非 <=）")
 	ctx.check(not layout.is_narrow(Vector2.ZERO), "拿不到尺寸时应按宽屏处理，不得随手折叠")
 
 	_check_rect_approx(ctx, layout.title_rect(NARROW_VIEWPORT), NARROW_TITLE_RECT, "窄屏标题栏矩形")
@@ -221,9 +231,9 @@ func _run_narrow_layout_checks(ctx: RefCounted) -> void:
 	# 折叠的形态由「同 x、递增 y」证明，而不是由某个宽高数字证明。
 	ctx.equal(rects[0].position.x, rects[1].position.x, "折叠后两个出口应同处一列")
 	ctx.check(rects[0].end.y <= rects[1].position.y, "折叠后两个出口应自上而下依次排列且不重叠")
-	ctx.equal(rects[1].position.y - rects[0].end.y, 8.0, "折叠后的行间距（06 §1）")
+	ctx.equal(rects[1].position.y - rects[0].end.y, 16.0, "折叠后的行间距（06 §1）")
 	ctx.equal(rects[0].size.x, NARROW_ACTIONS_RECT.size.x, "折叠后按钮应铺满可用宽")
-	ctx.equal(NARROW_ACTIONS_RECT.end.y, NARROW_VIEWPORT.y - 8.0, "折叠后按钮区仍贴底部安全线")
+	ctx.equal(NARROW_ACTIONS_RECT.end.y, NARROW_VIEWPORT.y - 16.0, "折叠后按钮区仍贴底部安全线")
 
 
 ## 06 §7.1 / §9.2 的下边界：屏幕矮到按钮区顶到标题栏下方时，读数区的余量**转负**，
@@ -237,28 +247,29 @@ func _run_readout_clamp_checks(ctx: RefCounted) -> void:
 	var layout: GDScript = load(LAYOUT_SCRIPT_PATH)
 	if not ctx.check(layout != null, "result_layout.gd 应能加载"):
 		return
-	ctx.check(layout.is_narrow(CLAMP_VIEWPORT), "120×140 宽 < 高，应判定为窄屏")
+	ctx.check(layout.is_narrow(CLAMP_VIEWPORT), "240×280 宽 < 高，应判定为窄屏")
 
-	var readout_top: float = 8.0 + 16.0 + 8.0
-	var available_bottom: float = CLAMP_VIEWPORT.y - 8.0 - (MIN_TOUCH_SIZE * 2.0 + 8.0) - 8.0
+	# PET-80：这一段的 8 / 16 是 06 §1 的**安全边距 / 间距刻度**，随坐标系 ×2（8→16、16→32）。
+	var readout_top: float = 16.0 + 32.0 + 16.0
+	var available_bottom: float = CLAMP_VIEWPORT.y - 16.0 - (MIN_TOUCH_SIZE * 2.0 + 16.0) - 16.0
 	ctx.check(available_bottom < readout_top,
-		"120×140 的读数区余量应为负（可用底边 %.0f < 上沿 %.0f）—— 否则这条取样走不到夹取分支" % [
+		"240×280 的读数区余量应为负（可用底边 %.0f < 上沿 %.0f）—— 否则这条取样走不到夹取分支" % [
 			available_bottom, readout_top])
 	ctx.equal(layout.readout_rect(CLAMP_VIEWPORT), CLAMP_READOUT_RECT, "余量为负时读数区应夹到 0 高")
 
 	# 夹掉的只是高度：上沿仍按 06 §1 落在标题栏下隔一个间距，按钮区与触摸下限不受牵连。
 	ctx.equal(layout.readout_rect(CLAMP_VIEWPORT).position.y,
-		layout.title_rect(CLAMP_VIEWPORT).end.y + 8.0, "夹到 0 后读数区上沿仍是标题栏下隔一个间距")
+		layout.title_rect(CLAMP_VIEWPORT).end.y + 16.0, "夹到 0 后读数区上沿仍是标题栏下隔一个间距")
 	_check_touch_and_degenerate(ctx, layout, CLAMP_VIEWPORT)
 
 
 ## 06 §1：可点击区域 —— 两个出口本身就是可点击区域，任何档位下都不得低于下限。
 ##
-## 06 §1 的下限是按**设备像素**写的（≥44），而布局用的是逻辑像素，最小缩放 2×。
-## 故这里同时钉住两件事：实现取的逻辑值 ≥44（两种读法下都达标），
-## 以及「44 逻辑 × 2× ≥ 44 设备」这条推导本身成立 —— 后者一旦不成立，前者就不再是安全余量。
+## 06 §1 的下限是按**设备像素**写的（≥88），而布局用的是逻辑像素，参考缩放 2×。
+## 故这里同时钉住两件事：实现取的逻辑值 ≥88（两种读法下都达标），
+## 以及「88 逻辑 × 2× = 176 ≥ 88 设备」这条推导本身成立 —— 后者一旦不成立，前者就不再是安全余量。
 func _run_touch_size_checks(ctx: RefCounted) -> void:
-	ctx.begin_case("RESULT · 出口可点击区域 ≥ 44（06 §1）")
+	ctx.begin_case("RESULT · 出口可点击区域 ≥ 88（06 §1）")
 	var layout: GDScript = load(LAYOUT_SCRIPT_PATH)
 	if not ctx.check(layout != null, "result_layout.gd 应能加载"):
 		return
@@ -272,8 +283,8 @@ func _run_touch_size_checks(ctx: RefCounted) -> void:
 
 ## 一个档位下的两件事：出口不得低于触摸下限；退化尺寸下也不得算出负矩形。
 ##
-## 两者会互相拉扯 —— 竖屏一矮，固定 96 高的按钮区就往上顶，读数区被压薄
-## （SHORT_NARROW_VIEWPORT 的 120×180 下只剩 36px，宽屏是 88px）；再矮下去余量转负，
+## 两者会互相拉扯 —— 竖屏一矮，固定 192 高的按钮区就往上顶，读数区被压薄
+## （SHORT_NARROW_VIEWPORT 的 240×360 下只剩 72px，宽屏是 176px）；再矮下去余量转负，
 ## 实现的选择是把它夹到 0（宁可压掉读数区，也不缩按钮到点不准，同 RewardLayout 的取舍）。
 ## 这条把该取舍钉住：按钮守住下限，读数区不出现负尺寸。
 func _check_touch_and_degenerate(ctx: RefCounted, layout: GDScript, viewport: Vector2) -> void:
@@ -404,14 +415,15 @@ func _check_readout_panel(ctx: RefCounted, scene: Node) -> void:
 		ctx.equal(shadow.theme_type_variation, &"PanelShadow", "阴影叠层的变体")
 		ctx.equal(shadow.mouse_filter, Control.MOUSE_FILTER_IGNORE, "阴影叠层不得吃掉点击")
 
-	# 06 §2.2：次级面板内边距 8px。内容不能贴到描边上。
+	# 06 §2.2：次级面板内边距 16px（PET-80 前 8px，= PaletteTheme.PANEL_SECONDARY_CONTENT_MARGIN）。
+	# 内容不能贴到描边上。
 	var body: Control = _find(panel, "Body") as Control
 	if not ctx.check(body != null, "读数区应有内容容器"):
 		return
-	ctx.equal(body.offset_left, 8.0, "次级面板内边距（06 §2.2）")
-	ctx.equal(body.offset_top, 8.0, "次级面板内边距（06 §2.2）")
-	ctx.equal(body.offset_right, -8.0, "次级面板内边距（06 §2.2）")
-	ctx.equal(body.offset_bottom, -8.0, "次级面板内边距（06 §2.2）")
+	ctx.equal(body.offset_left, 16.0, "次级面板内边距（06 §2.2）")
+	ctx.equal(body.offset_top, 16.0, "次级面板内边距（06 §2.2）")
+	ctx.equal(body.offset_right, -16.0, "次级面板内边距（06 §2.2）")
+	ctx.equal(body.offset_bottom, -16.0, "次级面板内边距（06 §2.2）")
 
 	var wave: Label = _find(panel, "WaveValue") as Label
 	var seed_label: Label = _find(panel, "SeedValue") as Label
@@ -419,7 +431,9 @@ func _check_readout_panel(ctx: RefCounted, scene: Node) -> void:
 		return
 	ctx.check(not wave.text.is_empty(), "「坚持到第几波」必须有文字落点")
 	ctx.check(not seed_label.text.is_empty(), "「随机种子」必须有文字落点（03 §6）")
-	ctx.equal(wave.get_theme_font_size(&"font_size"), 16, "主读数是标题级字号（06 §1：标题 ≥12px）")
+	# PET-80：16 → 32。06 §1 的字号刻度整体 ×2（正文 8→16），「标题级」随之由 16 变 32；
+	# 这条要钉的仍是「主读数**大于**正文」这件事，只是两个数都翻了倍。
+	ctx.equal(wave.get_theme_font_size(&"font_size"), 32, "主读数是标题级字号（06 §1：标题 ≥24px；PET-80 前 ≥12px）")
 	ctx.equal(seed_label.theme_type_variation, &"LabelSecondary", "种子是次要读数（06 §3 辅助文字）")
 	# 两个读数都不吃点击 —— 读数区整块是只读的。
 	ctx.equal(wave.mouse_filter, Control.MOUSE_FILTER_IGNORE, "主读数不得吃掉点击")

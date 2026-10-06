@@ -18,16 +18,19 @@ enum Region { BATTLEFIELD, STATUS_BAR }
 ##   战场主区 y ≈ 0%–75% → y 0–135
 ##   底部深色条 y ≈ 75%–100% → y 135–180，高 ≈45px（占画面高约 25%），横贯全宽
 ## 两块都从 x=0 起、满宽 320 —— §8 明写那条带「横贯全宽」。
-const BATTLEFIELD_RECT: Rect2 = Rect2(0.0, 0.0, 320.0, 135.0)
-const STATUS_BAR_RECT: Rect2 = Rect2(0.0, 135.0, 320.0, 45.0)
+##
+## PET-80：基准画布 320×180 → 640×360，上述实测值**逐项 ×2**。
+## 「占画面高 25%」是个**比值**，不随坐标系变，故 STATUS_BAR_SHARE 保持 0.25。
+const BATTLEFIELD_RECT: Rect2 = Rect2(0.0, 0.0, 640.0, 270.0)
+const STATUS_BAR_RECT: Rect2 = Rect2(0.0, 270.0, 640.0, 90.0)
 
 ## 06 §8 实测的状态带高度。窄屏下**不**随视口长高 —— HUD 条是固定高的一条，不是按比例拉伸的。
-const STATUS_BAR_HEIGHT: float = 45.0
-## 06 §8：状态带占画面高约 25%（实测 45 / 180）。窄屏下它是这个份额的**上限**，见 narrow_rects。
+const STATUS_BAR_HEIGHT: float = 90.0
+## 06 §8：状态带占画面高约 25%（实测 45 / 180，PET-80 后 90 / 360 —— 同一份额）。比值不变。
 const STATUS_BAR_SHARE: float = 0.25
 
 ## 06 §7.1：竖屏 / 窄屏才折叠。判定用可用区的宽高比 —— 宽 < 高 即竖屏；
-## 320×180 基准的 1.78 自然落在宽屏一侧。
+## 640×360 基准的 1.78 自然落在宽屏一侧。比值不变。
 const NARROW_ASPECT_MAX: float = 1.0
 
 
@@ -53,7 +56,7 @@ static func wide_rects() -> Array[Rect2]:
 ##            由 combat_screen.gd 的 ScrollContainer 承担，不是把整条带拉高）
 ##
 ## 高度上限取 §8 实测的 25%：§7.1 末条要求折叠「不改变任何玩法规则与状态流」，
-## 而状态带在比基准更矮的视口上若仍占满 45px，就会吃掉战场可读性 ——
+## 而状态带在比基准更矮的视口上若仍占满 90px（PET-80 前的 45px），就会吃掉战场可读性 ——
 ## 那正是验收里「窄屏下状态带不得挤掉战场可读性」要防的。
 static func narrow_rects(viewport_size: Vector2) -> Array[Rect2]:
 	var width: float = viewport_size.x

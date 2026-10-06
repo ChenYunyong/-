@@ -21,8 +21,8 @@
 ## 顺带产出**一局循环的截图序列**（验收卡要的那一段）：每走到一站就留一张，收尾拼成一张联络表。
 ## 它**只在真实渲染下生效**，headless 入口（run_tests.gd）里静默跳过 —— 故这些图不参与断言，
 ## 本文件的绿/红只由状态与场景的流转决定。要出图就单独跑一次带窗口的：
-##   Godot --path . --resolution 320x180 --fixed-fps 60 --script res://tests/unit/run_tests.gd -- --task "..."
-## （窗口必须是设计尺寸 320×180：同进程里 test_state_loop.gd 的合成点击按窗口坐标折算。）
+##   Godot --path . --resolution 640x360 --fixed-fps 60 --script res://tests/unit/run_tests.gd -- --task "..."
+## （窗口必须是设计尺寸 640×360（PET-80 前 320×180）：同进程里 test_state_loop.gd 的合成点击按窗口坐标折算。）
 
 extends RefCounted
 
@@ -46,11 +46,12 @@ const LOOP_SEED: int = 20261004
 ## 截图：每一站一张（序号即玩家走到的顺序），收尾再拼一张联络表。
 const SHOT_PREFIX: String = "res://tests/output/full_loop_"
 const SHEET_PATH: String = "res://tests/output/full_loop_sheet.png"
-## 联络表的列数与放大倍数。单图 320×180 直接拼成一排读不清，放大后再拼。
+## 联络表的列数与放大倍数。单图 640×360 直接拼成一排读不清，放大后再拼。
+## PET-80：一格本身已翻倍，故 ZOOM 不跟着翻（同样的 2× 在逻辑像素这一层与 PET-80 前等价）。
 const SHEET_COLUMNS: int = 5
 const SHEET_ZOOM: int = 2
-## 一格的设计尺寸（06 §1 基准，本文件独立复写）。
-const FRAME_SIZE: Vector2i = Vector2i(320, 180)
+## 一格的设计尺寸（06 §1 基准，本文件独立复写）。PET-80：320×180 → 640×360。
+const FRAME_SIZE: Vector2i = Vector2i(640, 360)
 ## 截图用的机器落盘位置。**不落进 BlueprintData.DEFAULT_SAVE_DIR** ——
 ## 正式存档目录只归玩家的游戏写（同 combat_loop_smoke.gd 的约束）。
 const SHOT_BLUEPRINT_PATH: String = "user://test_blueprints/_full_loop_machine.tres"

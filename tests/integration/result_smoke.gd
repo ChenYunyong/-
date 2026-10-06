@@ -36,17 +36,18 @@ const GAME_FLOW_PATH: String = "res://scripts/core/game_flow.gd"
 const PALETTE_PATH: String = "res://scripts/data/palette.gd"
 const LOG_PATH: String = "res://tests/output/result_smoke.log"
 
-## 06 §1 基准与 §7.1 的窄屏取样。
-const REFERENCE_VIEWPORT: Vector2 = Vector2(320.0, 180.0)
-const NARROW_VIEWPORT: Vector2 = Vector2(180.0, 320.0)
+## 06 §1 基准与 §7.1 的窄屏取样。PET-80：两者都 ×2（它们是**逻辑像素**，与布局矩形同一套单位）。
+const REFERENCE_VIEWPORT: Vector2 = Vector2(640.0, 360.0)
+const NARROW_VIEWPORT: Vector2 = Vector2(360.0, 640.0)
 
 ## R1 实测：停留 600 秒（10 分钟）模拟时间不得自动离开 RESULT。
 const R1_SIMULATED_SECONDS: float = 600.0
 ## 漏加 --fixed-fps 时的兜底上限，与 run_tests.gd 同值。
 const WALL_CLOCK_BUDGET_MS: int = 120_000
 
-## 06 §1：出口按钮本身就是可点击区域，下限 44 设备像素。
-const MIN_TOUCH_SIZE: float = 44.0
+## 06 §1：出口按钮本身就是可点击区域。PET-80：44 → 88 **设备像素**。
+## 门槛值本身由手指尺寸决定，与画布分辨率无关，故不可协商：44 逻辑 × 4× = 88 逻辑 × 2× = 176 设备像素。
+const MIN_TOUCH_SIZE: float = 88.0
 
 ## 03 §6：本局随机种子由 RunState 逐局记录。这里先起一局固定种子，
 ## 再看结算界面上的种子读数是不是**它** —— 量的是「显示的是不是那一份」，不是「有没有文字」。
@@ -54,15 +55,18 @@ const FIXED_SEED: int = 424242
 
 ## 出口按钮的矩形**相对按钮区原点**，在本文件独立复写一遍
 ## （期望值若与被测实现同源，实现改错时两边一起错）。推导依据见 result_layout.gd 的文件头。
-const ACTIONS_AREA_WIDE: Rect2 = Rect2(8.0, 128.0, 304.0, 44.0)
+## PET-80：全部 ×2。安全边 8→16、按钮区上沿 128→256、按钮高 44→88（= MIN_TOUCH_SIZE）、
+## 两钮间距 8→16、窄屏两行行距 52→104 —— 每个长度都是原来的两倍，
+## 故「两钮等宽、等距、各自不低于触摸下限」这些**关系**在 ×2 前后逐条相同。
+const ACTIONS_AREA_WIDE: Rect2 = Rect2(16.0, 256.0, 608.0, 88.0)
 const ACTION_RECTS_WIDE: Array[Rect2] = [
-	Rect2(0.0, 0.0, 148.0, 44.0),
-	Rect2(156.0, 0.0, 148.0, 44.0),
+	Rect2(0.0, 0.0, 296.0, 88.0),
+	Rect2(312.0, 0.0, 296.0, 88.0),
 ]
-const ACTIONS_AREA_NARROW: Rect2 = Rect2(8.0, 216.0, 164.0, 96.0)
+const ACTIONS_AREA_NARROW: Rect2 = Rect2(16.0, 432.0, 328.0, 192.0)
 const ACTION_RECTS_NARROW: Array[Rect2] = [
-	Rect2(0.0, 0.0, 164.0, 44.0),
-	Rect2(0.0, 52.0, 164.0, 44.0),
+	Rect2(0.0, 0.0, 328.0, 88.0),
+	Rect2(0.0, 104.0, 328.0, 88.0),
 ]
 
 ## 顺序即场景节点顺序：0 = 返回主菜单（次要），1 = 再来一局（主要）。
@@ -282,10 +286,10 @@ func _run_narrow_case() -> void:
 	var state_before: int = _state_of_flow()
 
 	screen.call(&"apply_layout_for", NARROW_VIEWPORT)
-	_ctx.check(bool(screen.call(&"is_narrow_layout")), "180×320 应切到折叠布局")
-	_check_actions_area(screen, ACTIONS_AREA_NARROW, "180×320")
+	_ctx.check(bool(screen.call(&"is_narrow_layout")), "360×640 应切到折叠布局")
+	_check_actions_area(screen, ACTIONS_AREA_NARROW, "360×640")
 	for index: int in ACTION_NAMES.size():
-		_check_action_rect(screen, index, ACTION_RECTS_NARROW[index], "180×320")
+		_check_action_rect(screen, index, ACTION_RECTS_NARROW[index], "360×640")
 	# 折叠的形态由「同 x、递增 y」证明 —— 两个出口的矩形都由上一条断言逐分量钉住。
 	var first: Button = _find(screen, ACTION_NAMES[0]) as Button
 	var second: Button = _find(screen, ACTION_NAMES[1]) as Button

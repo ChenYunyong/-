@@ -61,17 +61,20 @@ const BARE_PATH: String = TEST_DIR + "/_combat_loop_bare.tres"
 ## 验收机器丙：CORE → 分流 → 针 / 炸弹 / 锯。三把武器同一拍开火，用来取「三把反馈长得不一样」的证据。
 const KIT_PATH: String = TEST_DIR + "/_combat_loop_kit.tres"
 
-## 画布 = 06 §1 的 320×180 基准，于是「第几个像素」可以直接读。
-const CANVAS: Vector2i = Vector2i(320, 180)
-const VIEWPORT: Vector2 = Vector2(320.0, 180.0)
+## 画布 = 06 §1 的 640×360 基准（PET-80 前 320×180），于是「第几个像素」可以直接读。
+const CANVAS: Vector2i = Vector2i(640, 360)
+const VIEWPORT: Vector2 = Vector2(640.0, 360.0)
 
 ## 敌人泳道的绘制参数（combat_screen.gd 的表现层常数，本文件独立复写）。
 ## 取整条道的高度而不是逐只算矩形：敌人**自己往前走**，逐只算矩形就等于把被测的推进
 ## 又抄进了判据里，位置算错时两边一起错。
-const ENEMY_BAND_TOP: float = 32.0
-const ENEMY_ROW_HEIGHT: float = 24.0
+## PET-80：32 → 64、24 → 48（combat_screen.gd 同款加倍的独立复写）。
+const ENEMY_BAND_TOP: float = 64.0
+const ENEMY_ROW_HEIGHT: float = 48.0
 
-## 放大倍数：8×8 的占位敌人在一张 320×180 的图里几乎看不出来，证据图放大后再附。
+## 放大倍数：占位敌人在一张 640×360 的图里几乎看不出来，证据图放大后再附。
+## PET-80 后**基准画布本身**已是原来的两倍，故同样 4× 的证据图在「逻辑像素」这一层
+## 恰好与 PET-80 前逐逻辑像素相同 —— 这个数不必跟着翻倍，翻了反而变成 8× 的相对放大。
 const ZOOM: int = 4
 
 ## 03 §2 与本卡的固定常数，独立复写一遍 —— 期望值若与被测实现同源，实现改错时两边一起错。
@@ -96,31 +99,37 @@ const SAMPLE_KILLED: int = 74
 const MAX_CATCH_UP: int = 5
 
 ## PET-76 可读反馈的取样区域，坐标以**战场局部**为准（敌人层原点与战场重合，故可直接读像素）。
-## 机器视图贴战场下沿、高 48px，故它的上缘就是战场 y 87；卡片、卡片之间的连线与火花
-## 全部画在 y ≥ 87，于是**卡片上方那一段空档里只有开火反馈**。
+## 机器视图贴战场下沿、高 96px（PET-80 前 48），故它的上缘就是战场 y 174（PET-80 前 87）；
+## 卡片、卡片之间的连线与火花全部画在 y ≥ 174，于是**卡片上方那一段空档里只有开火反馈**。
+##
+## PET-80：三段区域全部 ×2。它们都由「机器视图上缘」与「开火反馈能升到的最低点」推出来，
+## 而这两个锚点各自都是长度、都随坐标系 ×2，故整段区间一起平移放大、相对关系逐条不变。
 ##
 ## 取这三段而不是「整块战场」：判据色会被别处的绘制污染，量到的就不再是「这条反馈出现了」。
-const CUE_REGION: Rect2 = Rect2(46.0, 70.0, 52.0, 16.0)
-## 弹道横穿的那一段。上界 70 卡在开火反馈能升到的最低点（战场 y 71）之下，故这一段里只有弹道。
-const TRACER_REGION: Rect2 = Rect2(0.0, 40.0, 320.0, 31.0)
+const CUE_REGION: Rect2 = Rect2(92.0, 140.0, 104.0, 32.0)
+## 弹道横穿的那一段。下沿 142 卡在开火反馈能升到的最低点（战场 y 142）之上，故这一段里只有弹道。
+const TRACER_REGION: Rect2 = Rect2(0.0, 80.0, 640.0, 62.0)
 ## 两条敌人泳道合起来的那一段。命中闪光与击杀描边都落在这里。
-const BAND_REGION: Rect2 = Rect2(0.0, 32.0, 320.0, 48.0)
+const BAND_REGION: Rect2 = Rect2(0.0, 64.0, 640.0, 96.0)
 ## 第 1 条道（Runner 走的那条）那一段。「命中闪光落在哪条道上」据此判 —— 落在第 0 道就不算。
-const LANE_ONE_REGION: Rect2 = Rect2(0.0, ENEMY_BAND_TOP + ENEMY_ROW_HEIGHT, 320.0, ENEMY_ROW_HEIGHT)
-## 敌人身体顶边到 HP 条上沿的距离（表现层常数：缝 3px + 条厚 2px，独立复写）。
-## HP 条就画在身体**上方**这两行里，故这两行里数到的 RED_500 只可能是血条，不会混进身体。
-const ENEMY_HP_ROW_OFFSET: float = 5.0
-const ENEMY_HP_HEIGHT: float = 2.0
+const LANE_ONE_REGION: Rect2 = Rect2(0.0, ENEMY_BAND_TOP + ENEMY_ROW_HEIGHT, 640.0, ENEMY_ROW_HEIGHT)
+## 敌人身体顶边到 HP 条上沿的距离（表现层常数：缝 6px + 条厚 4px，独立复写；PET-80 前 3 + 2）。
+## HP 条就画在身体**上方**这几行里，故这几行里数到的 RED_500 只可能是血条，不会混进身体。
+## 条本身也厚了一倍（2 → 4），判据色的**行数**随之翻倍但**位置关系**不变。
+const ENEMY_HP_ROW_OFFSET: float = 10.0
+const ENEMY_HP_HEIGHT: float = 4.0
 
-## 「三把可区分」量的是卡片上缘往上第 1..7 行（战场 y 71..77）。
-## 上界 77 是有意的：再往下就有弹道斜穿而过了，那一段量到的会变成「反馈 + 恰好路过的一根线」。
-const CUE_ROW_TOP: int = 71
-const CUE_ROW_BOTTOM: int = 78
-## 卡片列宽（BlueprintWorkspace.GRID 的独立复写）与三把武器所在的列号。
+## 「三把可区分」量的是卡片上缘往上第 1..14 行（战场 y 142..155；PET-80 前第 1..7 行 / y 71..77）。
+## 下界 155 是有意的：再往下就有弹道斜穿而过了，那一段量到的会变成「反馈 + 恰好路过的一根线」。
+## 两界都恰好是 PET-80 前的两倍（71→142、78→156），窗口高 7→14 行 —— 相对位置不变。
+const CUE_ROW_TOP: int = 142
+const CUE_ROW_BOTTOM: int = 156
+## 卡片列宽（BlueprintWorkspace.GRID 的独立复写，PET-80：24 → 48）与三把武器所在的列号。
 ## 机器丙 = CORE / 分流 / 针 / 炸弹 / 锯 依次落格，故武器在第 2 / 3 / 4 列。
-const CARD_COLUMN: int = 24
+const CARD_COLUMN: int = 48
 const KIT_FIRST_WEAPON_COLUMN: int = 2
-## 三把武器的反馈每拍上升 1px，存活 8 拍。取满这 8 拍，才能保证量到的是长满的那一帧。
+## 三把武器的反馈每拍上升 2 逻辑像素（CUE_RISE 16 ÷ SHOT_TICKS 8；PET-80 前 1px），存活 8 拍。
+## 存活拍数是**拍**、不是长度，故不随坐标系 ×2。取满这 8 拍才能保证量到的是长满的那一帧。
 const KIT_WINDOW: int = 8
 
 ## 可读反馈的取样拍号（全部算得出，不是「跑够了就算过」）：
@@ -651,11 +660,15 @@ func _run_readability_case(clear_written: bool, kit_written: bool) -> void:
 	print("SMOKE 像素取证 · 三把反馈的形状（宽×高）：针 %d×%d / 炸弹 %d×%d / 锯 %d×%d"
 		% [int(boxes[0].size.x), int(boxes[0].size.y), int(boxes[1].size.x), int(boxes[1].size.y),
 			int(boxes[2].size.x), int(boxes[2].size.y)])
-	_ctx.check(boxes[0].size.x <= 2.0 and boxes[0].size.y >= boxes[0].size.x * 2.0,
+	# PET-80：三条里的**绝对长度**门槛全部 ×2（2→4、4→8、1→2、8→16）；
+	# 两条按比值写的（size.y ≥ 2×size.x、size.x ≥ 2×size.y）是形状判据，与坐标系无关，原样保留。
+	# 之所以绝对门槛也必须翻倍而不是「反正变宽了肯定过」：门槛不翻倍就退化成**恒真**，
+	# 那才是把断言弱化掉。翻倍之后它钉的仍是同一件事 —— 外框内缩之后剩下的那几像素。
+	_ctx.check(boxes[0].size.x <= 4.0 and boxes[0].size.y >= boxes[0].size.x * 2.0,
 		"针的反馈是**细高**的一条：%s" % _rect_text(boxes[0]))
-	_ctx.check(boxes[1].size.x >= 4.0 and absf(boxes[1].size.x - boxes[1].size.y) <= 1.0,
+	_ctx.check(boxes[1].size.x >= 8.0 and absf(boxes[1].size.x - boxes[1].size.y) <= 2.0,
 		"炸弹的反馈是**方正**的一块：%s" % _rect_text(boxes[1]))
-	_ctx.check(boxes[2].size.x >= 8.0 and boxes[2].size.x >= boxes[2].size.y * 2.0,
+	_ctx.check(boxes[2].size.x >= 16.0 and boxes[2].size.x >= boxes[2].size.y * 2.0,
 		"锯的反馈是**扁宽**的一条：%s" % _rect_text(boxes[2]))
 	_save(kit_image, "read_kinds")
 	_sheet([before_image, fire_image, killed_image, lane_image], "read_sheet")
@@ -717,7 +730,7 @@ func _await_frame(sim: Object, from: int, wanted: Callable) -> Dictionary:
 
 ## 三把武器的反馈形状：逐帧量三个卡位那几行里的像素，取**总量最大**的那一帧。
 ##
-## 为什么取最大而不是取第一帧：反馈每拍上升 1px，越老越完整地落进那片窗口；
+## 为什么取最大而不是取第一帧：反馈每拍上升 2 逻辑像素（PET-80 前 1px），越老越完整地落进那片窗口；
 ## 总量随拍数单调增，于是「最大」这一帧一定是长满的那一帧 —— 三把的形态在同一拍上才可比。
 ## 也不取**并集**：并集会把「上升」也算进高度，三把的高度就都被撑成一样，形状反而分不开了。
 func _await_kit_frame(sim: Object, from: int) -> Dictionary:
@@ -774,8 +787,9 @@ func _cue_window(index: int) -> Rect2:
 ## 取该行里离卡片中心最近的那一段连续判据色像素，再自下而上量出这一段自己的高度。
 ##
 ## 不能像命中闪光那样整窗取包围盒：弹道同是 BLUE_FX_600，会**横穿**某个取样窗口被并进盒子。
-## 实测「锯」那一格的整窗盒子宽 17px，其中只有 9px 是锯本身，剩下 8px 是路过的弹道 ——
-## 那样锯就算画成 1px 宽也照样能过。形状判据只许量反馈自己那几个像素。
+## 实测（PET-80 前）「锯」那一格的整窗盒子宽 17px，其中只有 9px 是锯本身，剩下 8px 是路过的弹道。
+## PET-80 后这三个读数随坐标系一起 ×2（17→34 / 9→18 / 8→16，比例不变）——
+## 那样锯就算画成 2 逻辑像素宽也照样能过。形状判据只许量反馈自己那几个像素。
 func _cue_box(image: Image, index: int) -> Rect2:
 	if image == null:
 		return Rect2()
@@ -1032,7 +1046,8 @@ func _count_rect(image: Image, rect: Rect2, wanted: Color) -> int:
 	return hits
 
 
-## 存证据图：原图与最近邻放大各一张。放大是为了让 8×8 的占位敌人在人工复核时看得见。
+## 存证据图：原图与最近邻放大各一张。放大是为了让 16×16 的占位敌人（PET-80 前 8×8）
+## 在人工复核时看得见。
 func _save(image: Image, tag: String) -> void:
 	if image == null:
 		return

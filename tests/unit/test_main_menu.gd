@@ -17,11 +17,15 @@ const TITLE_BAR_SCRIPT_PATH: String = "res://scripts/ui/panel_title_bar.gd"
 const GAME_FLOW_SCRIPT_PATH: String = "res://scripts/core/game_flow.gd"
 const THEME_SCRIPT_PATH: String = "res://scripts/data/palette_theme.gd"
 
-## 06 §2.2：3px 外框 + 12px 内容边距。
-const EXPECTED_BODY_INSET: float = 15.0
+## 06 §2.2：6px 外框 + 24px 内容边距（PET-80 前 3px + 12px）。
+const EXPECTED_BODY_INSET: float = 30.0
 
-## 06 §1 基准视口。13 §3.3 的「不得成为视觉中心」需要一个可量的落点，本文件只用它的下半幅。
-const REFERENCE_VIEWPORT: Vector2 = Vector2(320.0, 180.0)
+## 06 §1 基准视口 **640×360**（PET-80 前 320×180）。13 §3.3 的「不得成为视觉中心」
+## 需要一个可量的落点，本文件只用它的下半幅。
+const REFERENCE_VIEWPORT: Vector2 = Vector2(640.0, 360.0)
+
+## 06 §1 的安全区边界：基准尺寸各减一圈安全边距（PET-80 前 320−8 / 180−8）。
+const SAFE_INSET: float = 16.0
 
 
 func run(ctx: RefCounted, _tree: SceneTree) -> void:
@@ -122,11 +126,12 @@ func _check_slots(ctx: RefCounted, menu: Node) -> void:
 		var art: Control = _find(slot, "DecorationArt")
 		if ctx.check(art != null, "装饰位内应有可替换的贴图位 DecorationArt"):
 			ctx.check(art is TextureRect and art.get_parent() == slot, "DecorationArt 应是铺满装饰位的贴图位")
-		# 06 §1：8px 安全区，左右分区不得互相压叠（13 §3：保留左右空间分区）。
-		ctx.check(slot.offset_left >= 8.0 and slot.offset_top >= 8.0,
-			"装饰位应留在 8px 安全区内（实得 %.0f, %.0f）" % [slot.offset_left, slot.offset_top])
-		ctx.check(slot.offset_right <= 312.0 and slot.offset_bottom <= 172.0,
-			"装饰位应留在 8px 安全区内（实得 %.0f, %.0f）" % [slot.offset_right, slot.offset_bottom])
+		# 06 §1：16px 安全区（PET-80 前 8px），左右分区不得互相压叠（13 §3：保留左右空间分区）。
+		ctx.check(slot.offset_left >= SAFE_INSET and slot.offset_top >= SAFE_INSET,
+			"装饰位应留在 16px 安全区内（实得 %.0f, %.0f）" % [slot.offset_left, slot.offset_top])
+		ctx.check(slot.offset_right <= REFERENCE_VIEWPORT.x - SAFE_INSET
+			and slot.offset_bottom <= REFERENCE_VIEWPORT.y - SAFE_INSET,
+			"装饰位应留在 16px 安全区内（实得 %.0f, %.0f）" % [slot.offset_right, slot.offset_bottom])
 		if panel != null:
 			ctx.check(slot.offset_right <= panel.offset_left,
 				"左侧构图区不得压到中央主菜单（右缘 %.0f ≤ 面板左缘 %.0f）" % [
@@ -185,7 +190,7 @@ func _check_body_inset(ctx: RefCounted, panel: Control) -> void:
 	if not ctx.check(body != null, "菜单面板内应有 Body 容器"):
 		return
 	var menu_script: GDScript = load(MENU_SCRIPT_PATH)
-	ctx.equal(menu_script.PANEL_BODY_INSET, EXPECTED_BODY_INSET, "内容缩进 = 3px 外框 + 12px 边距（06 §2.2）")
+	ctx.equal(menu_script.PANEL_BODY_INSET, EXPECTED_BODY_INSET, "内容缩进 = 6px 外框 + 24px 边距（06 §2.2）")
 	ctx.equal(body.offset_left, EXPECTED_BODY_INSET, "Body 左边缩进")
 	ctx.equal(body.offset_top, EXPECTED_BODY_INSET, "Body 上边缩进")
 	ctx.equal(body.offset_right, -EXPECTED_BODY_INSET, "Body 右边缩进")

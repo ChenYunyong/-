@@ -12,7 +12,7 @@
 ## 判别力（09 §4：每条断言都要能被一次「故意改坏」打红）：
 ##   反向对照一 —— 藏掉按钮区：金色块与次要按钮底色必须整体归零，读数区的描边一个都不许动。
 ##                 量不到，就说明上面数到的像素并非来自那两个出口。
-##   反向对照二 —— 把按钮区整体右移 4px，金色块必须跟着移 4px。
+##   反向对照二 —— 把按钮区整体右移 8px（PET-80 前 4px，长度随坐标系 ×2），金色块必须跟着移 8px。
 ##                 量不到这个位移，就说明「恰好落在这几个 x 上」那几条只是碰巧。
 ##   反向对照三 —— 藏掉读数区的 PanelShadow 叠层：右下那圈 NAVY_900 必须整体归零，
 ##                 而读数区自己的 BROWN_600 描边仍在（06 §2.2 v0.1.5 甲案：面板自身不带阴影）。
@@ -23,81 +23,127 @@
 extends RefCounted
 
 const SCENE_PATH: String = "res://scenes/result/result.tscn"
+## 窗口右界的唯一真值来源（见 SCAN_RIGHT 的推导）。
+const THEME_SCRIPT_PATH: String = "res://scripts/data/palette_theme.gd"
 
-## 画布 = 06 §1 的 320×180 基准（宽屏）与 180×320（窄屏），与布局常量同一坐标系。
-const WIDE: Vector2i = Vector2i(320, 180)
-const NARROW: Vector2i = Vector2i(180, 320)
+## 画布 = 06 §1 的 640×360 基准（宽屏，PET-80 前 320×180）与 360×640（窄屏，前 180×320），
+## 与布局常数同一坐标系。
+const WIDE: Vector2i = Vector2i(640, 360)
+const NARROW: Vector2i = Vector2i(360, 640)
 
-## 扫描窗口：避开最外圈的面板框。外框是 PanelFrame（3px 木质描边 + BROWN_600 内带）
-## 再叠 1px GOLD_200 左高光，所以 [4, 316) 里除了本界面自己的描边不该有第二种 BROWN_600。
+## 扫描窗口：只圈住主面板**内芯以内**的区域，避开两样东西 —— 最外圈的切片外框，以及
+## 内芯自己那圈 NAVY_600 环带。两条边界的依据**不同源**，因为它们避的不是同一样东西：
+##
+##   左界 4 —— 外框切片自带的左带占 x0..x3（**纹素**读数，FRAME_MARGIN_LEFT = 4，
+##             本卡不动 assets/**，故不随坐标系 ×2）。这条与 PET-80 前一样。
+##   右界 632 —— 内芯在 Shell 里按 FRAME_BORDER_WIDTH 内缩（本卡 6），右环带再占 BORDER_WIDTH 列
+##             （本卡 2），故环带左沿 = 640 − 6 − 2 = 632。这一条是**设计尺寸**，随坐标系 ×2。
+##
+## 为什么右界不能像左界那样也取「距边缘 4」= 636：那会把内芯自己的 NAVY_600 右环带
+## （632–633）圈进窗口，于是「第 300 行恰好只有出口按钮那 4 个 x 是 NAVY_600」当场破裂 ——
+## 主面板的环带被算成了第三条。PET-80 前它侥幸没破裂：内芯内缩 3（= 当时 1× 的
+## FRAME_BORDER_WIDTH）时环带只占 1 列，且恰好落在 316 这个被排除的边界列上。
+## 下面 `_probe_actions_wide()` 里有一条断言把这条边界钉成可验证的事实，而不是随手取的数字。
+##
+## 于是 [4, 632) 里除了本界面自己的描边不该有第二种 BROWN_600。
 const SCAN_LEFT: int = 4
-const SCAN_RIGHT: int = 316
+const SCAN_RIGHT: int = 632
 
 ## PET-77：外框换成已批准切片后，窗口外那几列里也有 BROWN_600 —— 那是**框自己**的木质带。
 ## 逐像素读数（`ui_panel_frame_main_96x64`）：左带 4px = x0 BROWN_500 / x1..x2 BROWN_600 / x3 GOLD_200 高光；
 ## 右带 3px = x317..x318 BROWN_600 / x319 BROWN_500。窗口边界那两条断言据此改钉「只许这两条、且在此位置」。
+##
+## PET-80：这几列同样是**纹素**读数，故**贴边**不变：左带仍是 x0..x3（FRAME_LEFT_BAND 原样），
+## 右带仍贴右缘 —— 画布宽 320 → 640 后，右带从 x317/x318 变成 x637/x638。
 const FRAME_LEFT_BAND: Array[int] = [1, 2]
-const FRAME_RIGHT_BAND: Array[int] = [317, 318]
+const FRAME_RIGHT_BAND: Array[int] = [637, 638]
 const SCAN_TOP: int = 4
-const SCAN_BOTTOM: int = 316
+const SCAN_BOTTOM: int = 632
 
-## 06 §2.2：标题栏高 16px，底部 1px GOLD_600 分隔线。上沿在 y=8，故金线落在 y=23。
-const TITLE_GOLD_ROW: int = 23
-const WIDE_TITLE_GOLD: int = 304
-const NARROW_TITLE_GOLD: int = 164
+## 06 §2.2：标题栏高 32px（PET-80 前 16），底部 GOLD_600 分隔线。上沿在 y=16（前 8），
+## 故金线落在标题栏最后 TITLE_GOLD_ROWS 行（y=47 与 y=46）。
+##
+## PET-80：这条线是 PanelTitleBar 变体 StyleBoxFlat 的 `border_width_bottom`，取自
+## PaletteTheme.BORDER_WIDTH —— 代码画的**逻辑**像素（不是九宫格切片的纹素边距），
+## 故厚度随坐标系 ×2：1 行 → 2 行。判别力不变：线上 / 线下各一行仍必须是零。
+const TITLE_GOLD_ROW: int = 47
+const TITLE_GOLD_ROWS: int = 2
+const WIDE_TITLE_GOLD: int = 608
+const NARROW_TITLE_GOLD: int = 328
 
-## 06 §1 / §2.2 下读数区（次级面板）的**实测**矩形与它那圈 1px BROWN_600。
+## 06 §1 / §2.2 下读数区（次级面板）的**实测**矩形与它那圈 BROWN_600。
 ## 刻意写死而不是由布局公式现算：探针要证的正是「公式的结果真的落在了这几个像素上」。
-const WIDE_READOUT_TOP: int = 32
-const WIDE_READOUT_BOTTOM: int = 119
-const WIDE_READOUT_LEFT: int = 8
-const WIDE_READOUT_RIGHT: int = 311
-## 读数区内的扫描行：落在面板上沿之下、居中文字之上（文字块被 VBox 居中在 y≈57 起）。
-const READOUT_SCAN_ROW: int = 36
+##
+## PET-80：布局读数逐项 ×2（8→16 / 32→64 / 304→608 / 88→176；右缘 2·311+1 = 623、下缘 2·119+1 = 239）。
+## 但那圈描边**仍是 1 逻辑像素**（PET-80 前如此）：它来自次级面板切片的 `texture_margin_*`
+## （THIN_FRAME_MARGIN_* = 2 **纹素**，本卡不动 assets/**），不是代码画的逻辑像素。
+const WIDE_READOUT_TOP: int = 64
+const WIDE_READOUT_BOTTOM: int = 239
+const WIDE_READOUT_LEFT: int = 16
+const WIDE_READOUT_RIGHT: int = 623
+## 读数区内的扫描行：落在面板上沿之下、居中文字之上（文字块被 VBox 居中，离上沿很远）。
+## PET-80：原来取「上沿 + 4」，这条偏移是**长度**，随坐标系 ×2 → 上沿 + 8。
+const READOUT_SCAN_ROW: int = 72
 
-## 两个出口的**实测**矩形（屏幕坐标）。按钮区在 y=128，按钮高 44。
-const BUTTON_SCAN_ROW: int = 150
-const WIDE_MENU_LEFT: int = 8
-const WIDE_MENU_RIGHT: int = 155
-const WIDE_RETRY_LEFT: int = 164
-const WIDE_RETRY_RIGHT: int = 311
-## 描边内缩 1px 后的实心块：x165..310（146）、y130..169（40）。
+## 两个出口的**实测**矩形（屏幕坐标）。按钮区在 y=256，按钮高 88。
+## PET-80：逐项 ×2（8→16 / 155→311 / 164→328 / 311→623 / 128→256 / 171→343 / 150→300）。
+const BUTTON_SCAN_ROW: int = 300
+const WIDE_MENU_LEFT: int = 16
+const WIDE_MENU_RIGHT: int = 311
+const WIDE_RETRY_LEFT: int = 328
+const WIDE_RETRY_RIGHT: int = 623
+## 描边内缩后的实心块：x329..622（294）、y258..341（84）。
 ## PET-77：主按钮改用已批准切片 `ui_button_primary_*_64x20`，切片在 GOLD_500 填充之上
 ## 还各占 1px（上 = GOLD_600 描边之内的 GOLD_200 高光；下 = GOLD_600 描边之下的烘焙投影），
-## 故填充块由 42 行收到 40 行 —— 按钮**盒子**仍是同一个 44px，见 BUTTON_CHROME。
-const WIDE_RETRY_GOLD: Rect2i = Rect2i(165, 130, 146, 40)
-## 描边内缩 1px 后的实心块上沿（两个出口同高）。
-const BUTTON_FILL_TOP: int = 130
+## 故填充块比盒子矮 4 行 —— 按钮**盒子**仍是同一个 88px，见 BUTTON_CHROME。
+##
+## PET-80：这些内缩量读的是切片自身的**纹素**结构（本卡不动 assets/**），故横向仍是 1px、
+## 纵向仍是 2px —— 不随坐标系 ×2，只是跟着盒子一起平移 / 变宽变高。
+const WIDE_RETRY_GOLD: Rect2i = Rect2i(329, 258, 294, 84)
+## 描边内缩后的实心块上沿（两个出口同高）。
+const BUTTON_FILL_TOP: int = 258
 ## 按钮盒子在填充之上额外占的行数（每侧 2：1px 描边 + 1px 高光 / 投影）。
-## 总高 = 填充 40 + 2×2 = 44，正好是 06 §1 的触摸下限；这条换算就是 _probe_actions_wide() 末段的依据。
+## 总高 = 填充 84 + 2×2 = 88，正好是 06 §1 的触摸下限；这条换算就是 _probe_actions_wide() 末段的依据。
 const BUTTON_CHROME: int = 2
-## 出口按钮盒子的上下沿（屏幕坐标）：按钮区在 y=128、整高 44。
-const BUTTON_BOX_TOP: int = 128
-const BUTTON_BOX_BOTTOM: int = 171
-## 两个出口之间那道 8px 空隙必须露出主面板底色。
-const WIDE_GAP_LEFT: int = 156
-const WIDE_GAP_RIGHT: int = 164
+## 出口按钮盒子的上下沿（屏幕坐标）：按钮区在 y=256、整高 88。
+const BUTTON_BOX_TOP: int = 256
+const BUTTON_BOX_BOTTOM: int = 343
+## 两个出口之间那道 16px 空隙必须露出主面板底色。
+const WIDE_GAP_LEFT: int = 312
+const WIDE_GAP_RIGHT: int = 328
 
-## 180×320 竖屏下读数区与两个出口的**实测**坐标。
-const NARROW_SCAN_COL: int = 100
-const NARROW_READOUT_TOP: int = 32
-const NARROW_READOUT_BOTTOM: int = 207
-const NARROW_READOUT_RIGHT: int = 171
-const NARROW_MENU_TOP: int = 216
-const NARROW_RETRY_TOP: int = 268
-const NARROW_RETRY_GOLD: Rect2i = Rect2i(9, 270, 162, 40)
-const NARROW_MENU_SCAN_ROW: int = 240
+## 360×640 竖屏下读数区与两个出口的**实测**坐标（PET-80 前 180×320，逐项 ×2：100→200 / 32→64 /
+## 207→415 / 171→343 / 216→432 / 268→536 / 240→480）。
+const NARROW_SCAN_COL: int = 200
+const NARROW_READOUT_TOP: int = 64
+const NARROW_READOUT_BOTTOM: int = 415
+const NARROW_READOUT_RIGHT: int = 343
+const NARROW_MENU_TOP: int = 432
+const NARROW_RETRY_TOP: int = 536
+const NARROW_RETRY_GOLD: Rect2i = Rect2i(17, 538, 326, 84)
+const NARROW_MENU_SCAN_ROW: int = 480
+
+## 硬阴影的厚度（**逻辑**像素）。PET-80：1 → 2。
+##
+## 它来自 `PaletteTheme._build_panel_shadow()` 的 `border_width_right/bottom`，取值是 `BORDER_WIDTH`
+## —— 代码画的逻辑像素（**不是**九宫格切片的纹素边距），故随坐标系 ×2。
+## 于是阴影从「右下各 1 列 / 行」变成「各 2 列 / 行」，阴影像素总数由 w + h + 1 变成 2(w + h + 2)。
+## 读数区**自己**那圈 BROWN_600 描边不跟着变：它来自 PanelSecondary 的 StyleBoxTexture 边距
+## （THIN_FRAME_MARGIN_* = 2 纹素，本卡不动 assets/**），仍是 1 逻辑像素。
+const SHADOW_PX: int = 2
 
 ## 06 §1：可点击区域下限（设备像素）。实测填充块加两侧 BUTTON_CHROME 即按钮整高。
-const MIN_TOUCH_SIZE: int = 44
+## PET-80：44 → 88（06 §1 的触摸下限随基准画布 ×2）。
+const MIN_TOUCH_SIZE: int = 88
 
-## 反向对照的位移量。
-const SHIFT: float = 4.0
+## 反向对照的位移量。它是一条**长度**，故随坐标系 ×2（PET-80 前 4）。
+const SHIFT: float = 8.0
 
 var _h: RefCounted = null
 var _tree: SceneTree = null
 var _theme: Theme = null
 var _scene: Control = null
+var _script: GDScript = null
 var _border: Color = Color.BLACK
 var _gold: Color = Color.BLACK
 var _gold_edge: Color = Color.BLACK
@@ -113,6 +159,7 @@ func run(tree: SceneTree, harness: RefCounted, theme: Theme) -> void:
 	_tree = tree
 	_h = harness
 	_theme = theme
+	_script = load(THEME_SCRIPT_PATH)
 	_border = Palette.get_color(Palette.Key.BROWN_600)
 	_gold = Palette.get_color(Palette.Key.GOLD_500)
 	_gold_edge = Palette.get_color(Palette.Key.GOLD_600)
@@ -132,8 +179,9 @@ func run(tree: SceneTree, harness: RefCounted, theme: Theme) -> void:
 	await _probe_reverse()
 
 
-## 组 11a：320×180 下读数区是一块 304×88 的次级面板（1px BROWN_600 描边、NAVY_800 内芯），
-## 右下各外扩 1px NAVY_900 硬阴影（06 §2.2 阴影行 / v0.1.5 甲案），标题栏分隔线横贯 304px。
+## 组 11a：640×360 下读数区是一块 608×176 的次级面板（1 逻辑像素 BROWN_600 描边 ——
+## 那圈描边读的是切片纹素，不随坐标系 ×2、NAVY_800 内芯），右下各外扩 SHADOW_PX 像素
+## NAVY_900 硬阴影（06 §2.2 阴影行 / v0.1.5 甲案），标题栏分隔线横贯 608px。
 func _probe_readout_wide() -> void:
 	var image: Image = await _open_scene(WIDE)
 	if image == null:
@@ -143,37 +191,42 @@ func _probe_readout_wide() -> void:
 	_h.check(hits == [WIDE_READOUT_LEFT, WIDE_READOUT_RIGHT],
 		"第 %d 行应恰好在这 2 个 x 上是 BROWN_600：%s（实际 %s）" % [
 			READOUT_SCAN_ROW, [WIDE_READOUT_LEFT, WIDE_READOUT_RIGHT], hits])
-	_h.check(WIDE_READOUT_RIGHT - WIDE_READOUT_LEFT + 1 == 304, "读数区的内宽应为 304px")
-	_h.check(WIDE_READOUT_BOTTOM - WIDE_READOUT_TOP + 1 == 88, "读数区的高应为 88px")
-	_h.check(_h.count_row(image, WIDE_READOUT_TOP, SCAN_LEFT, SCAN_RIGHT, _border) == 304,
+	_h.check(WIDE_READOUT_RIGHT - WIDE_READOUT_LEFT + 1 == 608, "读数区的内宽应为 608px")
+	_h.check(WIDE_READOUT_BOTTOM - WIDE_READOUT_TOP + 1 == 176, "读数区的高应为 176px")
+	_h.check(_h.count_row(image, WIDE_READOUT_TOP, SCAN_LEFT, SCAN_RIGHT, _border) == 608,
 		"读数区上沿 y=%d 应整行是描边" % WIDE_READOUT_TOP)
-	_h.check(_h.count_row(image, WIDE_READOUT_BOTTOM, SCAN_LEFT, SCAN_RIGHT, _border) == 304,
+	_h.check(_h.count_row(image, WIDE_READOUT_BOTTOM, SCAN_LEFT, SCAN_RIGHT, _border) == 608,
 		"读数区下沿 y=%d 应整行是描边" % WIDE_READOUT_BOTTOM)
-	_h.check(_h.count_col(image, WIDE_READOUT_LEFT, WIDE_READOUT_TOP, WIDE_READOUT_BOTTOM + 1, _border) == 88,
+	_h.check(_h.count_col(image, WIDE_READOUT_LEFT, WIDE_READOUT_TOP, WIDE_READOUT_BOTTOM + 1, _border) == 176,
 		"读数区左缘 x=%d 应整列是描边" % WIDE_READOUT_LEFT)
-	_h.check(_h.count_col(image, WIDE_READOUT_RIGHT, WIDE_READOUT_TOP, WIDE_READOUT_BOTTOM + 1, _border) == 88,
+	_h.check(_h.count_col(image, WIDE_READOUT_RIGHT, WIDE_READOUT_TOP, WIDE_READOUT_BOTTOM + 1, _border) == 176,
 		"读数区右缘 x=%d 应整列是描边" % WIDE_READOUT_RIGHT)
 
 	# 硬阴影：右边是**列**（沿 y 走），下边是**行**（沿 x 走）。两者在方盒上数值相同，
-	# 这里 304×88 宽高不等，参数写反了会当场红。
+	# 这里 608×176 宽高不等，参数写反了会当场红。
 	_assert_readout_shadow(image, WIDE_READOUT_LEFT, WIDE_READOUT_TOP, WIDE_READOUT_RIGHT,
-		WIDE_READOUT_BOTTOM, "320×180")
+		WIDE_READOUT_BOTTOM, "640×360")
 
-	_h.check(_h.count_row(image, TITLE_GOLD_ROW, 0, WIDE.x, _gold_edge) == WIDE_TITLE_GOLD,
-		"标题栏分隔线应是第 %d 行上的整条 %dpx" % [TITLE_GOLD_ROW, WIDE_TITLE_GOLD])
-	_h.check(_h.count_row(image, TITLE_GOLD_ROW - 1, 0, WIDE.x, _gold_edge) == 0
+	# 标题栏分隔线：整条 608px，且只占标题栏最后 TITLE_GOLD_ROWS 行 —— 再往上、再往下都不许有。
+	# PET-80：线厚 1 行 → TITLE_GOLD_ROWS 行（BORDER_WIDTH ×2），判别力不变（上下各一行仍必须是零）。
+	for offset: int in TITLE_GOLD_ROWS:
+		_h.check(_h.count_row(image, TITLE_GOLD_ROW - offset, 0, WIDE.x, _gold_edge) == WIDE_TITLE_GOLD,
+			"标题栏分隔线第 %d 行应是整条 %dpx" % [TITLE_GOLD_ROW - offset, WIDE_TITLE_GOLD])
+	_h.check(_h.count_row(image, TITLE_GOLD_ROW - TITLE_GOLD_ROWS, 0, WIDE.x, _gold_edge) == 0
 			and _h.count_row(image, TITLE_GOLD_ROW + 1, 0, WIDE.x, _gold_edge) == 0,
-		"分隔线上下各一行都不许有金像素（厚 1px）")
+		"分隔线上下各一行都不许有金像素（分隔线只占 %d 行）" % TITLE_GOLD_ROWS)
 	# 钉住扫描窗口的两条边界：窗口外（最外圈面板框那一带）只许出现**外框切片自己**那两条
 	# BROWN_600 木质带，且必须落在固定列上 —— 否则上面那条「恰好 2 个」随时可能被外框顶掉。
 	#
 	# 原来钉：窗口外命中 0（旧外框是 StyleBoxFlat：3px 描边 + BROWN_500 填充，
 	#         而窗口外那几列恰好落在填充上，所以当时确实是 0）。
-	# 现在钉：命中数 == 2，且命中列 == 外框自带的那两条（左 x1/x2、右 x317/x318）。
+	# 现在钉：命中数 == 2，且命中列 == 外框自带的那两条（左 x1/x2、右 x637/x638）。
 	# 为什么是同一件事：这条要证的是「窗口外那几列只属于外框，不掺本界面自己的任何描边」。
 	#   外框改用已批准切片后，切片在描边内侧多了一条 BROWN_600（旧 StyleBoxFlat 那里是填充），
 	#   于是「0」这个数字不再成立；改钉「恰好 2 且位置固定」把同一件事证得更死 ——
 	#   数量或位置任一变化（多一条、挪一列、本界面有描边漏出窗口）都会转红。
+	#   PET-80：切片边距是纹素读数，故这 3 列**贴边**不动，只是画布宽了、右带整体右移了 320 列。
+	#   窗口边界同理贴着边（SCAN_LEFT / SCAN_RIGHT 的定义处有说明），于是窗口外仍是同一块区域。
 	var left_out: Array[int] = _row_hits(image, READOUT_SCAN_ROW, 0, SCAN_LEFT, _border)
 	_h.check(left_out == FRAME_LEFT_BAND,
 		"扫描窗口左侧（x< %d）应恰好是外框自带的那两条木质带 %s（实际 %s）" % [
@@ -184,8 +237,8 @@ func _probe_readout_wide() -> void:
 			SCAN_RIGHT, FRAME_RIGHT_BAND, right_out])
 
 
-## 组 11b：两个出口按钮的实心块 —— 主按钮 GOLD_500、次按钮 NAVY_700，各 148×44，
-## 中间留 8px、两端各留 8px 安全边距；实测整高不得低于 06 §1 的 44 触摸下限。
+## 组 11b：两个出口按钮的实心块 —— 主按钮 GOLD_500、次按钮 NAVY_700，各 296×88，
+## 中间留 16px、两端各留 16px 安全边距；实测整高不得低于 06 §1 的 88 触摸下限。
 func _probe_actions_wide() -> void:
 	var image: Image = await _open_scene(WIDE)
 	if image == null:
@@ -214,42 +267,70 @@ func _probe_actions_wide() -> void:
 	# 「返回主菜单」是次要出口：ButtonSecondary（NAVY_700 底 + NAVY_600 描边）。
 	# 量的是**首末命中**而不是连续段长：扫描行穿过按钮文字，段长会被墨迹打断，
 	# 而「底色一直铺到左右两条描边内侧」正是这里要证的那件事。
+	#
+	# PET-80：内缩量由 1 变 2 —— 次按钮是 StyleBoxFlat，描边取自 BORDER_WIDTH（1 → 2），
+	# 跟着坐标系 ×2；这不像主按钮那样读切片纹素。故实心块首末命中各内缩 2，不是 1。
 	_h.check(_span_row(image, BUTTON_SCAN_ROW, SCAN_LEFT, SCAN_RIGHT, _secondary)
-			== [WIDE_MENU_LEFT + 1, WIDE_MENU_RIGHT - 1],
-		"次按钮的实心块应恰好铺满 x%d..%d（实际 %s）" % [WIDE_MENU_LEFT + 1, WIDE_MENU_RIGHT - 1,
+			== [WIDE_MENU_LEFT + 2, WIDE_MENU_RIGHT - 2],
+		"次按钮的实心块应恰好铺满 x%d..%d（实际 %s）" % [WIDE_MENU_LEFT + 2, WIDE_MENU_RIGHT - 2,
 			_span_row(image, BUTTON_SCAN_ROW, SCAN_LEFT, SCAN_RIGHT, _secondary)])
+	# 原来钉：这 2 个 x 上是次按钮描边（StyleBoxFlat 各 1px）。
+	# 现在钉：这 4 个 x —— 描边厚 2px，左右各占 2 列。
+	# 为什么是同一件事：这条要证的是「实心块两侧各有一条 NAVY_600 描边，且只有这两条」。
+	#   描边变厚只是同一件事的又一个读数：若描边哪天又从 2 变回 1、或挪了位置、
+	#   或多出第三条（比如主面板底色漏出 NAVY_600），这个 4 元组都会当场破裂。
 	var navy_hits: Array[int] = _row_hits(image, BUTTON_SCAN_ROW, SCAN_LEFT, SCAN_RIGHT, _secondary_edge)
-	_h.check(navy_hits == [WIDE_MENU_LEFT, WIDE_MENU_RIGHT],
-		"第 %d 行应恰好在这 2 个 x 上是次按钮描边 NAVY_600：%s（实际 %s）" % [
-			BUTTON_SCAN_ROW, [WIDE_MENU_LEFT, WIDE_MENU_RIGHT], navy_hits])
+	_h.check(navy_hits == [WIDE_MENU_LEFT, WIDE_MENU_LEFT + 1, WIDE_MENU_RIGHT - 1, WIDE_MENU_RIGHT],
+		"第 %d 行应恰好在这 4 个 x 上是次按钮描边 NAVY_600：%s（实际 %s）" % [
+			BUTTON_SCAN_ROW,
+			[WIDE_MENU_LEFT, WIDE_MENU_LEFT + 1, WIDE_MENU_RIGHT - 1, WIDE_MENU_RIGHT], navy_hits])
 
-	# 两个出口之间的空隙：8px，且必须是主面板底色 —— 露不出底色就说明两块连成了一片。
+	# 窗口右界不是随手取的数字：它必须**正好压在内芯 NAVY_600 右环带的左沿**上 ——
+	# 扫描行上它本身是环带、左邻一列不是、再往右 BORDER_WIDTH 列之外也不是（环带恰好 BORDER_WIDTH 列宽）。
+	# 内芯内缩量或描边厚度一变，这里先红，于是「为什么是 632」是一个可验证的事实，不是一句注释。
+	_h.check(SCAN_RIGHT == WIDE.x - _script.FRAME_BORDER_WIDTH - _script.BORDER_WIDTH,
+		"窗口右界应等于内芯环带左沿（%d − FRAME_BORDER_WIDTH %d − BORDER_WIDTH %d）" % [
+			WIDE.x, _script.FRAME_BORDER_WIDTH, _script.BORDER_WIDTH])
+	_h.check(_h.near(image.get_pixel(SCAN_RIGHT, BUTTON_SCAN_ROW), _secondary_edge)
+			and not _h.near(image.get_pixel(SCAN_RIGHT - 1, BUTTON_SCAN_ROW), _secondary_edge)
+			and not _h.near(image.get_pixel(SCAN_RIGHT + _script.BORDER_WIDTH, BUTTON_SCAN_ROW),
+				_secondary_edge),
+		"第 %d 行上 x=%d 应是内芯右环带（%d 列宽，左沿在此），左邻一列与环带之外都不该是" % [
+			BUTTON_SCAN_ROW, SCAN_RIGHT, _script.BORDER_WIDTH])
+
+	# 两个出口之间的空隙：16px，且必须是主面板底色 —— 露不出底色就说明两块连成了一片。
 	_h.check(_h.count_row(image, BUTTON_SCAN_ROW, WIDE_GAP_LEFT, WIDE_GAP_RIGHT, _core)
 			== WIDE_GAP_RIGHT - WIDE_GAP_LEFT,
 		"两个出口之间应留 %dpx 主面板底色" % (WIDE_GAP_RIGHT - WIDE_GAP_LEFT))
 	# 两端的安全边距由上面那两组描边坐标本身推出，不是另抄一份尺寸。
-	_h.check(WIDE_MENU_LEFT == 8, "首个出口的左安全边距应为 8px（06 §1）")
-	_h.check(WIDE.x - 1 - WIDE_RETRY_RIGHT == 8, "末个出口的右安全边距应为 8px（06 §1）")
+	_h.check(WIDE_MENU_LEFT == 16, "首个出口的左安全边距应为 16px（06 §1）")
+	_h.check(WIDE.x - 1 - WIDE_RETRY_RIGHT == 16, "末个出口的右安全边距应为 16px（06 §1）")
 
-	# 触摸下限：实测填充块高 40，加上下各 2px（描边 + 高光 / 投影）即按钮整高，必须 ≥ 44。
+	# 触摸下限：实测填充块高 84，加上下各 2px（描边 + 高光 / 投影）即按钮整高，必须 ≥ 88。
 	# 原来用 `+ BUTTON_BORDER * 2`；PET-77 主按钮换成切片后非填充部分由 2px 变 4px，
-	# 判据仍是「盒子整高 ≥ 44」，算式跟着换成 BUTTON_CHROME。
+	# 判据仍是「盒子整高 ≥ 触摸下限」，算式跟着换成 BUTTON_CHROME。
+	# PET-80：填充 40 → 84、下限 44 → 88，两边一起 ×2，「填充 + 非填充 == 下限」这个等式不变。
 	var button_height: int = WIDE_RETRY_GOLD.size.y + BUTTON_CHROME * 2
 	_h.check(button_height >= MIN_TOUCH_SIZE,
 		"出口按钮实测整高 %dpx 不得低于 06 §1 的 %d 触摸下限" % [button_height, MIN_TOUCH_SIZE])
-	# 原来钉：次按钮的 NAVY_700 填充块高 == 主按钮 GOLD_500 填充块高（两者都是 StyleBoxFlat，各 1px 描边）。
-	# 现在钉：次按钮填充纵向**恰好比主按钮各多一行**（[129,170] vs [130,169]）—— 用首末命中表达。
-	# 为什么是同一件事：这条要证的是「两个出口是同一个尺寸的盒子，没有一高一矮」。
-	#   主按钮切片自带上下各 1px 的高光 / 投影，填充自然比次按钮矮 2px；盒子本身仍是同一个 44px。
-	#   若两个盒子真的不等高，这个「各多一行」的关系会当场破裂，比原来的「相等」判别力更强。
-	var menu_fill: Array = _span_col(image, WIDE_MENU_LEFT + 1, BUTTON_BOX_TOP,
+	# 原来钉（PET-77 之前）：次按钮的 NAVY_700 填充块高 == 主按钮 GOLD_500 填充块高
+	#   （两者都是 StyleBoxFlat，各 1px 描边，故填充块也同高）。
+	# PET-77 改钉：次按钮填充纵向比主按钮各多一行（[129,170] vs [130,169]）—— 主按钮切片自带
+	#   上下各 1px 的高光 / 投影，填充自然矮 2px；当时只能靠这个间接关系表达「盒子同高」。
+	# 现在钉（PET-80）：**两者重新完全相等**（[258,341] vs [258,341]）。
+	# 为什么是同一件事：这条要证的从来是「两个出口是同一个尺寸的盒子，没有一高一矮」。
+	#   次按钮的 StyleBoxFlat 描边随 BORDER_WIDTH 由 1px 变 2px，正好补上主按钮切片多占的那一行，
+	#   于是两块实心区又回到同一矩形 —— 命题没变，表达反而更强：PET-77 那阵子「各差一行」
+	#   需要读者先接受一个间接换算，现在直接钉**相等**，任一侧盒子高一像素都会当场破裂。
+	var menu_fill: Array = _span_col(image, WIDE_MENU_LEFT + 2, BUTTON_BOX_TOP,
 		BUTTON_BOX_BOTTOM + 1, _secondary)
-	_h.check(menu_fill == [WIDE_RETRY_GOLD.position.y - 1, WIDE_RETRY_GOLD.end.y],
-		"次按钮的填充块应恰好比主按钮上下各多一行（期望 %s，实际 %s）" % [
-			[WIDE_RETRY_GOLD.position.y - 1, WIDE_RETRY_GOLD.end.y], menu_fill])
+	_h.check(menu_fill == [WIDE_RETRY_GOLD.position.y, WIDE_RETRY_GOLD.end.y - 1],
+		"次按钮的填充块应恰好与主按钮同一矩形（期望 %s，实际 %s）" % [
+			[WIDE_RETRY_GOLD.position.y, WIDE_RETRY_GOLD.end.y - 1], menu_fill])
 
 
-## 组 11c：180×320 竖屏下两个出口改竖排 —— 同处一列、自上而下、仍贴底部安全线。
+## 组 11c：360×640 竖屏下两个出口改竖排 —— 同处一列、自上而下、仍贴底部安全线。
+## PET-80：折叠档的读数逐项 ×2（180×320 → 360×640、44 → 88、8 → 16、164 → 328）。
 func _probe_narrow() -> void:
 	var image: Image = await _open_scene(NARROW)
 	if image == null:
@@ -259,29 +340,30 @@ func _probe_narrow() -> void:
 	_h.check(hits == [NARROW_READOUT_TOP, NARROW_READOUT_BOTTOM],
 		"第 %d 列应恰好在这 2 个 y 上是读数区描边：%s（实际 %s）" % [
 			NARROW_SCAN_COL, [NARROW_READOUT_TOP, NARROW_READOUT_BOTTOM], hits])
-	_h.check(_h.count_row(image, NARROW_READOUT_TOP, SCAN_LEFT, 176, _border) == 164
-			and _h.count_row(image, NARROW_READOUT_BOTTOM, SCAN_LEFT, 176, _border) == 164,
-		"折叠后读数区应铺满可用宽（164px）")
-	_assert_readout_shadow(image, 8, NARROW_READOUT_TOP, NARROW_READOUT_RIGHT,
-		NARROW_READOUT_BOTTOM, "180×320")
+	_h.check(_h.count_row(image, NARROW_READOUT_TOP, SCAN_LEFT, 352, _border) == 328
+			and _h.count_row(image, NARROW_READOUT_BOTTOM, SCAN_LEFT, 352, _border) == 328,
+		"折叠后读数区应铺满可用宽（328px）")
+	_assert_readout_shadow(image, 16, NARROW_READOUT_TOP, NARROW_READOUT_RIGHT,
+		NARROW_READOUT_BOTTOM, "360×640")
 	_h.check(_h.count_row(image, TITLE_GOLD_ROW, 0, NARROW.x, _gold_edge) == NARROW_TITLE_GOLD,
 		"标题栏分隔线应随可用宽收窄到 %dpx" % NARROW_TITLE_GOLD)
 
 	# 折叠的形态由「同 x、递增 y」证明，而不是由某个宽高数字证明。
-	_h.check(_span_col(image, NARROW_SCAN_COL, NARROW_MENU_TOP, NARROW_MENU_TOP + 44, _secondary)
-			== [NARROW_MENU_TOP + 1, NARROW_MENU_TOP + 42],
+	# PET-80：段落长度 44 → 88（按钮整高 ×2），首末命中各内缩 2（StyleBoxFlat 描边 1 → 2）。
+	_h.check(_span_col(image, NARROW_SCAN_COL, NARROW_MENU_TOP, NARROW_MENU_TOP + 88, _secondary)
+			== [NARROW_MENU_TOP + 2, NARROW_MENU_TOP + 85],
 		"次按钮应落在 y%d 起的那一段（实际 %s）" % [NARROW_MENU_TOP,
-			_span_col(image, NARROW_SCAN_COL, NARROW_MENU_TOP, NARROW_MENU_TOP + 44, _secondary)])
+			_span_col(image, NARROW_SCAN_COL, NARROW_MENU_TOP, NARROW_MENU_TOP + 88, _secondary)])
 	var gold: Dictionary = _measure(image, _gold)
 	_h.check(gold["box"] == NARROW_RETRY_GOLD,
 		"主按钮的实心块应落在 %s（实际 %s）" % [NARROW_RETRY_GOLD, gold["box"]])
-	_h.check(NARROW_MENU_TOP - (NARROW_READOUT_BOTTOM + 1) == 8,
-		"读数区与按钮区之间应隔 8px（%d → %d）" % [NARROW_READOUT_BOTTOM, NARROW_MENU_TOP])
-	_h.check(NARROW_RETRY_TOP - (NARROW_MENU_TOP + 44) == 8, "两个出口之间应隔 8px")
-	_h.check(NARROW.y - 1 - (NARROW_RETRY_TOP + 43) == 8, "末个出口应贴底部安全线")
-	_h.check(_span_row(image, NARROW_MENU_SCAN_ROW, SCAN_LEFT, 176, _secondary) == [9, 170],
-		"折叠后次按钮的实心块宽应铺满可用宽（x9..170，实际 %s）" % [
-			_span_row(image, NARROW_MENU_SCAN_ROW, SCAN_LEFT, 176, _secondary)])
+	_h.check(NARROW_MENU_TOP - (NARROW_READOUT_BOTTOM + 1) == 16,
+		"读数区与按钮区之间应隔 16px（%d → %d）" % [NARROW_READOUT_BOTTOM, NARROW_MENU_TOP])
+	_h.check(NARROW_RETRY_TOP - (NARROW_MENU_TOP + 88) == 16, "两个出口之间应隔 16px")
+	_h.check(NARROW.y - 1 - (NARROW_RETRY_TOP + 87) == 16, "末个出口应贴底部安全线")
+	_h.check(_span_row(image, NARROW_MENU_SCAN_ROW, SCAN_LEFT, 352, _secondary) == [18, 341],
+		"折叠后次按钮的实心块宽应铺满可用宽（x18..341，实际 %s）" % [
+			_span_row(image, NARROW_MENU_SCAN_ROW, SCAN_LEFT, 352, _secondary)])
 
 
 ## 反向对照：证明上面数到的像素确实来自那两个出口与那层阴影，且位置由布局决定。
@@ -307,7 +389,7 @@ func _probe_reverse() -> void:
 			== [WIDE_READOUT_LEFT, WIDE_READOUT_RIGHT],
 		"反向对照：藏掉按钮区不得动到读数区的描边（两者互不遮挡）")
 
-	# 反向对照二：整体右移 4px，实心块必须整体跟着走。
+	# 反向对照二：整体右移 8px（PET-80 前 4px），实心块必须整体跟着走。
 	image = await _open_scene(WIDE)
 	if image == null:
 		return
@@ -335,10 +417,11 @@ func _probe_reverse() -> void:
 	var no_shadow: Image = (await _h.settle())["image"]
 	if no_shadow == null:
 		return
+	# PET-80：阴影外扩量 1 → SHADOW_PX，采样范围跟着放宽到把整条环带盖住。
 	_h.check(_h.count_col(no_shadow, WIDE_READOUT_RIGHT + 1, WIDE_READOUT_TOP,
-			WIDE_READOUT_BOTTOM + 2, _shadow) == 0
+			WIDE_READOUT_BOTTOM + SHADOW_PX + 1, _shadow) == 0
 			and _h.count_row(no_shadow, WIDE_READOUT_BOTTOM + 1, WIDE_READOUT_LEFT,
-				WIDE_READOUT_RIGHT + 2, _shadow) == 0,
+				WIDE_READOUT_RIGHT + SHADOW_PX + 1, _shadow) == 0,
 		"反向对照：藏掉 Shadow 叠层后读数区右下应一个阴影像素都不剩")
 	_h.check(_row_hits(no_shadow, READOUT_SCAN_ROW, SCAN_LEFT, SCAN_RIGHT, _border)
 			== [WIDE_READOUT_LEFT, WIDE_READOUT_RIGHT],
@@ -360,19 +443,23 @@ func _probe_reverse() -> void:
 		"反向对照：换成 PanelCore 后读数区的 BROWN_600 描边应归零 —— 描边来自次级面板变体")
 
 
-## 读数区的硬阴影契约：右边一列、下边一行各外扩 1px，上 / 左没有。
-## 总阴影数由几何推出（w + h + 1，右下角点只画一次），不是抄来的魔数。
+## 读数区的硬阴影契约：右边 SHADOW_PX 列、下边 SHADOW_PX 行各外扩到矩形之外，上 / 左没有。
+## 总阴影数由几何推出（SHADOW_PX × (w + h + SHADOW_PX)，右下角块只画一次），不是抄来的魔数。
+##
+## PET-80：外扩量 1 → SHADOW_PX。形状不变：仍是「紧贴右下、正上方与正左侧一个都没有」，
+## 只是那圈环带厚了一倍。上 / 左两条的采样范围一并放宽到盖住整条环带 ——
+## 范围只到 right + 1 的话，多出来的第二列即使被画到矩形正上方也量不到。
 func _assert_readout_shadow(image: Image, left: int, top: int, right: int, bottom: int,
 		label: String) -> void:
 	var width: int = right - left + 1
 	var height: int = bottom - top + 1
-	_h.check(_h.count_col(image, right + 1, top, bottom + 2, _shadow) == height + 1,
-		"%s：读数区右边应外扩 1px NAVY_900，共 %d 个" % [label, height + 1])
-	_h.check(_h.count_row(image, bottom + 1, left, right + 2, _shadow) == width + 1,
-		"%s：读数区下边应外扩 1px NAVY_900，共 %d 个" % [label, width + 1])
-	_h.check(_h.count_row(image, top - 1, left, right + 1, _shadow) == 0,
+	_h.check(_h.count_col(image, right + 1, top, bottom + SHADOW_PX + 1, _shadow) == height + SHADOW_PX,
+		"%s：读数区右边应外扩 %dpx NAVY_900，共 %d 个" % [label, SHADOW_PX, height + SHADOW_PX])
+	_h.check(_h.count_row(image, bottom + 1, left, right + SHADOW_PX + 1, _shadow) == width + SHADOW_PX,
+		"%s：读数区下边应外扩 %dpx NAVY_900，共 %d 个" % [label, SHADOW_PX, width + SHADOW_PX])
+	_h.check(_h.count_row(image, top - 1, left, right + SHADOW_PX + 1, _shadow) == 0,
 		"%s：读数区上边不得有阴影" % label)
-	_h.check(_h.count_col(image, left - 1, top, bottom + 1, _shadow) == 0,
+	_h.check(_h.count_col(image, left - 1, top, bottom + SHADOW_PX + 1, _shadow) == 0,
 		"%s：读数区左边不得有阴影" % label)
 
 

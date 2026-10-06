@@ -1,5 +1,5 @@
 ## capture_screens.gd
-## 职责：六场景「同屏对照截图」取证工具（PET-77 验收要求 —— 每屏一组 320×180 原生 + 4× 最近邻放大）。
+## 职责：六场景「同屏对照截图」取证工具（PET-77 验收要求 —— 每屏一组 640×360 原生 + 4× 最近邻放大）。
 ##       取的是根视口**真实画出来的**那一帧（同 blueprint_smoke 的取像方式），不是自己重画的示意图。
 ## 所属系统：tests（取证工具 —— 与 run_render_probes.gd 同类，故同样不挂进 run_tests.gd 常规回归）
 ## 依赖：六个 .tscn
@@ -7,10 +7,13 @@
 ##       不得引用 Autoload 标识符或 class_name 全局 —— 本文件是 --script 入口，
 ##       在工程注册这些全局之前就被编译（同 blueprint_smoke.gd 的理由），一律走 res:// 路径加载。
 ##
-## 运行：**必须** `--resolution 320x180`，且**不得 headless**。
-##   <godot> --path <repo> --resolution 320x180 --script res://tests/unit/capture_screens.gd -- --tag before
-## 产物：tests/output/screens_<tag>_<key>.png（320×180 原生）
-##       tests/output/screens_<tag>_<key>_4x.png（1280×720，最近邻，不引入插值假色）
+## 运行：**必须** `--resolution 640x360`，且**不得 headless**。
+##   <godot> --path <repo> --resolution 640x360 --script res://tests/unit/capture_screens.gd -- --tag before
+## 产物：tests/output/screens_<tag>_<key>.png（640×360 原生）
+##       tests/output/screens_<tag>_<key>_4x.png（2560×1440，最近邻，不引入插值假色）
+##
+## PET-80：基准画布 320×180 → 640×360，故窗口尺寸随之翻倍、放大图也随之外框翻倍。
+## ZOOM 保持 4×不变 —— 验收要的正是「4× 最近邻」下依然锐利这张证据。
 ##
 ## 为什么放大用 INTERPOLATE_NEAREST：05_ART_STYLE 规定像素风禁用线性过滤。
 ## 放大图只用于肉眼看轮廓，若用双线性会把「1px 描边」糊成灰边，反而看不出接入是否生效。
@@ -18,9 +21,11 @@
 extends SceneTree
 
 const OUT_DIR: String = "res://tests/output/"
-## 06 §1 基准 320×180。窗口尺寸必须与之相等，否则 content_scale 会整体缩放，截出来的不是原生帧。
-const DESIGN: Vector2i = Vector2i(320, 180)
-## 06 §1 的整数缩放倍率（窗口默认 4×）。放大图只作肉眼核对，不参与任何断言。
+## 06 §1 基准 640×360（PET-80 前 320×180）。窗口尺寸必须与之相等，
+## 否则 content_scale 会整体缩放，截出来的不是原生帧。
+const DESIGN: Vector2i = Vector2i(640, 360)
+## 证据图的最近邻放大倍率。PET-80 起窗口是 2× 整数放大，故 4× 是叠在窗口之上的再放大 ——
+## 放大图只作肉眼核对，不参与任何断言。
 const ZOOM: int = 4
 ## 等两帧再取像：场景 _ready() 里的布局与首帧重绘要落地（同 blueprint_smoke._run_screenshot_case）。
 const SETTLE_FRAMES: int = 2
@@ -55,7 +60,7 @@ func _initialize() -> void:
 		_tag,
 	])
 	if DisplayServer.window_get_size() != DESIGN:
-		print("!! 窗口不是 %s —— 必须用 --resolution 320x180 且不得 headless，否则截到的不是原生帧。" % str(DESIGN))
+		print("!! 窗口不是 %s —— 必须用 --resolution 640x360 且不得 headless，否则截到的不是原生帧。" % str(DESIGN))
 		quit(1)
 		return
 

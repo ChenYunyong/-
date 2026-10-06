@@ -65,10 +65,10 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 3.0
-offset_top = 3.0
-offset_right = -3.0
-offset_bottom = -3.0
+offset_left = 6.0
+offset_top = 6.0
+offset_right = -6.0
+offset_bottom = -6.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
@@ -79,10 +79,10 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 3.0
-offset_top = 3.0
-offset_right = -3.0
-offset_bottom = -3.0
+offset_left = 6.0
+offset_top = 6.0
+offset_right = -6.0
+offset_bottom = -6.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
@@ -91,10 +91,10 @@ theme_type_variation = &"PanelHighlight"
 [node name="RegionLeft" type="Control" parent="."]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = 15.0
-offset_top = 8.0
-offset_right = 88.0
-offset_bottom = 132.0
+offset_left = 30.0
+offset_top = 16.0
+offset_right = 176.0
+offset_bottom = 264.0
 mouse_filter = 2
 
 [node name="Shadow" type="Panel" parent="RegionLeft"]
@@ -122,10 +122,10 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 8.0
-offset_top = 8.0
-offset_right = -8.0
-offset_bottom = -80.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = -160.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
@@ -137,10 +137,10 @@ autowrap_mode = 3
 [node name="ButtonDelete" type="Button" parent="RegionLeft"]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = 2.0
-offset_top = 46.0
-offset_right = 71.0
-offset_bottom = 70.0
+offset_left = 4.0
+offset_top = 92.0
+offset_right = 142.0
+offset_bottom = 140.0
 theme_type_variation = &"ButtonSecondary"
 text = "删除"
 shortcut = SubResource("Shortcut_delete")
@@ -148,10 +148,10 @@ shortcut = SubResource("Shortcut_delete")
 [node name="ButtonUndo" type="Button" parent="RegionLeft"]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = 2.0
-offset_top = 72.0
-offset_right = 71.0
-offset_bottom = 96.0
+offset_left = 4.0
+offset_top = 144.0
+offset_right = 142.0
+offset_bottom = 192.0
 theme_type_variation = &"ButtonSecondary"
 text = "撤销"
 shortcut = SubResource("Shortcut_undo")
@@ -159,20 +159,20 @@ shortcut = SubResource("Shortcut_undo")
 [node name="ButtonClear" type="Button" parent="RegionLeft"]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = 2.0
-offset_top = 98.0
-offset_right = 71.0
-offset_bottom = 122.0
+offset_left = 4.0
+offset_top = 196.0
+offset_right = 142.0
+offset_bottom = 244.0
 theme_type_variation = &"ButtonSecondary"
 text = "清空蓝图"
 
 [node name="RegionCenter" type="Control" parent="."]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = 98.0
-offset_top = 8.0
-offset_right = 226.0
-offset_bottom = 132.0
+offset_left = 196.0
+offset_top = 16.0
+offset_right = 452.0
+offset_bottom = 264.0
 mouse_filter = 2
 
 [node name="Shadow" type="Panel" parent="RegionCenter"]
@@ -201,10 +201,10 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 8.0
-offset_top = 8.0
-offset_right = -8.0
-offset_bottom = -8.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = -16.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
@@ -216,19 +216,19 @@ autowrap_mode = 3
 [node name="BlueprintCanvas" type="Control" parent="RegionCenter"]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = 2.0
-offset_top = 2.0
-offset_right = 126.0
-offset_bottom = 122.0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 252.0
+offset_bottom = 244.0
 script = ExtResource("4_workspace")
 
 [node name="RegionRight" type="Control" parent="."]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = 226.0
-offset_top = 8.0
-offset_right = 309.0
-offset_bottom = 132.0
+offset_left = 452.0
+offset_top = 16.0
+offset_right = 618.0
+offset_bottom = 264.0
 mouse_filter = 2
 
 [node name="Shadow" type="Panel" parent="RegionRight"]
@@ -256,10 +256,10 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 8.0
-offset_top = 8.0
-offset_right = -8.0
-offset_bottom = -8.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = -16.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
@@ -271,10 +271,10 @@ autowrap_mode = 3
 [node name="RegionBottom" type="Control" parent="."]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = 15.0
-offset_top = 132.0
-offset_right = 309.0
-offset_bottom = 180.0
+offset_left = 30.0
+offset_top = 264.0
+offset_right = 618.0
+offset_bottom = 360.0
 mouse_filter = 2
 
 [node name="Shadow" type="Panel" parent="RegionBottom"]
@@ -300,29 +300,29 @@ theme_type_variation = &"PanelSecondary"
 [node name="NodeWarehouse" type="Control" parent="RegionBottom"]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = 2.0
-offset_top = 2.0
-offset_right = 229.0
-offset_bottom = 46.0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 458.0
+offset_bottom = 92.0
 script = ExtResource("4_workspace")
 area = 1
 
 [node name="RegionAction" type="Control" parent="."]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = 246.0
-offset_top = 148.0
-offset_right = 310.0
-offset_bottom = 162.0
+offset_left = 492.0
+offset_top = 296.0
+offset_right = 620.0
+offset_bottom = 324.0
 mouse_filter = 2
 
 [node name="ButtonStartCombat" type="Button" parent="."]
 unique_name_in_owner = true
 layout_mode = 0
-offset_left = 246.0
-offset_top = 142.0
-offset_right = 310.0
-offset_bottom = 162.0
+offset_left = 492.0
+offset_top = 284.0
+offset_right = 620.0
+offset_bottom = 324.0
 text = "开始战斗"
 
 [node name="NoticePanel" parent="." instance=ExtResource("3_notice")]
@@ -332,9 +332,9 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 24.0
-offset_top = 30.0
-offset_right = -24.0
-offset_bottom = -30.0
+offset_left = 48.0
+offset_top = 60.0
+offset_right = -48.0
+offset_bottom = -60.0
 grow_horizontal = 2
 grow_vertical = 2

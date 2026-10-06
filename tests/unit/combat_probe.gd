@@ -1,6 +1,6 @@
 ## combat_probe.gd
-## 职责：COMBAT 战场 / 状态带分界与上沿的像素取证（09 §4）—— 证明 06 §8 的「上沿 1px NAVY_600 分隔、
-##       底色 NAVY_800、横贯全宽」是**真的画在** y=135 这条线上，而不是「字段等于多少」。
+## 职责：COMBAT 战场 / 状态带分界与上沿的像素取证（09 §4）—— 证明 06 §8 的「上沿 NAVY_600 分隔、
+##       底色 NAVY_800、横贯全宽」是**真的画在** y=270 这条线上，而不是「字段等于多少」。
 ## 所属系统：tests（09 §4 像素探针的 S1-08 用例模块）
 ## 依赖：Palette, assets/ui/theme_main.tres, scenes/combat/combat.tscn
 ## 禁止：不得加 --headless 运行（dummy 渲染驱动不产像素）；
@@ -10,8 +10,9 @@
 ## 按 09 §4 v0.1.3 的先例把 S1-08 的用例拆成模块，聚合入口只留一次调用。
 ##
 ## 判别力（09 §4：每条断言都要能被一次「故意改坏」打红）：
-##   反向对照一 —— 把状态带整体上移 4px，分界必须跟着移到 y=131、y=135 必须不再是上沿。
-##                 量不到这个位移，就说明断言只是在「某处找一条深色线」，证明不了它落在 135。
+##   反向对照一 —— 把状态带整体上移 8px（PET-80 前 4px），分界必须跟着移到 y=262、
+##                 y=270 必须不再是上沿。量不到这个位移，就说明断言只是在「某处找一条深色线」，
+##                 证明不了它落在 270。
 ##   反向对照二 —— 藏掉 StatusEdge，状态带区内的 NAVY_600 必须归零、且全图不再有整行结构线。
 ##                 （PET-77 起战场区的节点卡切片自带 NAVY_600 卡面像素，故判据由「全图归零」
 ##                  改为「带内归零 + 全图无整行同色结构线」，判别力不变，见 _probe_band()。）
@@ -24,21 +25,32 @@ extends RefCounted
 
 const SCENE_PATH: String = "res://scenes/combat/combat.tscn"
 
-## 画布 = 06 §1 的 320×180 基准，与布局常量同一坐标系，于是「第几个像素」可以直接读。
-const CANVAS: Vector2i = Vector2i(320, 180)
-const VIEWPORT: Vector2 = Vector2(320.0, 180.0)
+## 画布 = 06 §1 的 640×360 基准（PET-80 前 320×180），与布局常量同一坐标系，
+## 于是「第几个像素」可以直接读。
+const CANVAS: Vector2i = Vector2i(640, 360)
+const VIEWPORT: Vector2 = Vector2(640.0, 360.0)
 
-## 06 §8 实测的分界：状态带 y 135–180。上沿占第 135 行，填充从第 136 行起、到第 179 行止。
-const BAND_TOP: int = 135
-const BAND_FILL_TOP: int = 136
-const BAND_BOTTOM: int = 179
-## 反向对照的位移量。
-const SHIFT: float = 4.0
+## 06 §8 实测的分界：状态带 y 270–360（PET-80 前 135–180，逐项 ×2）。
+## 上沿占第 270–271 行，填充从第 272 行起、到第 359 行止。
+const BAND_TOP: int = 270
+const BAND_FILL_TOP: int = 272
+const BAND_BOTTOM: int = 359
+## 上沿厚度（逻辑像素）。PET-80：1 → 2。
+##
+## StatusEdge 是 combat.tscn 里 `anchors_preset = 10` + `offset_bottom` 的 **ColorRect**，
+## 由代码按布局常量画 —— 不是 assets/** 的九宫格切片（切片边距是**纹素**读数，本卡不动）。
+## 故它随基准画布 ×2 是**布局**变化：2 逻辑像素在 2× 整数缩放下仍是 4 设备像素，
+## 与 PET-80 前「1 逻辑像素 × 4× = 4 设备像素」逐设备像素相同。PET-81 换 2× 切片推翻不了这条。
+const EDGE_ROWS: int = 2
+## 反向对照的位移量。它是一条**长度**，故随坐标系 ×2（PET-80 前 4）。
+const SHIFT: float = 8.0
 
 ## 06 §8.1（v0.1.10，Codex 裁定）的 5 个只读读数块，按带内从左到右的顺序，节点名同 combat.tscn。
 const READOUT_BLOCKS: PackedStringArray = ["Wave", "Core", "Heat", "Energy", "Queue"]
 ## 反向对照三：把读数行的行距撑到远大于格宽，排在后面的格会被挤出视口。
-const ROW_OVERFLOW_SEPARATION: int = 200
+## PET-80：格宽随坐标系 ×2，故这个「远大于」的取值也跟着 ×2（200 → 400），
+## 否则它就从「远大于格宽」退化成「约等于格宽」——判别力会悄悄变弱。
+const ROW_OVERFLOW_SEPARATION: int = 400
 
 var _h: RefCounted = null
 var _tree: SceneTree = null
@@ -76,38 +88,40 @@ func _probe_band() -> void:
 		return
 
 	_assert_scanlines(image, BAND_TOP, "状态带上沿")
-	# 上沿**只有 1px**：分界的上一行与下一行都不该是 NAVY_600。
+	# 上沿**只有 EDGE_ROWS 行**（PET-80 前 1 行）：上沿之上、以及上沿之下都不该再有 NAVY_600。
 	_h.check(_h.count_row(image, BAND_TOP - 1, 0, CANVAS.x, _band_edge) == 0,
-		"分界上一行 y=%d 不得是 NAVY_600（上沿只占一行）" % (BAND_TOP - 1))
+		"分界上一行 y=%d 不得是 NAVY_600（上沿之上没有第二条线）" % (BAND_TOP - 1))
 	_h.check(_h.count_row(image, BAND_FILL_TOP, 0, CANVAS.x, _band_edge) == 0,
-		"分界下一行 y=%d 不得是 NAVY_600（上沿只占一行）" % BAND_FILL_TOP)
+		"分界下一行 y=%d 不得是 NAVY_600（上沿只占 %d 行）" % [BAND_FILL_TOP, EDGE_ROWS])
 	# 「只有这一条」。
 	# 原来钉：整幅画面的 NAVY_600 == 320（= 上沿长度）—— 当时战场区一个 NAVY_600 像素都没有。
-	# 现在钉：① 状态带区（y ≥ BAND_TOP）内 NAVY_600 == 320；
-	#         ② 全图不存在第二条**整行 320px** 的 NAVY_600。
+	# 现在钉：① 状态带区（y ≥ BAND_TOP）内 NAVY_600 == EDGE_ROWS × 640（= 上沿自身的像素数）；
+	#         ② 全图不存在 EDGE_ROWS 行之外的第二条**整行 640px** 的 NAVY_600。
 	# 为什么是同一件事：这条要证的是「分界线只有一条，别处不再有同色的结构线」。
+	#   PET-80 让两个数一起 ×2（320 → 640，1 行 → 2 行），比值不变，钉的仍是同一件事。
 	#   接入 VB-03 后，蓝图节点卡切片（已批准素材，`asset_manifest.json` 的 tokens 列有 NAVY_600）
-	#   自带卡面描边像素，落在战场区的 MachineView 里 —— 那是 24×24 的**卡面**，不是结构线。
-	#   ① 把「带内唯一」钉得和原来一样死；② 比原来更精确地把「别处没有同色结构线」钉死
-	#   （结构线 = 整行 320px；卡面单张最多 24px 连续，越不过这条判据）。
-	_h.check(_count_range(image, BAND_TOP, CANVAS.y, _band_edge) == CANVAS.x,
-		"状态带区（y %d–%d）的 NAVY_600 应恰好等于上沿长度 %d（实际 %d）" % [
-			BAND_TOP, BAND_BOTTOM, CANVAS.x, _count_range(image, BAND_TOP, CANVAS.y, _band_edge)])
+	#   自带卡面描边像素，落在战场区的 MachineView 里 —— 那是 24×24 **纹素**的卡面贴到 48×48
+	#   的格上，最近邻放大后单张卡面最多 48px 连续，与一整行 640px 差一个数量级。
+	#   ① 把「带内唯一」钉得和原来一样死；② 比原来更精确地把「别处没有同色结构线」钉死。
+	_h.check(_count_range(image, BAND_TOP, CANVAS.y, _band_edge) == CANVAS.x * EDGE_ROWS,
+		"状态带区（y %d–%d）的 NAVY_600 应恰好等于上沿自身的像素数 %d（实际 %d）" % [
+			BAND_TOP, BAND_BOTTOM, CANVAS.x * EDGE_ROWS,
+			_count_range(image, BAND_TOP, CANVAS.y, _band_edge)])
 	var full_rows: Array[int] = _full_width_rows(image, _band_edge)
-	_h.check(full_rows == [BAND_TOP],
-		"全图应只有第 %d 行是整行 %dpx 的 NAVY_600 —— 别处不得再有同色结构线（实际 %s）" % [
-			BAND_TOP, CANVAS.x, full_rows])
+	_h.check(full_rows == [BAND_TOP, BAND_FILL_TOP - 1],
+		"全图应只有第 %d–%d 行是整行 %dpx 的 NAVY_600 —— 别处不得再有同色结构线（实际 %s）" % [
+			BAND_TOP, BAND_FILL_TOP - 1, CANVAS.x, full_rows])
 
-	# 战场侧：状态带的两种色一点都不能越界到 y<135。
+	# 战场侧：状态带的两种色一点都不能越界到 y<270。
 	_h.check(_count_range(image, 0, BAND_TOP, _band_fill) == 0,
 		"战场区域（y 0–%d）内不得出现 NAVY_800（实际 %d）" % [
 			BAND_TOP - 1, _count_range(image, 0, BAND_TOP, _band_fill)])
-	# 状态带侧：NAVY_600 只在上沿那一行，带内其余部分不许再出现。
+	# 状态带侧：NAVY_600 只在上沿那几行，带内其余部分不许再出现。
 	_h.check(_count_range(image, BAND_FILL_TOP, CANVAS.y, _band_edge) == 0,
 		"状态带体内（y %d–%d）不得出现 NAVY_600（实际 %d）" % [
 			BAND_FILL_TOP, BAND_BOTTOM, _count_range(image, BAND_FILL_TOP, CANVAS.y, _band_edge)])
 
-	# 06 §8：横贯全宽、贴到画面底，且左 / 下缘没有第三条描边（§8 只规定了上沿 1px）。
+	# 06 §8：横贯全宽、贴到画面底，且左 / 下缘没有第三条描边（§8 只规定了上沿）。
 	_h.check(_h.count_col(image, 0, BAND_FILL_TOP, CANVAS.y, _band_fill) == CANVAS.y - BAND_FILL_TOP,
 		"状态带左缘 x=0 应整列是 NAVY_800（左缘无描边）")
 	_h.check(_h.count_col(image, CANVAS.x - 1, BAND_FILL_TOP, CANVAS.y, _band_fill) == CANVAS.y - BAND_FILL_TOP,
@@ -116,7 +130,7 @@ func _probe_band() -> void:
 		"状态带底边 y=%d 应整行是 NAVY_800（底缘无描边）" % BAND_BOTTOM)
 
 
-## 反向对照一：状态带整体上移 4px，分界必须跟着走。
+## 反向对照一：状态带整体上移 8px（PET-80 前 4px），分界必须跟着走。
 ## 这条把「探针读的是确切那一行」和「那条线确实由状态带的位置决定」一起钉死：
 ## 若探针只是在某处找一条深色线，位移之后它仍然会绿。
 func _probe_shift() -> void:
@@ -132,7 +146,7 @@ func _probe_shift() -> void:
 	var image: Image = (await _h.settle())["image"]
 	if image == null:
 		return
-	_assert_scanlines(image, BAND_TOP - int(SHIFT), "反向对照：状态带上移 4px 后")
+	_assert_scanlines(image, BAND_TOP - int(SHIFT), "反向对照：状态带上移 8 逻辑像素后")
 	_h.check(_h.count_row(image, BAND_TOP, 0, CANVAS.x, _band_edge) == 0,
 		"反向对照：上移后原来的 y=%d 不该再有 NAVY_600" % BAND_TOP)
 	_h.check(_count_range(image, CANVAS.y - int(SHIFT), CANVAS.y, _band_fill) == 0,
@@ -155,9 +169,10 @@ func _probe_layers() -> void:
 	if control == null:
 		return
 	# 原来钉：藏掉 StatusEdge 后全图 NAVY_600 归零。
-	# 现在钉：状态带区内 NAVY_600 归零 **且** 全图不再有任何整行 320px 的 NAVY_600。
+	# 现在钉：状态带区内 NAVY_600 归零 **且** 全图不再有任何整行 640px 的 NAVY_600。
 	# 为什么是同一件事：这条要证的是「组 8 数到的那些像素确实来自 StatusEdge 这一层」。
-	#   带内那 320 个像素与那条整行结构线同属上沿，两层判据一起看，来源仍是唯一的一层。
+	#   带内那 1280 个像素（2 行 × 640）与那两条整行结构线同属上沿，两层判据一起看，
+	#   来源仍是唯一的一层。PET-80 只让「1280」和「两条」替代「320」和「一条」，命题不变。
 	_h.check(_count_range(control, BAND_TOP, CANVAS.y, _band_edge) == 0,
 		"反向对照：藏掉上沿后状态带区内的 NAVY_600 应归零（实际 %d）"
 			% _count_range(control, BAND_TOP, CANVAS.y, _band_edge))
@@ -172,7 +187,7 @@ func _probe_layers() -> void:
 		return
 	_h.check(_count_range(control, BAND_FILL_TOP, CANVAS.y, _band_fill) == 0,
 		"反向对照：藏掉底色后带内 NAVY_800 应归零（实际 %d）" % _count_range(control, BAND_FILL_TOP, CANVAS.y, _band_fill))
-	# 上沿与底色是两层：藏掉底色不该把上沿一起带走，否则「1px 分隔」这条就无从谈起。
+	# 上沿与底色是两层：藏掉底色不该把上沿一起带走，否则「上沿分隔」这条就无从谈起。
 	_h.check(_h.count_row(control, BAND_TOP, 0, CANVAS.x, _band_edge) == CANVAS.x,
 		"反向对照：藏掉底色后上沿仍应是整条 %d px" % CANVAS.x)
 	fill.set(&"visible", true)
@@ -187,7 +202,7 @@ func _probe_layers() -> void:
 ##   反向对照一 —— 藏掉末格（队列）：那一格墨迹必须归零，且其余四格的矩形与墨迹逐一不变。
 ##                 「藏一个不会有这种局部效果」说明五格是各自独立画出来的，不是同一格。
 ##   反向对照二 —— 整条状态带移出画布：5 格墨迹必须全部归零（证明墨迹来自这条带）。
-##   反向对照三 —— 把行距撑到 200：完整落在视口内的格数必须少于 5、末格墨迹归零
+##   反向对照三 —— 把行距撑到 400：完整落在视口内的格数必须少于 5、末格墨迹归零
 ##                 （证明「5 格都画出来」这条不是恒真）。
 func _probe_readouts() -> void:
 	print("")
@@ -268,7 +283,7 @@ func _probe_readout_band_shift() -> void:
 	bar.position = origin
 
 
-## 反向对照三：把读数行的行距撑到 200，后面的格被挤出视口。
+## 反向对照三：把读数行的行距撑到 400（PET-80 前 200，随格宽 ×2），后面的格被挤出视口。
 ## 这条直接打在「5 格都画出来」上：量不出这个变化，就说明那 5 条断言只是在数节点。
 func _probe_readout_row_overflow(viewport_rect: Rect2) -> void:
 	var row: Control = _scene.find_child("ReadoutsRow", true, false) as Control
@@ -356,15 +371,21 @@ func _ink(image: Image, rect: Rect2) -> int:
 	return ink
 
 
-## 「第 y 行整行都是 wanted」——分界行与反向对照后的新分界行共用同一条断言。
+## 「第 y 行整行都是 wanted」+「上沿这一列恰好 EDGE_ROWS 个」。
+## 分界行与反向对照后的新分界行共用同一条断言。
+##
+## PET-80：原来第二句只在 1 行的区间里数 1 个像素，恒真 —— 它当时只是「上沿厚 1px」这句话的
+## 回声。上沿 ×2 成 EDGE_ROWS 行之后，这句改成在**整段上沿**里数 EDGE_ROWS 个，
+## 于是它真的开始排除「上沿被画厚 / 画薄」：厚一行会数出 3，薄一行会数出 1。判别力只增不减。
 func _assert_scanlines(image: Image, edge_row: int, label: String) -> void:
 	_h.check(_h.count_row(image, edge_row, 0, CANVAS.x, _band_edge) == CANVAS.x,
 		"%s：第 %d 行应是整条 %d px 的 NAVY_600" % [label, edge_row, CANVAS.x])
-	_h.check(_h.count_col(image, CANVAS.x / 2, edge_row, edge_row + 1, _band_edge) == 1,
-		"%s：任一列在第 %d 行应恰好 1 个 NAVY_600（上沿厚 1px）" % [label, edge_row])
+	_h.check(_h.count_col(image, CANVAS.x / 2, edge_row, edge_row + EDGE_ROWS, _band_edge) == EDGE_ROWS,
+		"%s：任一列在上沿第 %d–%d 行应恰好 %d 个 NAVY_600（上沿厚 %d 逻辑像素）" % [
+			label, edge_row, edge_row + EDGE_ROWS - 1, EDGE_ROWS, EDGE_ROWS])
 
 
-## 把 combat.tscn 挂上画布、按 320×180 落一次布局，再取像素。
+## 把 combat.tscn 挂上画布、按 640×360 落一次布局，再取像素。
 ## 显式调 apply_layout_for 而不是依赖画布尺寸推断 —— 探针要证的是「布局画在哪」，
 ## 折叠与否这件事已由 test_combat.gd 单独覆盖，这里把它钉死在宽屏档。
 func _open_scene() -> Image:
@@ -382,8 +403,9 @@ func _open_scene() -> Image:
 
 
 ## 整行铺满判据色的那些行号 —— 即画面上**横贯全宽的结构线**。
-## 「别处不得再有同色结构线」这条判据靠它：卡面 / 图标那类小色块最多几十像素连续，
-## 凑不满一整行，于是它们不会污染这条断言，而一条真的漏出来的分界线一定跑不掉。
+## 「别处不得再有同色结构线」这条判据靠它：卡面 / 图标那类小色块最多几十像素连续
+## （PET-80 后单张卡面最多 48px），凑不满一整行 640px，于是它们不会污染这条断言，
+## 而一条真的漏出来的分界线一定跑不掉。
 func _full_width_rows(image: Image, wanted: Color) -> Array[int]:
 	var rows: Array[int] = []
 	for y: int in image.get_size().y:

@@ -26,31 +26,38 @@ const WORKSPACE_SCRIPT_PATH: String = "res://scripts/ui/blueprint_workspace.gd"
 const NODE_DATA_PATH: String = "res://scripts/data/node_data.gd"
 
 ## 06 §1 基准与 §7.1 的窄屏取样。
-const REFERENCE_VIEWPORT: Vector2 = Vector2(320.0, 180.0)
-const NARROW_VIEWPORT: Vector2 = Vector2(180.0, 320.0)
-const SHORT_NARROW_VIEWPORT: Vector2 = Vector2(120.0, 180.0)
+## PET-80：基准 320×180 → 640×360，窄屏取样随之 ×2（与 CombatLayout 的说明同）——
+## `narrow_*` 系列每一处都直接吃 `viewport_size`，取样不翻倍就会量到「旧尺寸的框装新尺寸的常量」。
+const REFERENCE_VIEWPORT: Vector2 = Vector2(640.0, 360.0)
+const NARROW_VIEWPORT: Vector2 = Vector2(360.0, 640.0)
+const SHORT_NARROW_VIEWPORT: Vector2 = Vector2(240.0, 360.0)
 
 ## 06 §9 只规定了「3 个选项 + 不足时以跳过补齐」，未给实测矩形；下面是本文件**独立复写**的
 ## 期望值，刻意不从 RewardLayout 取 —— 测试若与被测实现同源，实现里把 96 写成 86 时
 ## 两边一起错，断言就永远是绿的。推导依据见 reward_layout.gd 的文件头。
-const TITLE_RECT: Rect2 = Rect2(8.0, 8.0, 304.0, 16.0)
-const CARDS_RECT: Rect2 = Rect2(8.0, 32.0, 304.0, 140.0)
+## PET-80：以下各行逐项 ×2。改动前依次是 (8,8,304,16) / (8,32,304,140) /
+## (0,0,96,140) · (104,0,…) · (208,0,…) / (8,8,164,16) / (8,32,164,280) /
+## (0,0,164,88) · (0,96,…) · (0,192,…)。
+## 窄屏三行的推导（360×640）：卡宽 = 360 − 2×16 = 328；卡高 = clamp((640−64−16 − 2×16)/3, 88, 280)
+## = clamp(528/3 = 176, 88, 280) = 176 —— 与宽屏的 280 不同，说明它**不是**简单照抄宽屏卡高。
+const TITLE_RECT: Rect2 = Rect2(16.0, 16.0, 608.0, 32.0)
+const CARDS_RECT: Rect2 = Rect2(16.0, 64.0, 608.0, 280.0)
 ## 三张卡片的矩形**相对卡片区原点**（卡片是卡片区的子节点）。
 const CARD_RECTS: Array[Rect2] = [
-	Rect2(0.0, 0.0, 96.0, 140.0),
-	Rect2(104.0, 0.0, 96.0, 140.0),
-	Rect2(208.0, 0.0, 96.0, 140.0),
+	Rect2(0.0, 0.0, 192.0, 280.0),
+	Rect2(208.0, 0.0, 192.0, 280.0),
+	Rect2(416.0, 0.0, 192.0, 280.0),
 ]
-const NARROW_TITLE_RECT: Rect2 = Rect2(8.0, 8.0, 164.0, 16.0)
-const NARROW_CARDS_RECT: Rect2 = Rect2(8.0, 32.0, 164.0, 280.0)
+const NARROW_TITLE_RECT: Rect2 = Rect2(16.0, 16.0, 328.0, 32.0)
+const NARROW_CARDS_RECT: Rect2 = Rect2(16.0, 64.0, 328.0, 560.0)
 const NARROW_CARD_RECTS: Array[Rect2] = [
-	Rect2(0.0, 0.0, 164.0, 88.0),
-	Rect2(0.0, 96.0, 164.0, 88.0),
-	Rect2(0.0, 192.0, 164.0, 88.0),
+	Rect2(0.0, 0.0, 328.0, 176.0),
+	Rect2(0.0, 192.0, 328.0, 176.0),
+	Rect2(0.0, 384.0, 328.0, 176.0),
 ]
 
-## 06 §1：可点击区域下限（设备像素）。
-const MIN_TOUCH_SIZE: float = 44.0
+## 06 §1：可点击区域下限（设备像素）。PET-80：44 → 88（基准画布翻倍 ⇒ 参考缩放 4× → 2×）。
+const MIN_TOUCH_SIZE: float = 88.0
 
 const CARD_NAMES: PackedStringArray = ["Card0", "Card1", "Card2"]
 ## 06 §9 点名的五项，逐项都要有落点。
@@ -139,7 +146,7 @@ func _run_layout_checks(ctx: RefCounted) -> void:
 	var layout: GDScript = load(LAYOUT_SCRIPT_PATH)
 	if not ctx.check(layout != null, "reward_layout.gd 应能加载"):
 		return
-	ctx.check(not layout.is_narrow(REFERENCE_VIEWPORT), "320×180 基准应判定为宽屏")
+	ctx.check(not layout.is_narrow(REFERENCE_VIEWPORT), "640×360 基准应判定为宽屏")
 
 	ctx.equal(layout.title_rect(REFERENCE_VIEWPORT), TITLE_RECT, "标题栏矩形")
 	ctx.equal(layout.cards_rect(REFERENCE_VIEWPORT), CARDS_RECT, "卡片区矩形")
@@ -154,18 +161,19 @@ func _run_layout_checks(ctx: RefCounted) -> void:
 	ctx.equal(layout.Region.TITLE, 0, "Region.TITLE 的序号")
 	ctx.equal(layout.Region.CARDS, 1, "Region.CARDS 的序号")
 
-	# 几何关系（由规范推出，不是抄来的魔数）：三列等宽等高、间距 8、两端各留 8 安全边距。
+	# 几何关系（由规范推出，不是抄来的魔数）：三列等宽等高、间距 16、两端各留 16 安全边距。
 	# 卡片矩形以**卡片区原点**为基准，故安全边距要加回卡片区自己的位置才是屏幕坐标。
+	# PET-80：全节 8 → 16（06 §1 的间距刻度 / 安全边距随坐标系 ×2）。
 	var gap: float = rects[1].position.x - rects[0].end.x
-	ctx.equal(gap, 8.0, "相邻卡片间距（06 §1 间距刻度）")
-	ctx.equal(CARDS_RECT.position.x + rects[0].position.x, 8.0, "首张卡片的左安全边距（06 §1）")
-	ctx.equal(CARDS_RECT.position.x + rects[2].end.x, REFERENCE_VIEWPORT.x - 8.0,
+	ctx.equal(gap, 16.0, "相邻卡片间距（06 §1 间距刻度）")
+	ctx.equal(CARDS_RECT.position.x + rects[0].position.x, 16.0, "首张卡片的左安全边距（06 §1）")
+	ctx.equal(CARDS_RECT.position.x + rects[2].end.x, REFERENCE_VIEWPORT.x - 16.0,
 		"末张卡片的右安全边距（06 §1）")
 	ctx.equal(rects[0].size.x, rects[1].size.x, "三列必须等宽")
 	ctx.equal(rects[1].size.x, rects[2].size.x, "三列必须等宽")
 	ctx.equal(rects[0].position.y, rects[1].position.y, "三列必须同高同起点")
 	ctx.equal(rects[0].position.y, rects[2].position.y, "三列必须同高同起点")
-	ctx.equal(layout.cards_rect(REFERENCE_VIEWPORT).end.y, REFERENCE_VIEWPORT.y - 8.0,
+	ctx.equal(layout.cards_rect(REFERENCE_VIEWPORT).end.y, REFERENCE_VIEWPORT.y - 16.0,
 		"卡片区应铺到底部安全线")
 	# 标题栏在卡片区之上，两者不重叠 —— 否则第一行卡片会被标题栏压住。
 	ctx.equal(TITLE_RECT.end.y + gap, CARDS_RECT.position.y, "标题栏与卡片区之间隔一个间距")
@@ -178,9 +186,9 @@ func _run_narrow_layout_checks(ctx: RefCounted) -> void:
 	if not ctx.check(layout != null, "reward_layout.gd 应能加载"):
 		return
 
-	ctx.check(layout.is_narrow(NARROW_VIEWPORT), "180×320 竖屏应判定为窄屏")
-	ctx.check(not layout.is_narrow(REFERENCE_VIEWPORT), "320×180 基准应判定为宽屏")
-	ctx.check(not layout.is_narrow(Vector2(320.0, 320.0)), "1:1 应判定为宽屏（判定是 < 而非 <=）")
+	ctx.check(layout.is_narrow(NARROW_VIEWPORT), "360×640 竖屏应判定为窄屏")
+	ctx.check(not layout.is_narrow(REFERENCE_VIEWPORT), "640×360 基准应判定为宽屏")
+	ctx.check(not layout.is_narrow(Vector2(640.0, 640.0)), "1:1 应判定为宽屏（判定是 < 而非 <=）")
 	ctx.check(not layout.is_narrow(Vector2.ZERO), "拿不到尺寸时应按宽屏处理，不得随手折叠")
 
 	_check_rect_approx(ctx, layout.title_rect(NARROW_VIEWPORT), NARROW_TITLE_RECT, "窄屏标题栏矩形")
@@ -197,12 +205,12 @@ func _run_narrow_layout_checks(ctx: RefCounted) -> void:
 	ctx.equal(rects[1].position.x, rects[2].position.x, "折叠后三张卡片应同处一列")
 	ctx.check(rects[0].end.y <= rects[1].position.y and rects[1].end.y <= rects[2].position.y,
 		"折叠后三张卡片应自上而下依次排列且不重叠")
-	ctx.equal(rects[1].position.y - rects[0].end.y, 8.0, "折叠后的行间距（06 §1）")
+	ctx.equal(rects[1].position.y - rects[0].end.y, 16.0, "折叠后的行间距（06 §1）")
 
 
-## 06 §1：可点击区域 —— 卡片本身就是可点击区域，两个档位下都不得低于 44。
+## 06 §1：可点击区域 —— 卡片本身就是可点击区域，三个档位下都不得低于 88 设备像素。
 func _run_touch_size_checks(ctx: RefCounted) -> void:
-	ctx.begin_case("REWARD · 卡片可点击区域 ≥ 44（06 §1）")
+	ctx.begin_case("REWARD · 卡片可点击区域 ≥ 88（06 §1）")
 	var layout: GDScript = load(LAYOUT_SCRIPT_PATH)
 	if not ctx.check(layout != null, "reward_layout.gd 应能加载"):
 		return

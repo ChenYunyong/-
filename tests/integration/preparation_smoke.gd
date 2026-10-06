@@ -28,10 +28,12 @@ const LAYOUT_SCRIPT_PATH: String = "res://scripts/ui/preparation_layout.gd"
 const GAME_FLOW_PATH: String = "res://scripts/core/game_flow.gd"
 const LOG_PATH: String = "res://tests/output/preparation_smoke.log"
 
-## 06 §1 基准。所有实测值都以它为参照。
-const REFERENCE_VIEWPORT: Vector2 = Vector2(320.0, 180.0)
-## 06 §7.1 的窄屏取样。
-const NARROW_VIEWPORT: Vector2 = Vector2(180.0, 320.0)
+## 06 §1 基准。所有实测值都以它为参照。PET-80：320×180 → 640×360。
+const REFERENCE_VIEWPORT: Vector2 = Vector2(640.0, 360.0)
+## 06 §7.1 的窄屏取样。PET-80：180×320 → 360×640。
+## 它是**逻辑像素**取样（喂给 narrow_rects / apply_layout_for），故与基准画布同一套单位一起 ×2；
+## 宽 < 高的竖屏角色不变，折叠判定那条 < 的比较在两边都成立。
+const NARROW_VIEWPORT: Vector2 = Vector2(360.0, 640.0)
 ## R1 实测：停留 600 秒（10 分钟）模拟时间不得自动推进。
 const R1_SIMULATED_SECONDS: float = 600.0
 ## 漏加 --fixed-fps 时的兜底上限，与 run_tests.gd 同值。
@@ -42,19 +44,26 @@ const WALL_CLOCK_BUDGET_MS: int = 120_000
 const REGION_NAMES: PackedStringArray = [
 	"RegionLeft", "RegionCenter", "RegionRight", "RegionBottom", "RegionAction",
 ]
+## PET-80：§7 的实测读数**逐项 ×2**。左栏 x 15–88→30–176 · 中栏 98–226→196–452 ·
+## 右栏 226–309→452–618 · 底条 y 132–180→264–360 · CTA 246–310/148–162→492–620/296–324。
+## 每个长度都是原来的两倍，故「三栏等宽不重叠」「底条横贯」「CTA 嵌在底条右下角」逐条不变。
 const EXPECTED_WIDE: Array[Rect2] = [
-	Rect2(15.0, 8.0, 73.0, 124.0),
-	Rect2(98.0, 8.0, 128.0, 124.0),
-	Rect2(226.0, 8.0, 83.0, 124.0),
-	Rect2(15.0, 132.0, 294.0, 48.0),
-	Rect2(246.0, 148.0, 64.0, 14.0),
+	Rect2(30.0, 16.0, 146.0, 248.0),
+	Rect2(196.0, 16.0, 256.0, 248.0),
+	Rect2(452.0, 16.0, 166.0, 248.0),
+	Rect2(30.0, 264.0, 588.0, 96.0),
+	Rect2(492.0, 296.0, 128.0, 28.0),
 ]
+## PET-80：360×640 下的折叠读数，与 tests/unit/test_preparation.gd 独立复写同一组值。
+## 信息条 16→32、中栏 149.33333→298.66666、弹层 106.66667→213.33333、
+## 底条高 48→96（§7.1「高度不变」是**逻辑**不变，随坐标系 ×2）、CTA 44×44→88×88。
+## 右栏「底部弹层」占可用高的 1/3（NARROW_SHEET_RATIO）—— 比值不变，故 640/3 = 213.33333。
 const EXPECTED_NARROW: Array[Rect2] = [
-	Rect2(0.0, 0.0, 180.0, 16.0),
-	Rect2(8.0, 16.0, 164.0, 149.33333),
-	Rect2(0.0, 165.33333, 180.0, 106.66667),
-	Rect2(0.0, 272.0, 180.0, 48.0),
-	Rect2(128.0, 268.0, 44.0, 44.0),
+	Rect2(0.0, 0.0, 360.0, 32.0),
+	Rect2(16.0, 32.0, 328.0, 298.66666),
+	Rect2(0.0, 330.66666, 360.0, 213.33333),
+	Rect2(0.0, 544.0, 360.0, 96.0),
+	Rect2(256.0, 536.0, 88.0, 88.0),
 ]
 
 var _ctx: RefCounted = null
@@ -127,7 +136,7 @@ func _run_region_case() -> void:
 		_check_region(scene, index)
 
 	scene.call(&"apply_layout_for", REFERENCE_VIEWPORT)
-	_ctx.begin_case("PREPARATION 冒烟 · 按 320×180 重落一次布局")
+	_ctx.begin_case("PREPARATION 冒烟 · 按 640×360 重落一次布局")
 	for index: int in REGION_NAMES.size():
 		_check_region(scene, index)
 
@@ -255,15 +264,18 @@ func _run_narrow_case() -> void:
 	var state_before: int = _state_of_flow()
 
 	scene.call(&"apply_layout_for", NARROW_VIEWPORT)
-	_ctx.check(bool(scene.call(&"is_narrow_layout")), "180×320 应切到折叠布局")
+	_ctx.check(bool(scene.call(&"is_narrow_layout")), "360×640 应切到折叠布局")
 	for index: int in REGION_NAMES.size():
 		var region: Control = _find(scene, REGION_NAMES[index]) as Control
 		if region == null:
 			continue
 		_ctx.equal(region.position, EXPECTED_NARROW[index].position, "%s 的折叠位置" % REGION_NAMES[index])
-	_ctx.equal(_find(scene, "RegionLeft").size.y, 16.0, "左栏应收起为 16px 信息条")
+	# PET-80：16 → 32（信息条高，随基准画布 ×2）。
+	_ctx.equal(_find(scene, "RegionLeft").size.y, 32.0, "左栏应收起为 32 逻辑像素信息条（PET-80 前 16）")
 	var action: Control = _find(scene, "RegionAction") as Control
-	_ctx.equal(action.size, Vector2(44.0, 44.0), "窄屏 CTA 应达 44×44 触摸下限")
+	# PET-80：44×44 → 88×88。§1 的触摸下限是 44 **设备像素** ——
+	# 44 逻辑 × 4× 与 88 逻辑 × 2× 是同一批设备像素，门槛不因分辨率提升而放宽。
+	_ctx.equal(action.size, Vector2(88.0, 88.0), "窄屏 CTA 应达 88×88 逻辑像素触摸下限")
 	# §7.1：右栏窄屏改底部弹层，「选中节点时弹出」。本批没有选中，故弹层收起 ——
 	# 它是不是弹层由矩形位置证明，不由可见性证明。
 	_ctx.check(not (_find(scene, "RegionRight") as Control).visible, "窄屏下右栏弹层应收起")

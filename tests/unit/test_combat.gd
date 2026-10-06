@@ -28,38 +28,46 @@ const THEME_SCRIPT_PATH: String = "res://scripts/data/palette_theme.gd"
 ## 期望值若与被测实现同源，实现里把 135 写成 153 时两边一起错，断言就永远是绿的）。
 ## 下标即 CombatLayout.Region。两条都**全宽**——§8 明确写「横贯全宽的深色条」。
 const REGION_NAMES: PackedStringArray = ["Battlefield", "StatusBar"]
+## PET-80：三块（本节两块 + 下面三组窄屏矩形）逐项 ×2。改动前依次是
+## (0,0,320,135) / (0,135,320,45)。
 const EXPECTED_WIDE: Array[Rect2] = [
-	Rect2(0.0, 0.0, 320.0, 135.0),
-	Rect2(0.0, 135.0, 320.0, 45.0),
+	Rect2(0.0, 0.0, 640.0, 270.0),
+	Rect2(0.0, 270.0, 640.0, 90.0),
 ]
 
-## 06 §1 基准。
-const REFERENCE_VIEWPORT: Vector2 = Vector2(320.0, 180.0)
-## 06 §8：「该带占画面高约 25%」——实测 45 / 180。
+## 06 §1 基准（PET-80 前 320×180）。
+const REFERENCE_VIEWPORT: Vector2 = Vector2(640.0, 360.0)
+## 06 §8：「该带占画面高约 25%」——实测 90 / 360。**比值**，不随坐标系 ×2。
 const STATUS_BAR_SHARE: float = 0.25
 
 ## 06 §7.1 的窄屏取样（竖屏）。
-const NARROW_VIEWPORT: Vector2 = Vector2(180.0, 320.0)
-## 「另一个窄屏」取样，与 test_reward.gd / test_result.gd / combat_smoke.gd **共享** ——
-## 它们还把它喂给触摸下限检查，故本文件不得改它的值。
-## ⚠ 它高 180，与基准同高：min(45, 180 × 0.25) = 45 —— 状态带的 25% 上限**咬不住**（见下面的 TIGHT）。
-const SHORT_NARROW_VIEWPORT: Vector2 = Vector2(120.0, 180.0)
+##
+## PET-80：三个取样全部 ×2。它们是**与布局矩形同一套单位**的逻辑像素
+## （`narrow_rects(viewport_size)` 直接拿它当可用区尺寸），故必须跟基准画布一起翻倍，
+## 否则量到的是「旧尺寸的框装新尺寸的常量」。三个取样各自的**角色**在 ×2 后逐一保持不变：
+##   · NARROW = 基准旋转 90°（180×320 → 360×640）；
+##   · SHORT  = 与基准**同高**（180 → 360），故 25% 上限恰好不生效；
+##   · TIGHT  = **比基准矮**（160 → 320 < 360），故 25% 上限真的咬住。
+const NARROW_VIEWPORT: Vector2 = Vector2(360.0, 640.0)
+## 「另一个窄屏」取样，与 test_reward.gd / test_result.gd / combat_smoke.gd **共享**。
+## ⚠ 它高 360，与基准同高：min(90, 360 × 0.25 = 90) = 90 —— 状态带的 25% 上限**咬不住**（见下面的 TIGHT）。
+const SHORT_NARROW_VIEWPORT: Vector2 = Vector2(240.0, 360.0)
 const EXPECTED_NARROW: Array[Rect2] = [
-	Rect2(0.0, 0.0, 180.0, 275.0),
-	Rect2(0.0, 275.0, 180.0, 45.0),
+	Rect2(0.0, 0.0, 360.0, 550.0),
+	Rect2(0.0, 550.0, 360.0, 90.0),
 ]
 const EXPECTED_SHORT_NARROW: Array[Rect2] = [
-	Rect2(0.0, 0.0, 120.0, 135.0),
-	Rect2(0.0, 135.0, 120.0, 45.0),
+	Rect2(0.0, 0.0, 240.0, 270.0),
+	Rect2(0.0, 270.0, 240.0, 90.0),
 ]
 ## 只给 COMBAT 用的专用取样：**比基准更矮**的窄屏，专门让状态带的 25% 上限真的咬住。
-## §7.1 只给了「窄屏」这个条件，没给「多矮」—— 上限只有在视口比基准（320×180）矮时才生效。
-## 120 / 160 = 0.75 < 1 → 窄屏；160 < 180 → 比基准矮；min(45, 160 × 0.25 = 40) = 40 < 45 → 上限咬住。
+## §7.1 只给了「窄屏」这个条件，没给「多矮」—— 上限只有在视口比基准（640×360）矮时才生效。
+## 240 / 320 = 0.75 < 1 → 窄屏；320 < 360 → 比基准矮；min(90, 320 × 0.25 = 80) = 80 < 90 → 上限咬住。
 ## REWARD / RESULT 不掺这个更小的视口，以免牵连它们的触摸下限断言。
-const TIGHT_NARROW_VIEWPORT: Vector2 = Vector2(120.0, 160.0)
+const TIGHT_NARROW_VIEWPORT: Vector2 = Vector2(240.0, 320.0)
 const EXPECTED_TIGHT_NARROW: Array[Rect2] = [
-	Rect2(0.0, 0.0, 120.0, 120.0),
-	Rect2(0.0, 120.0, 120.0, 40.0),
+	Rect2(0.0, 0.0, 240.0, 240.0),
+	Rect2(0.0, 240.0, 240.0, 80.0),
 ]
 
 ## 06 §8.1（v0.1.10，Codex 裁定）的 5 个只读读数块，按带内从左到右的顺序。
@@ -79,7 +87,7 @@ const PRIMARY_READOUTS: PackedStringArray = ["Wave", "Core", "Heat"]
 const SECONDARY_READOUTS: PackedStringArray = ["Energy", "Queue"]
 ## 06 §1 的正文字号。二级读数就是它，一级读数必须**严格大于**它 ——
 ## 只断言「两者不同」的话，五格一起调小也会绿。
-const BODY_FONT_SIZE: int = 8
+const BODY_FONT_SIZE: int = 16
 
 ## 本批禁令（任务卡 FORBIDDEN：禁止实现任何战斗玩法）。
 ## COMBAT 在 Stage 4 会**合法地**引入固定 tick（03 §2 的 TICK_RATE / _physics_process），
@@ -159,12 +167,12 @@ func _run_layout_checks(ctx: RefCounted) -> void:
 
 	var battlefield: Rect2 = rects[layout.Region.BATTLEFIELD]
 	var bar: Rect2 = rects[layout.Region.STATUS_BAR]
-	ctx.equal(battlefield.end.y, bar.position.y, "战场下缘应与状态带上沿重合（§8 实测 y≈135）")
-	ctx.equal(bar.end.y, REFERENCE_VIEWPORT.y, "状态带下缘应贴到画面底（§8 实测 y=180）")
+	ctx.equal(battlefield.end.y, bar.position.y, "战场下缘应与状态带上沿重合（§8 实测 y≈135，PET-80 后 270）")
+	ctx.equal(bar.end.y, REFERENCE_VIEWPORT.y, "状态带下缘应贴到画面底（§8 实测 y=180，PET-80 后 360）")
 	ctx.equal(battlefield.position, Vector2.ZERO, "战场应从画面左上角起（§8：战斗画面占据整个主区域）")
 	ctx.equal(battlefield.position.x, bar.position.x, "两块区域左缘对齐")
 	ctx.equal(battlefield.end.x, bar.end.x, "两块区域右缘对齐（§8：状态带横贯全宽）")
-	ctx.equal(battlefield.end.x, REFERENCE_VIEWPORT.x, "两块区域都应满宽 320")
+	ctx.equal(battlefield.end.x, REFERENCE_VIEWPORT.x, "两块区域都应满宽 640（PET-80 前 320）")
 	ctx.check(not battlefield.intersects(bar), "战场与状态带不得重叠（§8：HUD 贴边、不遮挡战场）")
 
 	# §8：战场占画面高约 75%，状态带约 25%。
@@ -180,9 +188,9 @@ func _run_narrow_layout_checks(ctx: RefCounted) -> void:
 	if not ctx.check(layout != null, "combat_layout.gd 应能加载"):
 		return
 
-	ctx.check(layout.is_narrow(NARROW_VIEWPORT), "180×320 竖屏应判定为窄屏")
-	ctx.check(not layout.is_narrow(REFERENCE_VIEWPORT), "320×180 基准应判定为宽屏")
-	ctx.check(not layout.is_narrow(Vector2(320.0, 320.0)), "1:1 应判定为宽屏（判定是 < 而非 <=）")
+	ctx.check(layout.is_narrow(NARROW_VIEWPORT), "360×640 竖屏应判定为窄屏")
+	ctx.check(not layout.is_narrow(REFERENCE_VIEWPORT), "640×360 基准应判定为宽屏")
+	ctx.check(not layout.is_narrow(Vector2(640.0, 640.0)), "1:1 应判定为宽屏（判定是 < 而非 <=）")
 	ctx.check(not layout.is_narrow(Vector2.ZERO), "拿不到尺寸时应按宽屏处理，不得随手折叠")
 
 	var rects: Array[Rect2] = layout.narrow_rects(NARROW_VIEWPORT)
@@ -191,15 +199,15 @@ func _run_narrow_layout_checks(ctx: RefCounted) -> void:
 	for index: int in EXPECTED_NARROW.size():
 		ctx.equal(rects[index], EXPECTED_NARROW[index], "%s 的折叠矩形" % REGION_NAMES[index])
 
-	# 共享取样 120×180：与基准**同高**的窄屏。状态带是固定高的 HUD 条，不随视口长高 ——
-	# 这里钉的正是「不随视口长高」：高仍是 §8 实测的 45（min(45, 180 × 0.25) = 45，上限没生效）。
+	# 共享取样 240×360：与基准**同高**的窄屏。状态带是固定高的 HUD 条，不随视口长高 ——
+	# 这里钉的正是「不随视口长高」：高仍是 §8 实测的 90（min(90, 360 × 0.25) = 90，上限没生效）。
 	var short: Array[Rect2] = layout.narrow_rects(SHORT_NARROW_VIEWPORT)
 	for index: int in EXPECTED_SHORT_NARROW.size():
 		ctx.equal(short[index], EXPECTED_SHORT_NARROW[index],
 			"%s 在 %s 下的矩形" % [REGION_NAMES[index], SHORT_NARROW_VIEWPORT])
 
-	# COMBAT 专用取样 120×160：比基准**更矮**，于是 §8 实测的 25% 份额反过来成为上限并真的咬住。
-	# 这一案是 120×180 测不到的 —— 那一个高与基准相同，上限恒不生效（这正是当年被掩盖的问题）。
+	# COMBAT 专用取样 240×320：比基准**更矮**，于是 §8 实测的 25% 份额反过来成为上限并真的咬住。
+	# 这一案是 240×360 测不到的 —— 那一个高与基准相同，上限恒不生效（这正是当年被掩盖的问题）。
 	var tight: Array[Rect2] = layout.narrow_rects(TIGHT_NARROW_VIEWPORT)
 	for index: int in EXPECTED_TIGHT_NARROW.size():
 		ctx.equal(tight[index], EXPECTED_TIGHT_NARROW[index],
@@ -305,7 +313,9 @@ func _check_status_bar_read_only(ctx: RefCounted, scene: Node, bar: Control) -> 
 	ctx.equal(edge.offset_left, 0.0, "上沿应从状态带左缘起")
 	ctx.equal(edge.offset_right, 0.0, "上沿应铺到状态带右缘（全宽）")
 	ctx.equal(edge.offset_top, 0.0, "上沿应贴状态带上沿")
-	ctx.equal(edge.offset_bottom - edge.offset_top, 1.0, "上沿厚度应为 1px（06 §8）")
+	# PET-80：1px → 2px。这两条是 .tscn 里的 offset 字面量（StatusEdge 是代码画的 ColorRect，
+	# 不是 assets/** 的九宫格切片），故随基准画布 ×2 后由 PET-81 换 2× 切片也**不会**被推翻。
+	ctx.equal(edge.offset_bottom - edge.offset_top, 2.0, "上沿厚度应为 2px（06 §8；PET-80 前 1px）")
 	ctx.equal(fill.offset_left, 0.0, "底色应铺满状态带")
 	ctx.equal(fill.offset_top, 0.0, "底色应铺满状态带")
 	ctx.equal(fill.offset_right, 0.0, "底色应铺满状态带")

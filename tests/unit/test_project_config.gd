@@ -17,7 +17,9 @@ const EXPECTED_AUTOLOADS: Dictionary = {
 	"Settings": "res://scripts/core/settings_service.gd",
 }
 
-const BASE_VIEWPORT: Vector2i = Vector2i(320, 180)
+## PET-80：基准画布 320×180 → 640×360。窗口仍是 1280×720，故整数放大倍率由 4× 变为 2×
+## —— 这正是所有几何常量 ×2 之后物理版面不变的原因。
+const BASE_VIEWPORT: Vector2i = Vector2i(640, 360)
 
 ## 启动场景固定为 BOOT（03 §1、S1-05）：数据校验通过后由 GameFlow 路由到 MAIN_MENU，
 ## 引擎自己只负责把 BOOT 落地，不做任何状态判断。

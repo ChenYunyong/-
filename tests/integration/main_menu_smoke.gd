@@ -25,7 +25,10 @@ const THEME_SCRIPT_PATH: String = "res://scripts/data/palette_theme.gd"
 const LOG_PATH: String = "res://tests/output/main_menu_smoke.log"
 
 ## S1-05 复核记下的坑：MessagePanel 的最小尺寸是 25×61，容器矩形小于它就会被静默撑开。
-const MESSAGE_PANEL_MIN: Vector2 = Vector2(25.0, 61.0)
+## PET-80：这份最小尺寸由正文字号（8→16）与内容边距（4→8）撑出来，两者都 ×2，
+## 故记下的读数逐项 ×2 → 50×122。这是一条**下限**断言：不跟着翻倍它仍然恒真，
+## 但会从「钉住实测的最小尺寸」退化成「只要不是零就行」—— 那正是本卡不许出现的弱化。
+const MESSAGE_PANEL_MIN: Vector2 = Vector2(50.0, 122.0)
 
 var _ctx: RefCounted = null
 var _scene: PackedScene = null
@@ -76,7 +79,8 @@ func _run_routed_entry_case() -> void:
 	_ctx.check(bool(flow.call(&"is_state", _state("MAIN_MENU"))), "状态应为 MAIN_MENU")
 
 
-## 06 §2.1 / §2.2：外框铺满面板，内芯与外框内沿对齐；Body 缩进 = 3px 外框 + 12px 边距。
+## 06 §2.1 / §2.2：外框铺满面板，内芯与外框内沿对齐；Body 缩进 = 6px 外框 + 12px 边距
+## （PET-80 前 3px 外框）。
 ## 这里量的是**入树后 layout 出来的真实矩形**，不是场景里写的 offset。
 func _run_structure_case() -> void:
 	_ctx.begin_case("MAIN_MENU 冒烟 · 面板三层几何")
@@ -108,13 +112,13 @@ func _run_structure_case() -> void:
 
 	var border: float = float(theme_script.FRAME_BORDER_WIDTH)
 	_ctx.equal(frame.size, panel.size, "外框应与面板同尺寸（铺满）")
-	_ctx.equal(core.size, panel.size - Vector2(border, border) * 2.0, "内芯应比面板四周各小 3px")
+	_ctx.equal(core.size, panel.size - Vector2(border, border) * 2.0, "内芯应比面板四周各小 6px（PET-80 前 3px）")
 	_ctx.equal(core.position, Vector2(border, border), "内芯左上角应落在面板内沿")
 	_ctx.check(_contains(frame.get_global_rect(), core.get_global_rect()), "内芯应完全落在外框内")
 	_ctx.check(_contains(core.get_global_rect(), body.get_global_rect()), "Body 应完全落在内芯内")
 
 	var inset: float = float(_menu_script.PANEL_BODY_INSET)
-	_ctx.equal(body.position, Vector2(inset, inset), "Body 应缩进 3px 外框 + 12px 内容边距")
+	_ctx.equal(body.position, Vector2(inset, inset), "Body 应缩进 6px 外框 + 12px 内容边距（PET-80 前 3px 外框）")
 	_ctx.equal(body.size, panel.size - Vector2(inset, inset) * 2.0, "Body 尺寸应与缩进相符")
 
 	_check_notice_panel_fits(menu)
@@ -131,7 +135,7 @@ func _check_notice_panel_fits(menu: Node) -> void:
 		"提示面板矩形不得小于其最小尺寸（%.0fx%.0f，实际 %.0fx%.0f）" % [
 			minimum.x, minimum.y, notice.size.x, notice.size.y])
 	_ctx.check(notice.size.x >= MESSAGE_PANEL_MIN.x and notice.size.y >= MESSAGE_PANEL_MIN.y,
-		"提示面板矩形应 ≥ S1-05 记下的 25x61")
+		"提示面板矩形应 ≥ S1-05 记下的 50x122（PET-80 前 25x61）")
 	var viewport: Rect2 = menu.get_viewport_rect()
 	_ctx.check(_contains(viewport, notice.get_global_rect()),
 		"提示面板不得被最小尺寸撑出屏幕（实际 %s，视口 %s）" % [notice.get_global_rect(), viewport])
