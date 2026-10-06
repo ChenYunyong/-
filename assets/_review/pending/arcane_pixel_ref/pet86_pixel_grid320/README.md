@@ -1,4 +1,4 @@
-﻿# PET-86 Arcane Pixel Reference Grid320
+# PET-86 Arcane Pixel Reference Grid320
 
 Generated from the imagegen concept outputs, then reorganized onto the project art baseline grid.
 
@@ -15,7 +15,7 @@ Pipeline:
 7. Scale G nearest-neighbor 2x to native 640x360.
 8. Scale native files nearest-neighbor 2x to readable 1280x720.
 
-Transition form: 寰呯敤鎴疯瀹? This pack does not design transitions, screen changes, or motion.
+Transition form: 切换形式：待用户裁定. This pack does not design transitions, screen changes, or motion.
 
 ## Files
 
