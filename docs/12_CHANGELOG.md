@@ -5,6 +5,25 @@
 
 ## [Unreleased]
 
+### PET-77 开卡：UI-KIT 接入运行时（已批准的 VB-03 组件从未接进游戏）+ 工具链两则更正（2026-10-06）
+
+#### Added
+- **`PET-77`（UI-KIT 接入运行时）开卡并派 Claude** —— 用户实测反馈「**现在这个游戏界面的风格和我之前给的参考图和 codex 给的预览图都完全不一样**」。DSH 实测根因（**不是推测**）：
+  - 运行时主题 `assets/ui/theme_main.tres` 至今是 **PET-38 骨架期的桩**（`git log -- assets/ui/theme_main.tres` 只有 `2f6d4c7` 一条），内容仅挂 `PaletteTheme` 脚本，**零 StyleBox**；
+  - 全仓 `scripts/**` · `scenes/**` · 其它 `.tscn`/`.tres` 对 `assets/ui/vb03_component_language/**`（24 张已批准切片 + 15 个 `StyleBoxTexture`）**零引用** —— **一个都没被运行时用到**；
+  - `PET-70` 按卡面做的是「结构 + placeholder 资源」，**正式切片接入被顺延为待办 `R2`/`R3`/`R4` 却从未排进任何一张卡** —— **属 DSH 排期疏漏**，不归因 Codex 或用户。
+  - 该卡要求：六屏全接、`texture_margin_*` 九宫格、色值仍只走 Token、`13 §10.1` 三修不得破坏、**反向对照**（删掉 theme 覆盖必须变红）、接入前后同屏对照截图；**HUD 五格不动**（`06 §8.1` 冻结成恰好 5 块，`3×72 + 2×48 = 312 > 272` 可用宽装不进），判断需动结构时**停下报 DSH**。
+- **`11_TASK_BOARD.md` → v0.4.4**：新增 `PET-77` 行；`R2` / `R3` / `R4` 并入本卡。（v0.4.3 由并发的另一条 DSH 复核 run 先行落地 —— 见下。）
+
+#### Fixed
+- **工具链更正①（DSH 自纠）**：此前 DSH 报告「Multica 技能服务不可用导致 GitHub skill 装不上」**结论有误**。实测：GitHub **通**（`git ls-remote https://github.com/edemaistre/godot-expert-skills` 取到 HEAD `3f3d5be`），Multica 服务**正常**（`skill search` / `skill list` 均正常返回）。服务端原文须用 `--debug` 才可见：`SKILL.md not found at the root of ...@main. For multi-skill repositories, point to a specific directory using .../tree/main/<skill-dir>` —— 该仓库是**多 skill 仓库**，根目录无 `SKILL.md`，必须指向**子目录**。CLI 把这条包成「服务暂时不可用」，此前只看外层提示即下结论 ⇒ **登记方法论教训：CLI 的通用错误包装不可当作根因，必须 `--debug` 取服务端原文。**
+- **技能已装入**：`godot-expert-skills`（Godot 4.7，14 个）**全部导入成功** —— `godot-2d` · `godot-3d-world` · `godot-animation` · `godot-architecture` · `godot-audio` · `godot-expert` · `godot-gameplay` · `godot-multiplayer` · `godot-performance-export` · `godot-pipeline-automation` · `godot-rendering-lighting` · `godot-shaders` · `godot-ui` · `godot-vfx`；已挂 **Claude（14 个）** 与 **Codex（6 个视觉相关）**。另从 `clawhub.ai` 导入 `Godot 4.6 C# Development` 1 个。工作区技能库此前为空，现为 15 个。
+
+#### Notes
+- **本轮无玩法代码改动**（`PET-77` 仍 `TODO`）：本轮产物是**开卡 + 技能装入 + 两则更正**。
+- **并发 run 留档（并入 `R7`）**：本卡本轮存在**两条并发 DSH run** —— 本 run 完成「复核 + 入库 + 重导 + 用户汇报」，另一条 run 完成了**更深的二次独立像素取证**并**更正了 `PET-76` 的 ④**（「`能量` 下降」未达成 ⇒ `R8`）。两条 run 对已落 `main` 的写作内容发生**版本号撞车**（都称 `v0.4.3`），本条提交按 `v0.4.4` 收口。**结论无分叉**：`f646939` 的 4 个交付文件与两条 run 的独立副本逐字节同哈希。
+- **结论口径**：用户提问「界面为何与参考图/预览图不一致」的答案是**「接入这一步没做」**，而**不是**「Codex 画错」或「参考图没对上」；同时已向用户说明 Codex 的图是**组件稿（mockup）**、且该 Kit 当时被裁定为**结构基线而非最终美术**（精致感依赖尚不存在的正式 Icon / 武器 / 敌人 / FX / 背景）。
+
 ### PET-76 验收（`ACCEPTED`）：PLAY-02 ——「战斗看不懂」已修好（武器 / 命中 / 结果 的可读反馈）（2026-10-06）
 
 #### Added

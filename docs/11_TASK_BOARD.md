@@ -1,7 +1,7 @@
 # 11 — 任务板（TASK BOARD）
 
-> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.4.3**｜维护者 DSH
-> （v0.4.3：`PET-76` 验收记录的 ④ 按**二次独立取证**更正 —— 「`能量` 下降」**未达成**，缺口登记 `R8`；附 DSH 自写 PNG 解码器的逐像素证据与双击包产物核对。v0.4.2：`PET-76` 复核 `ACCEPTED` 并落 `main`（战斗可读反馈）+ 双击包**用修后代码重新导出**；新增待办 `R7`（唤醒投递不可靠）。v0.4.1：`PET-75` 复核 `ACCEPTED` 并落 `main`；`PET-76` 自 `BACKLOG` 提升为 `TODO`（单写手让位）；新增待办 `R6`。v0.4.0：`PET-74` 复核 `ACCEPTED` 并落 `main`；**用户试玩反馈已进板** —— 新增 `PET-75` / `PET-76` 两行。）
+> 状态：`FROZEN-DRAFT`（待用户批准）｜版本 **v0.4.4**｜维护者 DSH
+> （v0.4.4：新增 `PET-77`（**UI-KIT 接入运行时**，`R2`/`R3`/`R4` 并入）；技能库装入 14 个 Godot 4.7 skill；登记「CLI 通用错误包装不可当根因」的方法论教训。v0.4.3：`PET-76` 验收记录的 ④ 按**二次独立取证**更正 —— 「`能量` 下降」**未达成**，缺口登记 `R8`；附 DSH 自写 PNG 解码器的逐像素证据与双击包产物核对。v0.4.2：`PET-76` 复核 `ACCEPTED` 并落 `main`（战斗可读反馈）+ 双击包**用修后代码重新导出**；新增待办 `R7`（唤醒投递不可靠）。v0.4.1：`PET-75` 复核 `ACCEPTED` 并落 `main`；`PET-76` 自 `BACKLOG` 提升为 `TODO`（单写手让位）；新增待办 `R6`。v0.4.0：`PET-74` 复核 `ACCEPTED` 并落 `main`；**用户试玩反馈已进板** —— 新增 `PET-75` / `PET-76` 两行。）
 > 本文件是唯一的任务事实来源。执行的 Agent 不得自行改状态，状态由 DSH 更新。
 
 ## 1. 状态定义
@@ -220,6 +220,7 @@
 | PET-74 | **BUILD-WIN** 双击可玩的 Windows 调试包：`export_presets.cfg` **仅新增** `Windows Desktop` 段（debug）→ `build\windows\PixelFusion.exe`（产物不入库） | Claude | `ACCEPTED`（2026-10-04 DSH 复核通过并已推送 `main`，见 §4.1 末注；**窗口尺寸实测 1280×720 = 4× 整数放大**） |
 | PET-75 | **PLAY-01 · 用户试玩反馈 #2** 蓝图节点删不掉：删除 / 撤销（`Ctrl+Z`）/ 清空（S2-05 补课） | Claude | `ACCEPTED`（2026-10-04 DSH 独立复核通过并已推送 `main`，见 §4.1 末注；**唯一红项 I18N 由 DSH 集成补齐**） |
 | PET-76 | **PLAY-02 · 用户试玩反馈 #3** 战斗看不懂：武器 / 命中 / 结果 的可读反馈（依 `13 §18` 克制原则） | Claude | `ACCEPTED`（2026-10-06 DSH 独立复核通过并已推送 `main`，见 §4.1 末注；**复核因平台 run 卡死而延迟约 8 小时**，交付本身逐项复跑全绿） |
+| PET-77 | **UI-KIT 接入运行时**：把已批准的 VB-03 组件**真正接到六场景**（已查明 `assets/ui/theme_main.tres` 至今是 PET-38 骨架期的桩、`scripts/**`+`scenes/**` 对切片**零引用**）+ 反向对照 + 接入前后同屏对照截图。**HUD 五格不动**（`06 §8.1` 冻结、72/48 切片装不进） | Claude | `TODO`（2026-10-06 DSH 开卡并直接派发 —— 用户实测「界面风格和参考图 / Codex 预览图完全不一样」；**根因是「接入」这一步从未排进任何一张卡**；`R2` / `R3` / `R4` 一并并入本卡） |
 
 | — | 退出期资源清点：`palette.gd` / `palette.tres` 未释放（已复核、非阻塞；随下一张触碰该文件的卡一并修） | Claude | `BACKLOG` |
 | R1 | `tests/integration/full_loop_smoke.gd` 仍按老写法建武器节点（无 `weapon_kind`）→ 每次跑出 5 条 `WeaponData.resolve` 降级 `push_error`，且该用例的武器全部落到 Needle。**一条参数即可消除**（`09 §5` 的 ERROR 零增量） | Claude | `BACKLOG` |
