@@ -28,3 +28,6 @@ desktop.ini
 
 # ---- Generated review artifacts (per 07_ASSET_PIPELINE) ----
 assets/_review/**/_scratch/
+
+# ---- Test evidence output (per 09 SS4) ----
+tests/output/
