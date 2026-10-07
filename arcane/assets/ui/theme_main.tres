@@ -1,0 +1,6 @@
+[gd_resource type="Theme" script_class="ArcaneTheme" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/arcane_theme.gd" id="1_theme"]
+
+[resource]
+script = ExtResource("1_theme")

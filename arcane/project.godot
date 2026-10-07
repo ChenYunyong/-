@@ -1,0 +1,51 @@
+; 奥术蓝图 / Arcane Blueprint —— 全新工程（PET-85 NEW-01）
+;
+; 基准分辨率口径：DSH 2026-10-06 在 PET-85 评论中裁定 —— 画布 960×540、窗口 1920×1080、
+; 整数 2×（960×540 ×2 = 1920×1080）。该口径覆盖 PET-85 卡面原先写的 640×360 / 3×。
+; 全部几何常量按 960×540 从零推导，对照表见 arcane/README.md。
+
+config_version=5
+
+[application]
+
+config/name="ArcaneBlueprint"
+config/description="奥术蓝图 —— 自由摆放的卡牌构筑 + 自动施法（新工程骨架）"
+; 启动场景固定为 BOOT：自检通过后由 GameFlow 路由到模块编辑器。
+run/main_scene="res://scenes/boot.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[autoload]
+
+; 只保留新工程当前真正用得上的四个。旧工程的 DataRegistry / SaveService 不带过来 ——
+; 卡牌目录是纯静态表（CardCatalog），没有需要按 id 索引的 .tres 数据；存档尚未设计。
+EventBus="*res://scripts/core/event_bus.gd"
+GameFlow="*res://scripts/core/game_flow.gd"
+RunState="*res://scripts/core/run_state.gd"
+Settings="*res://scripts/core/settings_service.gd"
+
+[internationalization]
+
+; 中英切换机制照搬旧工程（PET-67）：源文件 assets/i18n/ui.csv，key = 中文原文，
+; 登记的是 csv_translation 导入器产出的 *.translation（登记 .csv 本身运行期加载不了）。
+; *.translation 是导入产物、被 .gitignore 排除 —— 新克隆上先跑一次 --import 重新生成。
+locale/translations=PackedStringArray("res://assets/i18n/ui.zh_CN.translation", "res://assets/i18n/ui.en.translation")
+
+[display]
+
+; DSH 2026-10-06 裁定：画布 960×540，窗口 1920×1080，整数 2×。
+window/size/viewport_width=960
+window/size/viewport_height=540
+window/size/window_width_override=1920
+window/size/window_height_override=1080
+window/stretch/mode="viewport"
+window/stretch/aspect="keep"
+window/stretch/scale_mode="integer"
+
+[rendering]
+
+; 插画质感：仍用最近邻 —— 本工程的美术目标是 PET-86 参考包的粗像素风，
+; 拉伸到 2× 时必须保持硬边，不能出现线性过滤的糊边。
+textures/canvas_textures/default_texture_filter=0
+; Web 导出只支持 GL Compatibility 渲染器。
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
