@@ -29,6 +29,7 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 	{"path": "res://tests/unit/test_snap.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_board_model.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_combat_sim.gd", "layer": "unit"},
+	{"path": "res://tests/unit/test_combat_cards.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_map_model.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_map_paint.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_map_layout.gd", "layer": "unit"},
