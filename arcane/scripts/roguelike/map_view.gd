@@ -1,8 +1,12 @@
 ## map_view.gd
-## 职责：路线图的绘制与点击 —— 层、节点、连线的画法，以及「哪些节点现在能点」的高亮。
+## 职责：羊皮卷路线图的绘制与命中 —— 纸面、边线、四态节点、图例，以及鼠标 / 触摸的选择。
 ## 所属系统：roguelike（表现部分）
-## 依赖：MapModel, Palette
-## 禁止：本文件不得改图数据（选择走 MapModel.select()）；不得出现裸色值。
+## 依赖：MapModel, MapLayout, MapParchment, MapNodePainter, MapSymbolPainter, Fonts, ArcaneTheme
+## 禁止：本文件不得改图数据（选择走 MapModel.select()）；不得自己算「能去哪」（走 MapModel.selectable()）；
+##       不得出现裸色值；不得直接 draw_line —— 线一律经 StrokePainter（test_map_paint 扫源码钉住）。
+##
+## 本控件**不持有任何路线状态**：走过的序列、当前节点都问 MapModel（本局那一份在 RunState 手里）。
+## 于是退出这个界面再进来，画出来的还是同一条路线、同一个当前位置 —— 这是 §4 的验收点之一。
 ##
 ## 路线图是**格点布局**（层 × 列），这与「书页无网格」并不冲突：
 ## 无网格是模块编辑器那条招牌交互的规则，路线图本来就是一张排好版的图。
@@ -10,17 +14,25 @@
 class_name MapView
 extends Control
 
-## 点了某个可选节点。
+## 点了某个可选节点，并且模型已经真的走过去了。
 signal node_chosen(kind: MapModel.Kind)
+## 点了走不了的节点（已访问 / 不可达）。界面据此给一句「走不了」的当场反馈。
+signal node_rejected(state: MapNodePainter.State)
 
-const NODE_RADIUS: float = 24.0
-const EDGE_WIDTH: float = 3.0
-const SELECTABLE_BORDER: float = 3.0
-const PADDING: float = 24.0
+## 节点半径。画的圆与命中的圆是同一个 —— 看得见多大就点得中多大。
+## 40 逻辑像素的直径 = 80 设备像素，是 06 §1 那条 44 下限的 1.8 倍（test_layout 也核对它）。
+const NODE_RADIUS: float = MapLayout.NODE_RADIUS
+
+## 图例里四个状态的出场顺序：先说能做什么，再说已经怎样。
+const LEGEND_STATES: Array[MapNodePainter.State] = [MapNodePainter.State.SELECTABLE,
+	MapNodePainter.State.CURRENT, MapNodePainter.State.VISITED, MapNodePainter.State.UNREACHABLE]
 
 var _model: MapModel = null
 var _font: Font = null
-var _font_size: int = 24
+var _font_size: int = ArcaneTheme.PARAM_FONT_SIZE
+## 最近一次点了走不了的节点的 id（-1 = 没有）。它一直留到下一次点击 ——
+## 界面不用计时器，也不会自己往下走（R1）。
+var _rejected_id: int = -1
 
 
 func _ready() -> void:
@@ -30,88 +42,155 @@ func _ready() -> void:
 func setup(model: MapModel) -> void:
 	_model = model
 	_font = Fonts.ui_font()
-	_font_size = ArcaneTheme.BODY_FONT_SIZE
+	_font_size = ArcaneTheme.PARAM_FONT_SIZE
+	_rejected_id = -1
 	queue_redraw()
 
 
-## 某层某列在画布上的坐标。层号从下往上（第 0 层在最下面），列从左往右。
-static func node_position(size: Vector2, tier: int, column: int) -> Vector2:
-	var rows: int = maxi(MapModel.TIERS - 1, 1)
-	var step_y: float = (size.y - PADDING * 2.0) / float(rows)
-	var step_x: float = (size.x - PADDING * 2.0) / float(MapModel.COLUMNS)
-	return Vector2(
-		PADDING + (float(column) + 0.5) * step_x,
-		size.y - PADDING - float(tier) * step_y
-	)
+func rejected_id() -> int:
+	return _rejected_id
 
+
+# ------------------------------------------------------------------ 绘制
 
 func _draw() -> void:
 	if _model == null:
 		return
+	MapParchment.paint(self, Rect2(Vector2.ZERO, MapLayout.PARCHMENT_SIZE), MapLayout.LEGEND_SEAM_Y)
 	_draw_edges()
-	for node: MapModel.MapNode in _model.nodes():
-		_draw_node(node)
+	_draw_nodes()
+	_draw_legend()
+	_draw_rejection()
 
 
+## 边线分三档：走过的（粗墨）、现在能走的（中墨）、还走不到的（淡墨）。
+## 于是「一条走过的路线」在地图上是一道压得最重的墨迹，而不是换个颜色。
 func _draw_edges() -> void:
-	var dim: Color = Palette.get_color(Palette.Key.BLUE_500)
-	var here: int = _model.current_id()
+	var path: Array[int] = _model.path()
+	var current: int = _model.current_id()
 	for node: MapModel.MapNode in _model.nodes():
-		var from: Vector2 = node_position(size, node.tier, node.column)
+		var from: Vector2 = MapLayout.node_position(node.tier, node.column)
 		for next_id: int in node.next:
 			var target: MapModel.MapNode = _model.find(next_id)
 			if target == null:
 				continue
-			# 已走过的那一段描亮，玩家一眼能看出自己是从哪来的。
-			var color: Color = Palette.get_color(Palette.Key.GOLD_500) if node.id == here else dim
-			draw_line(from, node_position(size, target.tier, target.column), color, EDGE_WIDTH)
+			MapNodePainter.paint_edge(self, from,
+				MapLayout.node_position(target.tier, target.column),
+				MapNodePainter.edge_style(node.id, next_id, path, current))
 
 
-func _draw_node(node: MapModel.MapNode) -> void:
-	var center: Vector2 = node_position(size, node.tier, node.column)
-	var selectable: bool = _model.can_select(node.id)
-	var visited: bool = _model.is_visited(node.id)
-	var fill: Color = _kind_color(node.kind)
-	if visited:
-		fill = Palette.get_color(Palette.Key.GREY_500)
-	elif not selectable:
-		# 够不着的节点压暗一档，而不是直接隐藏 —— 玩家要看得到「后面还有什么」。
-		fill = fill.darkened(0.55)
-	draw_circle(center, NODE_RADIUS, fill)
-	if selectable:
-		draw_arc(center, NODE_RADIUS, 0.0, TAU, 32, Palette.get_color(Palette.Key.GOLD_400), SELECTABLE_BORDER, true)
-	_draw_kind_mark(center, node.kind, visited)
+func _draw_nodes() -> void:
+	for node: MapModel.MapNode in _model.nodes():
+		var state: MapNodePainter.State = MapNodePainter.state_of(_model, node.id)
+		var center: Vector2 = MapLayout.node_position(node.tier, node.column)
+		MapNodePainter.paint_node(self, center, NODE_RADIUS, state)
+		MapSymbolPainter.paint(self, node.kind, center, MapLayout.SYMBOL_RADIUS,
+			MapNodePainter.ink(state))
+		_draw_label(MapLayout.node_label_baseline(node.tier, node.column), kind_text(node.kind))
 
 
-## 节点里的一个字：战 / 工。图形标记之外再给一个字，免得只靠颜色区分。
-func _draw_kind_mark(center: Vector2, kind: MapModel.Kind, visited: bool) -> void:
+## 节点右边那行短名。符号与文字同时在场：颜色认不出时，文字还认得（06 §11）。
+func _draw_label(baseline: Vector2, text: String) -> void:
 	if _font == null:
 		return
-	var text: String = tr("战") if kind == MapModel.Kind.BATTLE else tr("工")
-	var token: Palette.Key = Palette.Key.NAVY_700 if visited else Palette.Key.NAVY_900
-	var color: Color = Palette.get_color(token)
-	var width: float = _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size).x
-	var baseline: float = center.y + float(_font_size) * 0.35
-	draw_string(_font, Vector2(center.x - width * 0.5, baseline), text,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size, color)
+	draw_string(_font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size,
+		Palette.get_color(MapNodePainter.INK_ON_PAPER))
 
 
-static func _kind_color(kind: MapModel.Kind) -> Color:
+## 图例：四个状态各画一个**真的**小节点（走同一支画笔），旁边写状态名。
+## 用同一个画笔而不是另画四块色卡 —— 图例上看到的与地图上看到的必须是同一个东西。
+func _draw_legend() -> void:
+	for index: int in LEGEND_STATES.size():
+		var state: MapNodePainter.State = LEGEND_STATES[index]
+		MapNodePainter.paint_node(self, MapLayout.legend_node_position(index),
+			MapLayout.LEGEND_NODE_RADIUS, state)
+		_draw_label(MapLayout.legend_label_baseline(index), state_text(state))
+
+
+func _draw_rejection() -> void:
+	if _rejected_id < 0:
+		return
+	var node: MapModel.MapNode = _model.find(_rejected_id)
+	if node == null:
+		return
+	MapNodePainter.paint_rejected(self,
+		MapLayout.node_position(node.tier, node.column), NODE_RADIUS)
+
+
+# ------------------------------------------------------------------ 文案
+
+## 节点的短名。tr 的字面量留在这里（不在 painter 里）—— test_i18n 靠扫字面量
+## 保证它们都在语言表里；写进 painter 的话静态函数里没有 tr()，只能绕道。
+static func kind_text(kind: MapModel.Kind) -> String:
 	if kind == MapModel.Kind.WORKSHOP:
-		return Palette.get_color(Palette.Key.GOLD_400)
-	return Palette.get_color(Palette.Key.ORANGE_500)
+		return TranslationServer.translate("工坊")
+	return TranslationServer.translate("战斗")
 
+
+static func state_text(state: MapNodePainter.State) -> String:
+	match state:
+		MapNodePainter.State.SELECTABLE:
+			return TranslationServer.translate("可选")
+		MapNodePainter.State.CURRENT:
+			return TranslationServer.translate("当前")
+		MapNodePainter.State.VISITED:
+			return TranslationServer.translate("走过")
+		_:
+			return TranslationServer.translate("不可达")
+
+
+# ------------------------------------------------------------------ 命中与选择
 
 func _gui_input(event: InputEvent) -> void:
-	if _model == null:
+	if _model == null or not is_press(event):
 		return
-	if not (event is InputEventMouseButton) or not event.pressed:
+	press(event_position(event))
+
+
+## 左键按下与触摸按下走**同一条**判定路径（06 §10 规则 6：鼠标与触摸都要能操作）。
+static func is_press(event: InputEvent) -> bool:
+	if event is InputEventMouseButton:
+		var click: InputEventMouseButton = event
+		return click.pressed and click.button_index == MOUSE_BUTTON_LEFT
+	if event is InputEventScreenTouch:
+		return (event as InputEventScreenTouch).pressed
+	return false
+
+
+static func event_position(event: InputEvent) -> Vector2:
+	if event is InputEventScreenTouch:
+		return (event as InputEventScreenTouch).position
+	return (event as InputEventMouseButton).position
+
+
+## 局部坐标上命中的节点 id；没命中返回 -1。命中半径就是画出来的那个圆（NODE_RADIUS）。
+static func node_at(model: MapModel, at: Vector2) -> int:
+	var best: int = -1
+	var best_distance: float = NODE_RADIUS
+	for node: MapModel.MapNode in model.nodes():
+		var distance: float = MapLayout.node_position(node.tier, node.column).distance_to(at)
+		if distance <= best_distance:
+			best = node.id
+			best_distance = distance
+	return best
+
+
+## 在这张图的一处**局部坐标**上按一下。鼠标与触摸最终都汇到这里（_gui_input 只做事件解码），
+## 于是「点得动 / 点不动」的判定只有这一条路径，测试也可以直接按一个坐标进来。
+##
+## 只有**可选**的节点会走下去并发出 node_chosen。
+## 已访问 / 不可达的节点：给一个当场看得见的反馈（红圈 + 斜杠 + 一句话），
+## 并且**一个字节的状态都不动** —— 这也是 §3 的验收点。
+func press(at: Vector2) -> void:
+	var id: int = node_at(_model, at)
+	if id < 0:
 		return
-	var click: InputEventMouseButton = event
-	if click.button_index != MOUSE_BUTTON_LEFT:
+	if not _model.can_select(id):
+		_rejected_id = id
+		node_rejected.emit(MapNodePainter.state_of(_model, id))
+		queue_redraw()
 		return
-	for node: MapModel.MapNode in _model.selectable():
-		if node_position(size, node.tier, node.column).distance_to(click.position) <= NODE_RADIUS:
-			if _model.select(node.id):
-				node_chosen.emit(node.kind)
-			return
+	_rejected_id = -1
+	if _model.select(id):
+		node_chosen.emit(_model.find(id).kind)
+	queue_redraw()

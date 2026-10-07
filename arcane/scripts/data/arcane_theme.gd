@@ -56,6 +56,11 @@ const TYPE_LABEL_PARAM: StringName = &"LabelParam"
 ## 详情面板的警告行（「未连接核心，不会被施放」）。危险色 + 参数组字号：
 ## 它是一句**提示**而不是第四级标题，压到最小档才不会把三级结构又搅浑。
 const TYPE_LABEL_WARN: StringName = &"LabelWarn"
+## 羊皮卷上的字（路线图屏的标题与当前位置）。**不能用金色**：GOLD_500 画在纸色
+## WARM_300 上实测 1.03:1（06 §11 要求正文 ≥4.5:1、标题 ≥3:1），金字的纸面等于没字。
+## 羊皮卷上本来就该是墨写的字 —— BROWN_700 对 WARM_300 是 9.23:1。
+const TYPE_LABEL_INK: StringName = &"LabelInk"
+const TYPE_LABEL_INK_TITLE: StringName = &"LabelInkTitle"
 
 const BASE_TYPE_BUTTON: StringName = &"Button"
 const BASE_TYPE_PANEL: StringName = &"Panel"
@@ -183,6 +188,12 @@ func _build_labels() -> void:
 	set_type_variation(TYPE_LABEL_WARN, BASE_TYPE_LABEL)
 	set_font_size(&"font_size", TYPE_LABEL_WARN, PARAM_FONT_SIZE)
 	set_color(&"font_color", TYPE_LABEL_WARN, Palette.get_color(Palette.Key.RED_400))
+	# 羊皮卷上的两级墨字（路线图屏）。同一支墨色，只有字号分主次 —— 金色在那张纸上读不出来。
+	set_type_variation(TYPE_LABEL_INK, BASE_TYPE_LABEL)
+	set_color(&"font_color", TYPE_LABEL_INK, Palette.get_color(Palette.Key.BROWN_700))
+	set_type_variation(TYPE_LABEL_INK_TITLE, BASE_TYPE_LABEL)
+	set_font_size(&"font_size", TYPE_LABEL_INK_TITLE, TITLE_FONT_SIZE)
+	set_color(&"font_color", TYPE_LABEL_INK_TITLE, Palette.get_color(Palette.Key.BROWN_700))
 
 
 func _button_box(fill: Palette.Key, border: Palette.Key) -> StyleBoxFlat:

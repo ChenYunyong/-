@@ -30,7 +30,12 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 	{"path": "res://tests/unit/test_board_model.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_combat_sim.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_map_model.gd", "layer": "unit"},
+	{"path": "res://tests/unit/test_map_paint.gd", "layer": "unit"},
+	{"path": "res://tests/unit/test_map_layout.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_game_flow.gd", "layer": "unit"},
+	# 路线图屏要真的入树才验得了「点得动 / 重进复原」，但它在测试收尾时会 free 掉自己，
+	# 不换 GameFlow 的状态（见文件头的禁止项），所以排在场景冒烟之前即可。
+	{"path": "res://tests/integration/map_view_smoke.gd", "layer": "integration"},
 	# 场景冒烟要真的把场景入树，放在单元层之后。
 	{"path": "res://tests/integration/scene_smoke.gd", "layer": "integration"},
 	# 一局完整循环（编辑器 → 战斗 → 奖励 → 编辑器）。**必须排在最后**：

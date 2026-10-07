@@ -36,8 +36,11 @@ func equal(actual: Variant, expected: Variant, what: String) -> bool:
 
 
 ## 不等断言。
+## PET-88：这条消息原本少写了一个占位符（`"%s（不应等于 %s）" % [what, unexpected, actual]`，
+## 两个 %s 配三个实参），一调用就抛 "not all arguments converted"。此前全工程没有一处调过
+## not_equal()，所以这个错一直没露头 —— 路线图那条用例第一次用它就炸了。
 func not_equal(actual: Variant, unexpected: Variant, what: String) -> bool:
-	return check(actual != unexpected, "%s（不应等于 %s）" % [what, unexpected, actual])
+	return check(actual != unexpected, "%s（不应等于 %s，实际 %s）" % [what, unexpected, actual])
 
 
 ## 近似相等。浮点比较只能用这个，不能用 equal()。

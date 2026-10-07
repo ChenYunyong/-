@@ -41,6 +41,9 @@ var _nodes: Array[MapNode] = []
 ## 玩家当前所在的节点 id。-1 表示还没踏上第 0 层。
 var _current: int = -1
 var _visited: Dictionary = {}
+## 走过的**顺序**（含当前节点）。_visited 只回答「来没来过」，这个回答「怎么来的」——
+## 路线图上那道走过的痕迹要的是顺序，而 03 不允许从字典的键序里反推顺序。
+var _order: Array[int] = []
 
 
 ## 按种子生成一张图。同一 seed 永远得到同一张图（03 §6：可复现）。
@@ -50,6 +53,7 @@ func generate(seed_value: int) -> void:
 	_nodes = []
 	_current = -1
 	_visited = {}
+	_order = []
 	for tier: int in TIERS:
 		for column: int in COLUMNS:
 			_nodes.append(MapNode.new(_nodes.size(), tier, column, _roll_kind(generator, tier)))
@@ -94,6 +98,12 @@ func is_visited(id: int) -> bool:
 	return _visited.has(id)
 
 
+## 走过的节点序列，从起点到当前。还没出发就是空的。
+## 画「走过的痕迹」用它 —— select() 是唯一会往里面加东西的地方。
+func path() -> Array[int]:
+	return _order.duplicate()
+
+
 ## 现在可以选的节点。还没出发 → 第 0 层全部；否则 → 当前节点的出边。
 func selectable() -> Array[MapNode]:
 	var result: Array[MapNode] = []
@@ -122,6 +132,7 @@ func select(id: int) -> bool:
 		return false
 	_current = id
 	_visited[id] = true
+	_order.append(id)
 	return true
 
 
