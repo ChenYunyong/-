@@ -1,7 +1,8 @@
 ## editor_screen.gd
 ## 职责：模块编辑器（奥术蓝图）—— 本作的招牌屏，装配顶栏 / 书页画布 / 卡片详情 / 卡牌仓库。
 ## 所属系统：ui
-## 依赖：RunState, BoardModel, BoardView, CardCatalog, EditorLayout, UiKit, GameFlow, ArcaneTheme
+## 依赖：RunState, BoardModel, BoardView, CardCatalog, CardChip, DetailPanel, EditorLayout,
+##       UiKit, IconButton, IconPainter, GameFlow, ArcaneTheme
 ## 禁止：本文件不得实现吸附几何（在 Snap 里）、不得实现绘制（在 BoardView / CardFace 里）；
 ##       不得出现裸色值；不得自己调 change_scene_to_file()（03 §1.1 R3：只有 GameFlow 能换场景）。
 ##
@@ -11,23 +12,37 @@
 
 extends Control
 
-## 空书页时的引导文案。第二段讲连线，两句都只在「没选中任何卡」时出现。
-const HINT_EMPTY_KEY: String = "点下方仓库的卡片放到书页上"
-const HINT_LINK_KEY: String = "从卡片接口拖出奥术丝线连接另一张卡"
-
 ## 撤销栈深度。够用即可 —— 这不是编辑器，是搭配界面的防手滑。
 const UNDO_LIMIT: int = 32
 
 ## 顶栏按钮的变体，顺序与 EditorLayout.TOP_BUTTONS 一致（最右是主动作）。
+## PET-87 §3：只有「开始战斗」是金色强主动作，另外三个退成次级。
 const TOP_BUTTON_VARIATIONS: Array[StringName] = [
 	ArcaneTheme.TYPE_BUTTON_PRIMARY,
 	ArcaneTheme.TYPE_BUTTON_SECONDARY,
 	ArcaneTheme.TYPE_BUTTON_SECONDARY,
 	ArcaneTheme.TYPE_BUTTON_SECONDARY,
 ]
+## 顶栏按钮各自的图标，顺序与 EditorLayout.TOP_BUTTONS 一致。
+## NONE = 这个键仍是文字按钮（顶栏唯一的强主动作）。
+const TOP_BUTTON_ICONS: Array[IconPainter.Icon] = [
+	IconPainter.Icon.NONE,
+	IconPainter.Icon.MAP,
+	IconPainter.Icon.DELETE,
+	IconPainter.Icon.UNDO,
+]
 ## 需要按状态置灰的那两个按钮在 TOP_BUTTONS 里的下标。
 const TOP_BUTTON_DELETE: int = 2
 const TOP_BUTTON_UNDO: int = 3
+## 仓库两端滚动入口的图标与文案 key（左 / 右）。文案只进 tooltip 与无障碍名。
+const TRAY_ARROW_ICONS: Array[IconPainter.Icon] = [
+	IconPainter.Icon.ARROW_LEFT,
+	IconPainter.Icon.ARROW_RIGHT,
+]
+const TRAY_ARROW_KEYS: PackedStringArray = ["仓库向左滚动", "仓库向右滚动"]
+## 偏移小于这个数就算「到头了」，对应那一端的滚动入口自行隐藏。
+## 浮点比较不能用 == 0（滚动偏移是一路累加出来的）。
+const TRAY_EDGE_EPSILON: float = 0.01
 
 ## 书页就是**本局那一份**（RunState.board()），在 _ready() 里绑定。
 ## 不各持一份：编辑器改的和战斗读的必须是同一个对象，否则玩家连的线战斗根本看不到
@@ -39,15 +54,13 @@ var _canvas: BoardView = null
 var _tray_clip: Control = null
 var _tray_row: HBoxContainer = null
 var _tray_offset: float = 0.0
+var _tray_count: int = 0
+var _tray_arrows: Array[IconButton] = []
 
+var _detail: DetailPanel = null
 var _status_label: Label = null
-var _name_label: Label = null
-var _type_label: Label = null
-var _stats_label: Label = null
-var _warn_label: Label = null
-var _hint_label: Label = null
-var _undo_button: Button = null
-var _delete_button: Button = null
+var _undo_button: IconButton = null
+var _delete_button: IconButton = null
 
 
 func _ready() -> void:
@@ -77,15 +90,31 @@ func _build_top_bar() -> void:
 	var rects: Array[Rect2] = EditorLayout.top_button_rects()
 	for index: int in rects.size():
 		var key: String = EditorLayout.TOP_BUTTONS[index]
-		var button: Button = UiKit.button(key, TOP_BUTTON_VARIATIONS[index], handlers[index])
-		button.position = rects[index].position
-		button.size = rects[index].size
+		var rect: Rect2 = rects[index]
+		var button: Button = _make_top_button(key, index, handlers[index])
+		button.position = rect.position
+		button.size = rect.size
 		add_child(button)
 		# 这两个按钮要按状态置灰，留个引用（下标与 EditorLayout.TOP_BUTTONS 对齐）。
 		if index == TOP_BUTTON_DELETE:
 			_delete_button = button
 		elif index == TOP_BUTTON_UNDO:
 			_undo_button = button
+
+
+## 顶栏上的一个控件。图标为 NONE 的走文字按钮（顶栏唯一的强主动作），
+## 其余一律是紧凑方形图标控件 —— 靠图标认、靠 tooltip 说全名（PET-87 §3）。
+func _make_top_button(key: String, index: int, handler: Callable) -> Button:
+	var icon: IconPainter.Icon = TOP_BUTTON_ICONS[index]
+	if icon == IconPainter.Icon.NONE:
+		return UiKit.button(key, TOP_BUTTON_VARIATIONS[index], handler)
+	var node: IconButton = IconButton.new()
+	node.theme_type_variation = TOP_BUTTON_VARIATIONS[index]
+	# setup() 必须早于 add_child()：它要写 tooltip 与无障碍名，与 _ready() 无关。
+	node.setup(icon, key)
+	if handler.is_valid():
+		node.pressed.connect(handler)
+	return node
 
 
 ## 书页画布。外层是带 9px 厚边的 PanelCanvas，BoardView 铺在框内。
@@ -103,33 +132,11 @@ func _build_canvas() -> void:
 	_canvas.link_requested.connect(_on_link_requested)
 
 
-## 卡片详情。三层结构（06 §2.1）：木框 PanelFrame 包住 NAVY_800 的 PanelSecondary，
-## 顶部一条 48 高的标题栏。
+## 卡片详情。搭建与刷新都在 DetailPanel 里 —— 本屏只需要把它挂上、在选中变化时喊一声。
 func _build_detail() -> void:
-	add_child(UiKit.panel(ArcaneTheme.TYPE_PANEL_FRAME, EditorLayout.detail_panel()))
-	add_child(UiKit.panel(ArcaneTheme.TYPE_PANEL_SECONDARY, EditorLayout.detail_body()))
-	add_child(UiKit.panel(ArcaneTheme.TYPE_PANEL_TITLE_BAR, EditorLayout.detail_title_bar()))
-
-	var title_rect: Rect2 = EditorLayout.detail_title_bar()
-	title_rect.position.x += EditorLayout.DETAIL_PADDING
-	title_rect.size.x -= EditorLayout.DETAIL_PADDING * 2.0
-	var title: Label = UiKit.label(tr("卡片详情"), title_rect)
-	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	add_child(title)
-
-	var origin: Vector2 = EditorLayout.DETAIL_CONTENT_ORIGIN
-	var width: float = EditorLayout.DETAIL_CONTENT_WIDTH
-	var line: float = EditorLayout.LINE_HEIGHT
-	_name_label = UiKit.label("", Rect2(origin, Vector2(width, line)))
-	_type_label = UiKit.label("", Rect2(origin + Vector2(0.0, line), Vector2(width, line)),
-		ArcaneTheme.TYPE_LABEL_SECONDARY)
-	_stats_label = UiKit.wrapped_label("", Rect2(origin + Vector2(0.0, line * 2.0), Vector2(width, line * 2.0)))
-	_warn_label = UiKit.wrapped_label("", Rect2(origin + Vector2(0.0, line * 4.0), Vector2(width, line * 1.6)),
-		ArcaneTheme.TYPE_LABEL_DANGER)
-	_hint_label = UiKit.wrapped_label("%s\n\n%s" % [tr(HINT_EMPTY_KEY), tr(HINT_LINK_KEY)],
-		Rect2(origin, Vector2(width, line * 4.0)), ArcaneTheme.TYPE_LABEL_SECONDARY)
-	for node: Label in [_name_label, _type_label, _stats_label, _warn_label, _hint_label]:
-		add_child(node)
+	_detail = DetailPanel.new()
+	_detail.build()
+	add_child(_detail)
 
 
 ## 卡牌仓库。横向一排 72px 卡位，超出部分靠滚轮横向滚 —— 自绘，不挂 ScrollContainer
@@ -156,14 +163,40 @@ func _build_tray() -> void:
 		chip.setup(card)
 		chip.chosen.connect(_on_chip_chosen)
 	# 行宽自己算：容器的 get_combined_minimum_size() 依赖主题解析，headless 下不可靠。
-	var count: int = catalog.size()
-	var content_width: float = float(count) * EditorLayout.TRAY_CHIP_SIZE
-	if count > 1:
-		content_width += float(count - 1) * EditorLayout.TRAY_CHIP_GAP
-	_tray_row.size = Vector2(content_width, EditorLayout.TRAY_CHIP_SIZE)
+	_tray_count = catalog.size()
+	_tray_row.size = Vector2(EditorLayout.tray_content_width(_tray_count), EditorLayout.TRAY_CHIP_SIZE)
+	_build_tray_arrows()
+	_refresh_tray_arrows()
 
 
-## 仓库的横向滚动。滚轮上下 = 左右滚。
+## 仓库两端的滚动入口（PET-87 §3）。**加在 _tray_clip 之后** —— 后加的是后画的兄弟，
+## 落在这 24×48 上的点击先到入口、再到卡位。两端各一个，走到头就自己隐藏：
+## 于是停在第 0 格时不会有箭头压着第一张卡，停在终点时也不会有箭头压着最后一张。
+func _build_tray_arrows() -> void:
+	var sides: Array[float] = [-1.0, 1.0]
+	for index: int in sides.size():
+		var rect: Rect2 = EditorLayout.tray_arrow_rect(sides[index])
+		var arrow: IconButton = IconButton.new()
+		arrow.theme_type_variation = TOP_BUTTON_VARIATIONS[1]
+		arrow.setup(TRAY_ARROW_ICONS[index], TRAY_ARROW_KEYS[index])
+		arrow.position = rect.position
+		arrow.size = rect.size
+		var delta: float = -EditorLayout.TRAY_SCROLL_STEP if sides[index] < 0.0 else EditorLayout.TRAY_SCROLL_STEP
+		arrow.pressed.connect(_scroll_tray.bind(delta))
+		add_child(arrow)
+		_tray_arrows.append(arrow)
+
+
+## 哪一端还有内容就把哪一端的入口露出来。
+func _refresh_tray_arrows() -> void:
+	if _tray_arrows.size() < 2:
+		return
+	var limit: float = EditorLayout.tray_max_offset(_tray_count)
+	_tray_arrows[0].visible = _tray_offset > TRAY_EDGE_EPSILON
+	_tray_arrows[1].visible = _tray_offset < limit - TRAY_EDGE_EPSILON
+
+
+## 仓库的横向滚动。滚轮上下 = 左右滚，点两端的箭头也是同一套停靠算法。
 func _on_tray_input(event: InputEvent) -> void:
 	if not (event is InputEventMouseButton) or not event.pressed:
 		return
@@ -174,10 +207,12 @@ func _on_tray_input(event: InputEvent) -> void:
 		_scroll_tray(-EditorLayout.TRAY_SCROLL_STEP)
 
 
+## 停在 EditorLayout.tray_stops() 给出的停靠点上，而不是「当前位置 + 一步」。
+## 差别就在最后一张卡：按步长累加永远差最后几像素，停靠点里单列的那个终点不会。
 func _scroll_tray(delta: float) -> void:
-	var limit: float = maxf(0.0, _tray_row.size.x - _tray_clip.size.x)
-	_tray_offset = clampf(_tray_offset + delta, 0.0, limit)
+	_tray_offset = EditorLayout.tray_stop_offset(_tray_offset, delta, _tray_count)
 	_tray_row.position.x = -_tray_offset
+	_refresh_tray_arrows()
 
 
 func _on_chip_chosen(card_id: StringName) -> void:
@@ -237,55 +272,17 @@ func _push_undo() -> void:
 func _refresh() -> void:
 	_status_label.text = tr("卡片 %d · 丝线 %d") % [_board.cards().size(), _board.links().size()]
 	_undo_button.disabled = _undo_stack.is_empty()
+	# disabled 没有变更信号，图标不会自己重画 —— 它的颜色要跟着置灰，所以显式刷一次。
+	_undo_button.refresh()
 	_refresh_detail()
 
 
 func _refresh_detail() -> void:
 	var card: BoardModel.PlacedCard = _board.find_card(_canvas.selected_uid())
-	var has_card: bool = card != null
-	_hint_label.visible = not has_card
-	for node: Label in [_name_label, _type_label, _stats_label, _warn_label]:
-		node.visible = has_card
+	var has_card: bool = card != null and card.data() != null
+	if has_card:
+		_detail.show_card(card.data(), DetailPanel.reaches_core(_board, card.uid))
+	else:
+		_detail.show_none()
 	_delete_button.disabled = not has_card
-	if not has_card:
-		return
-	var data: CardData = card.data()
-	if data == null:
-		return
-	_name_label.text = tr(data.name_key)
-	_type_label.text = "%s · %s" % [tr(CardCatalog.kind_label_key(data)), tr(CardCatalog.type_label_key(data))]
-	_stats_label.text = _stats_text(data)
-	_warn_label.text = "" if _reaches_core(card.uid) else tr("未连接核心，不会被施放")
-
-
-## 详情里的数值行。只列这张卡真正有的字段，没有的不占位（避免「费用 0」这种噪音）。
-func _stats_text(data: CardData) -> String:
-	var lines: PackedStringArray = PackedStringArray()
-	if data.mana_output > 0:
-		lines.append("%s %d" % [tr("魔力产出"), data.mana_output])
-	if data.mana_cost > 0:
-		lines.append("%s %d" % [tr("费用"), data.mana_cost])
-	if data.damage > 0:
-		lines.append("%s %d" % [tr("伤害"), data.damage])
-	return "\n".join(lines)
-
-
-## 顺着入边一路往回找，能不能走到一张核心卡。找不到 = 这张卡在战斗里不会被施放，
-## 详情面板要明确告诉玩家，而不是让他自己拉线数。
-func _reaches_core(uid: int) -> bool:
-	var stack: Array[int] = [uid]
-	var seen: Dictionary = {}
-	while not stack.is_empty():
-		var current: int = stack.pop_back()
-		if seen.has(current):
-			continue
-		seen[current] = true
-		var card: BoardModel.PlacedCard = _board.find_card(current)
-		if card == null:
-			continue
-		if card.data() != null and card.data().is_core():
-			return true
-		for link: BoardModel.Link in _board.links():
-			if link.to_uid == current:
-				stack.append(link.from_uid)
-	return false
+	_delete_button.refresh()

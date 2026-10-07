@@ -29,7 +29,6 @@ func run(ctx: RefCounted, tree: SceneTree) -> void:
 	_check_spacing_system(ctx)
 	_check_card_size(ctx)
 	_check_touch_targets(ctx)
-	_check_tray_scrolls(ctx)
 	_check_top_bar_both_locales(ctx, tree)
 	_check_overlap_detector(ctx)
 
@@ -144,20 +143,8 @@ func _check_touch_targets(ctx: RefCounted) -> void:
 	ctx.check(UiKit.button_height() >= minimum, "按钮高度 %s ≥ %s" % [UiKit.button_height(), minimum])
 
 
-## 19 张卡的仓库一定放不下，所以横向滚动必须是**真的需要**（否则那段代码是摆设）。
-func _check_tray_scrolls(ctx: RefCounted) -> void:
-	var count: int = CardCatalog.all().size()
-	var content: float = float(count) * EditorLayout.TRAY_CHIP_SIZE
-	if count > 1:
-		content += float(count - 1) * EditorLayout.TRAY_CHIP_GAP
-	var window: float = EditorLayout.TRAY_VIEW_SIZE.x
-	ctx.check(content > window, "仓库内容 %s 宽 > 可视区 %s（所以确实要滚）" % [content, window])
-	ctx.near(fmod(EditorLayout.TRAY_SCROLL_STEP, EditorLayout.TRAY_CHIP_GAP), 0.0,
-		"滚动步长是卡位间距的整数倍（滚完不会停在半张卡上）")
-	ctx.check(EditorLayout.TRAY_CHIP_SIZE <= EditorLayout.TRAY_VIEW_SIZE.y,
-		"卡位高度不超出仓库可视区")
-	ctx.check(content - window > EditorLayout.TRAY_SCROLL_STEP,
-		"滚动余量大于一步（一步滚得到东西，不是空滚）")
+## 仓库的滚动与两端入口（停靠点、自隐规则）在 test_layout_p0.gd 里 —— 那一支专门管
+## PET-87 §3 报出来的四条缺陷，这一支只管「分区该在哪」。
 
 
 ## 顶栏在两种语言下都要排得下：标题、状态、按钮组互不重叠且都在条内。
@@ -236,3 +223,5 @@ func _regions() -> Array:
 static func _overlaps(a: Rect2, b: Rect2) -> bool:
 	return a.position.x < b.end.x and b.position.x < a.end.x \
 		and a.position.y < b.end.y and b.position.y < a.end.y
+
+

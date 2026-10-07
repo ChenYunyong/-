@@ -20,8 +20,11 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 	{"path": "res://tests/unit/test_source_rules.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_fonts.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_catalog.gd", "layer": "unit"},
+	{"path": "res://tests/unit/test_glyphs.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_i18n.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_layout.gd", "layer": "unit"},
+	{"path": "res://tests/unit/test_layout_p0.gd", "layer": "unit"},
+	{"path": "res://tests/unit/test_editor_state.gd", "layer": "unit"},
 	# 纯逻辑类：不碰节点。
 	{"path": "res://tests/unit/test_snap.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_board_model.gd", "layer": "unit"},

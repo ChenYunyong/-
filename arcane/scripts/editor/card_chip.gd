@@ -1,7 +1,7 @@
 ## card_chip.gd
 ## 职责：卡牌仓库里的一个卡位 —— 点一下就放到书页上。
 ## 所属系统：editor
-## 依赖：CardData, CardFace, CardCatalog, Palette
+## 依赖：CardData, CardFace, Palette
 ## 禁止：本文件不得出现裸色值；不得自己拼卡面（画法与画布共用 CardFace）。
 ##
 ## 交互为什么是「点」而不是「从仓库拖到画布」：仓库是一排横向滚动的卡位，
@@ -45,8 +45,7 @@ func _draw() -> void:
 	if _card == null:
 		return
 	var hovered: bool = get_rect().has_point(get_local_mouse_position())
-	CardFace.paint(self, _card, Vector2.ZERO, _col_fill_hover if hovered else _col_fill,
-		CardCatalog.accent_color(_card), CardFace.BORDER_WIDTH, _col_text)
+	CardFace.paint(self, _card, Vector2.ZERO, _col_fill_hover if hovered else _col_fill, _col_text)
 
 
 func _gui_input(event: InputEvent) -> void:

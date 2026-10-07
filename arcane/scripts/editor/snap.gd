@@ -13,6 +13,9 @@ extends RefCounted
 ## 近到「显然是想要对齐」才吸，不会把自由摆放变成隐形网格。
 const DEFAULT_RADIUS: float = 18.0
 
+## 辅助线两端各向外多画的一点（端点杠要落得下）。
+const GUIDE_MARGIN: float = 5.0
+
 ## 一次吸附求解的结果。
 class Result:
 	extends RefCounted
@@ -22,6 +25,13 @@ class Result:
 	var guides_v: Array[float] = []
 	## 命中的水平辅助线 y 坐标。
 	var guides_h: Array[float] = []
+	## 每条辅助线**该画多长**（竖向线的 y 起止 / 横向线的 x 起止）。
+	##
+	## PET-87 §2：「当前是画布通高的一条亮线」。画出该画多长是**几何事实**，只能在这里算 ——
+	## UI 层拿不到「这次吸附是哪张卡对哪张卡」，硬算就会算错。
+	## 与 guides_v / guides_h **一一对应同序**；数组为空 = 该轴没有吸附。
+	var spans_v: Array[Vector2] = []
+	var spans_h: Array[Vector2] = []
 	## 是否发生了吸附（x 或 y 任一被拉动）。
 	var snapped: bool = false
 
@@ -46,7 +56,27 @@ static func resolve(moving: Rect2, obstacles: Array[Rect2], radius: float = DEFA
 		result.position.y = moving.position.y + float(best_y["delta"])
 		result.guides_h.append(float(best_y["line"]))
 		result.snapped = true
+	# 范围用**吸附后**的矩形算 —— 线画在结果上，不是画在拖动中的那个位置。
+	var settled: Rect2 = Rect2(result.position, moving.size)
+	if not best_x.is_empty():
+		result.spans_v.append(_span(settled, best_x["rect"], false))
+	if not best_y.is_empty():
+		result.spans_h.append(_span(settled, best_y["rect"], true))
 	return result
+
+
+## 一条辅助线该覆盖的范围：**只跨相关的那两个矩形**，两端各向外留一点点，
+## 让端点杠落得下、也看得出它接的是哪两张卡。这是「范围」与丝线分开的几何根据。
+##
+## along_x 选的是**范围落在哪个轴**，不是「哪条线」：竖直辅助线在固定的 x 上，
+## 它要跨的是两张卡的 y 区间（along_x = false）；横向辅助线反过来。
+## 这两个布尔值写反过一次，症状是竖线被画到画布顶上 —— 卡片对了，线不在它们之间。
+static func _span(settled: Rect2, obstacle: Rect2, along_x: bool) -> Vector2:
+	var low: float = minf(settled.position.x, obstacle.position.x) if along_x \
+		else minf(settled.position.y, obstacle.position.y)
+	var high: float = maxf(settled.end.x, obstacle.end.x) if along_x \
+		else maxf(settled.end.y, obstacle.end.y)
+	return Vector2(low - GUIDE_MARGIN, high + GUIDE_MARGIN)
 
 
 ## 单轴求解。horizontal = true 时解 X 轴（比较左 / 中 / 右三对边），false 时解 Y 轴。
@@ -65,7 +95,8 @@ static func _best_axis(moving: Rect2, obstacles: Array[Rect2], radius: float, ho
 				if absf(delta) > radius:
 					continue
 				if best.is_empty() or absf(delta) < absf(float(best["delta"])):
-					best = {"delta": delta, "line": target}
+					# 记下**赢的那条边属于哪个障碍物** —— 辅助线的范围要按它算。
+					best = {"delta": delta, "line": target, "rect": obstacle}
 	return best
 
 

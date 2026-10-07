@@ -24,6 +24,17 @@ const PANEL_CONTENT_MARGIN: int = 36
 const BUTTON_CONTENT_MARGIN: int = 12
 const BODY_FONT_SIZE: int = 24
 
+## 详情面板的三级字号（PET-87 §3：名字 / 类型 / 参数组原本字号与亮度都太接近，读不出主次）。
+## 06 §1 v0.1.17 给 `arcane/` 的临时下限是「正文 ≥ 12 / 标题 ≥ 16」，三个值都在其上。
+##
+## 30 / 24 / 20 是**面板高度倒推出来的**，不是随手挑的：详情内容区可用高 198px
+## （EditorLayout.DETAIL_CONTENT_HEIGHT），四段行高必须装得下最坏情况 ——
+## 参数组三行、警告两行。系统字体（思源 / 雅黑的 SystemFont）行高 ≈ 字号 × 1.25：
+##   名字 30 → 行 38，类型 24 → 行 30，参数 20 → 行 25，警告 20 → 行 25。
+## 40 + 30 + 76 + 50 = 196 ≤ 198 ✓。名字取 32 的话第一段就要 40px 行高，四段合计 205，装不下。
+const TITLE_FONT_SIZE: int = 30
+const PARAM_FONT_SIZE: int = 20
+
 ## 06 §2.2：主面板标题栏高度。320×180 时代为 16px → ×3 = 48。
 const TITLE_BAR_HEIGHT: int = 48
 
@@ -38,6 +49,13 @@ const TYPE_BUTTON_SECONDARY: StringName = &"ButtonSecondary"
 const TYPE_LABEL_SECONDARY: StringName = &"LabelSecondary"
 const TYPE_LABEL_ACCENT: StringName = &"LabelAccent"
 const TYPE_LABEL_DANGER: StringName = &"LabelDanger"
+## 详情面板的三级：卡片名（最大、暖色强调）· 参数组（最小、正文蓝）。
+## 类型行复用 LabelSecondary —— 它本来就是「次要、退后」的语义，不必再开一个变体。
+const TYPE_LABEL_TITLE: StringName = &"LabelTitle"
+const TYPE_LABEL_PARAM: StringName = &"LabelParam"
+## 详情面板的警告行（「未连接核心，不会被施放」）。危险色 + 参数组字号：
+## 它是一句**提示**而不是第四级标题，压到最小档才不会把三级结构又搅浑。
+const TYPE_LABEL_WARN: StringName = &"LabelWarn"
 
 const BASE_TYPE_BUTTON: StringName = &"Button"
 const BASE_TYPE_PANEL: StringName = &"Panel"
@@ -151,6 +169,20 @@ func _build_labels() -> void:
 	set_color(&"font_color", TYPE_LABEL_ACCENT, Palette.get_color(Palette.Key.GOLD_500))
 	set_type_variation(TYPE_LABEL_DANGER, BASE_TYPE_LABEL)
 	set_color(&"font_color", TYPE_LABEL_DANGER, Palette.get_color(Palette.Key.RED_400))
+	# 详情面板的三级结构（PET-87 §3）。字号 + **颜色** 两层同时拉开：
+	#   名字 30px GOLD_400（对 NAVY_800 = 8.46:1）—— 最大、唯一暖色，一眼先看到牌名；
+	#   类型 24px GREY_300（9.37:1）—— 亮度其实不低，但**灰调**让它在彩色的名字与
+	#        蓝调的参数之间读作「次要」；三级结构靠的是色相分工，不是单比亮度
+	#        （GREY_300 比 GOLD_400 还亮，只堆亮度反而分不出主次）。
+	#   参数 20px BLUE_100（11.75:1）—— 最小最密，是查阅用的次要信息。
+	set_type_variation(TYPE_LABEL_TITLE, BASE_TYPE_LABEL)
+	set_font_size(&"font_size", TYPE_LABEL_TITLE, TITLE_FONT_SIZE)
+	set_color(&"font_color", TYPE_LABEL_TITLE, Palette.get_color(Palette.Key.GOLD_400))
+	set_type_variation(TYPE_LABEL_PARAM, BASE_TYPE_LABEL)
+	set_font_size(&"font_size", TYPE_LABEL_PARAM, PARAM_FONT_SIZE)
+	set_type_variation(TYPE_LABEL_WARN, BASE_TYPE_LABEL)
+	set_font_size(&"font_size", TYPE_LABEL_WARN, PARAM_FONT_SIZE)
+	set_color(&"font_color", TYPE_LABEL_WARN, Palette.get_color(Palette.Key.RED_400))
 
 
 func _button_box(fill: Palette.Key, border: Palette.Key) -> StyleBoxFlat:

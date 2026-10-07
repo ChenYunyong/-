@@ -1,7 +1,7 @@
 ## capture_editor.gd
 ## 职责：模块编辑器的**像素证据**采集 —— 真机跑一遍启动路径，用真手势拖卡，截图并打印实测数字。
 ## 所属系统：tools
-## 依赖：tests/tree_probe.gd（只借它做子树查找）、boot.tscn 与编辑器场景
+## 依赖：tests/tree_probe.gd（只借它做子树查找）、BoardRenderer（读吸附回执）、boot.tscn 与编辑器场景
 ## 禁止：本文件不得改动任何产品代码；不得写 user:// 之外的状态；不得被游戏运行时引用（tools/* 已排除导出）。
 ##
 ## 为什么不是「摆好一个状态再截图」：那样截出来的是布置出来的画面，证明不了吸附真的发生。
@@ -118,7 +118,7 @@ func _link_them() -> void:
 	_mouse_press(from)
 	_mouse_move(from.lerp(to, 0.5), true)
 	_mouse_move(to, true)
-	var aiming: bool = int(_board_view.get(&"_link_from")) == source.uid
+	var aiming: bool = _renderer().link_from == source.uid
 	_mouse_release(to)
 	_say("从卡 %d 的输出接口拖到卡 %d 的输入接口 → 起手命中接口=%s、丝线 %d 条" % [
 		source.uid, target.uid, str(aiming), _board.links().size()])
@@ -127,14 +127,19 @@ func _link_them() -> void:
 # ------------------------------------------------------------ 证据一：没有网格
 
 ## 把第二张卡拖到一个刻意「不正」的坐标。它必须**原样停在那里**。
+##
+## 这一张同时是 PET-87 §2 的证据：松手之后卡 [1] 是**选中**（金色轮廓 + 抬起一档的底板），
+## 指针再移到卡 [0] 上，卡 [0] 变成**焦点**（四角浅蓝细角标）。一帧里两种状态同时在场 ——
+## 这正是「语义与配色可分」要证明的事；分不开的话这两个标记会长成一个样子。
 func _capture_free_placement() -> void:
 	if _board.cards().size() < 2:
 		return
 	var card: BoardModel.PlacedCard = _board.cards()[1]
-	var limit: Vector2 = _board_view.size - CardFace.SIZE
-	var wanted: Vector2 = _free_target(card, limit)
-	_say("自由落点对照：画布可放范围 %s，目标 %s（在画布内=%s，带 .5 亚像素）" % [
-		str(limit), str(wanted), str(wanted.x <= limit.x and wanted.y <= limit.y)])
+	var origin: Vector2 = _board_view.play_origin()
+	var reach: Vector2 = origin + _board_view.play_limit()
+	var wanted: Vector2 = _free_target(card, reach)
+	_say("自由落点对照：画布可放范围 %s … %s，目标 %s（带 .5 亚像素）" % [
+		str(origin), str(reach), str(wanted)])
 	if not await _drag_card_to(card, wanted, false):
 		await _capture("editor_free.png")
 		return
@@ -145,8 +150,22 @@ func _capture_free_placement() -> void:
 		str(wanted), str(landed), str(landed - wanted), str(_snapped())])
 	_say("自由落点余数：x %% 24 = %.3f，y %% 24 = %.3f（非 0 = 没有被量化到网格上）" % [
 		fmod(landed.x, 24.0), fmod(landed.y, 24.0)])
+	await _release()
+	await _show_focus_beside_selection(card)
 	await _capture("editor_free.png")
-	_release()
+
+
+## 松手之后指针移到**另一张**卡上：选中留在刚放好的那张，焦点走到这张。
+## 走的是真实手势（移动事件，不按下），因此截图里出现的角标是这条链跑出来的。
+func _show_focus_beside_selection(placed: BoardModel.PlacedCard) -> void:
+	var other: BoardModel.PlacedCard = _board.cards()[0]
+	var centre: Vector2 = other.position + CardFace.SIZE * 0.5
+	_mouse_move(_to_window(centre), false)
+	await process_frame
+	await process_frame
+	_say("状态分层对照：选中 uid=%d（金色轮廓）、焦点 uid=%d（浅蓝角标），两者同帧在场=%s" % [
+		_renderer().selected_uid, _renderer().focus_uid,
+		str(_renderer().selected_uid == placed.uid and _renderer().focus_uid == other.uid)])
 
 
 ## 在画布内找一个「吸附不会碰它」的落点 —— 不靠手算边距，直接问 Snap 本人。
@@ -155,29 +174,28 @@ func _capture_free_placement() -> void:
 ## 而吸附半径是 18，两者一叠加就把画布封掉了大半，真正空着的只剩贴着画布边缘的一条窄带。
 ## 按固定步长扫很容易整条跨过去（上一版就整整扫空了一圈，误报「整块画布都在吸附半径内」）。
 ## 四角（内缩 0.5）必然落在窄带里；带 .5 的亚像素偏移也是刻意的 —— 网格会把坐标吃掉，吸附不会。
-func _free_target(card: BoardModel.PlacedCard, limit: Vector2) -> Vector2:
+##
+## 四角取**合法范围**（play_origin … play_origin + play_limit）而不是控件矩形的角：
+## 落在合法范围之外会被 clamp_to_play 夹回来，于是「请求 → 实际」的差值变成夹取造成的，
+## 那一栏本用来证明「没被吸走」，混进夹取就什么也证明不了。
+func _free_target(card: BoardModel.PlacedCard, reach: Vector2) -> Vector2:
 	var obstacles: Array[Rect2] = []
 	for other: BoardModel.PlacedCard in _board.cards():
 		if other.uid != card.uid:
 			obstacles.append(Rect2(other.position, CardFace.SIZE))
-	var anchor: Vector2 = _board.cards()[0].position
+	var origin: Vector2 = _board_view.play_origin()
+	# 顺序即优先级：两个**靠右**的角排在前面。§3 报的是「右上角那张卡的输出接口被裁切边
+	# 切掉半个圆」，而输出接口长在卡的右缘 —— 落点取靠右的角，这条缺陷才在同一侧被截进画面。
+	# 剩下的问题只是「这几个角里哪个吸附不会碰」：取第一个不被吸走的，不另设排序依据。
 	var corners: Array[Vector2] = [
-		Vector2(0.5, 0.5), Vector2(limit.x - 0.5, 0.5),
-		Vector2(0.5, limit.y - 0.5), Vector2(limit.x - 0.5, limit.y - 0.5),
+		Vector2(reach.x - 0.5, origin.y + 0.5), reach - Vector2(0.5, 0.5),
+		origin + Vector2(0.5, 0.5), Vector2(origin.x + 0.5, reach.y - 0.5),
 	]
-	var best: Vector2 = corners[0]
-	var best_distance: float = -1.0
 	for corner: Vector2 in corners:
-		if Snap.resolve(Rect2(corner, CardFace.SIZE), obstacles).snapped:
-			continue
-		var distance: float = corner.distance_squared_to(anchor)
-		if distance > best_distance:
-			best_distance = distance
-			best = corner
-	if best_distance < 0.0:
-		_say("警告：画布四角全在吸附半径内，退回左上角")
-		return corners[0]
-	return best
+		if not Snap.resolve(Rect2(corner, CardFace.SIZE), obstacles).snapped:
+			return corner
+	_say("警告：画布四角全在吸附半径内，退回右上角")
+	return corners[0]
 
 
 # ------------------------------------------------------------ 证据二：真的吸附
@@ -199,8 +217,19 @@ func _capture_snapping() -> void:
 		str(_snapped()), _guides_v().size(), _guides_h().size()])
 	_say("吸附把偏差 %.1fpx 收成了 %.1fpx" % [
 		absf(wanted.y - anchor.position.y), absf(landed.y - anchor.position.y)])
+	# §2 的「范围」：每条参考线该画多长由 Snap 按**相关的那两张卡**算出，不是画布通高。
+	# 卡高 72、并集最多两张卡的跨度，因此这里的数必须远小于画布高 —— 打印出来给人对照。
+	var renderer: BoardRenderer = _renderer()
+	for index: int in renderer.spans_v.size():
+		_say("竖向参考线 x=%.1f 只跨 y %.1f…%.1f（长 %.1f，画布高 %.1f）" % [
+			renderer.guides_v[index], renderer.spans_v[index].x, renderer.spans_v[index].y,
+			renderer.spans_v[index].y - renderer.spans_v[index].x, _board_view.size.y])
+	for index: int in renderer.spans_h.size():
+		_say("横向参考线 y=%.1f 只跨 x %.1f…%.1f（长 %.1f）" % [
+			renderer.guides_h[index], renderer.spans_h[index].x, renderer.spans_h[index].y,
+			renderer.spans_h[index].y - renderer.spans_h[index].x])
 	await _capture("editor_snap.png")
-	_release()
+	await _release()
 
 
 # ------------------------------------------------------------------ 手势
@@ -330,17 +359,22 @@ func _capture(file_name: String) -> void:
 
 # ------------------------------------------------------------------ 小工具
 
-## 拖动状态与参考线都在 BoardView 的私有字段里 —— 这是采集脚本，读它比在界面上「看」更准。
+## 绘制状态（吸附回执、指点、选中 / 焦点 uid）由 BoardRenderer 持有 —— 这是采集脚本，
+## 读它比在界面上「看」更准。拖动中的 uid 仍留在 BoardView（它要写回模型，不算绘制状态）。
+func _renderer() -> BoardRenderer:
+	return _board_view.renderer()
+
+
 func _snapped() -> bool:
-	return bool(_board_view.get(&"_snapped"))
+	return _renderer().snapped
 
 
 func _guides_v() -> Array:
-	return _board_view.get(&"_guides_v")
+	return _renderer().guides_v
 
 
 func _guides_h() -> Array:
-	return _board_view.get(&"_guides_h")
+	return _renderer().guides_h
 
 
 func _say(line: String) -> void:

@@ -18,10 +18,15 @@ enum Element { NONE, METAL, WOOD, WATER, FIRE, EARTH, THUNDER, WIND, POISON, ICE
 enum Fn { NONE, HASTE, SLOW, PROJECTILE_COUNT, BURST_COUNT, ENCHANT, LOOP, COOLDOWN, ATTACK_SPEED }
 
 ## 卡面图形标记。程序化绘制（新工程不带旧美术），见 scripts/editor/glyph_painter.gd。
+##
+## PET-87 §1：**一张卡一个符号，18 张卡 18 个值** —— 枚举个数与卡数必须相等，
+## 多一个少一个都会让某两张卡重新读成同一个图形（旧版 16 个值撑 18 张卡，
+## 「风」与「加速」因此共用 CHEVRON_UP、「雷」与「附魔」共用 STAR）。
+## 顺序按三类分组：核心 → 九系能力 → 八类功能，方便肉眼核对。
 enum Glyph {
-	RING, TRIANGLE, DROP, DIAMOND, STAR, SQUARE, CROSS,
-	CHEVRON_UP, CHEVRON_DOWN, BUBBLE, SHARD, GEAR,
-	PELLETS, BURST, LOOP, CLOCK,
+	RING,
+	BLADE, LEAF, DROP, FLAME, MOUNTAIN, BOLT, GUST, BUBBLE, SHARD,
+	CHEVRONS_UP, CHEVRONS_DOWN, PELLETS, BURST, SPARKLE, LOOP, CLOCK, GEAR,
 }
 
 @export var id: StringName = &""
