@@ -6,11 +6,27 @@
 ##
 ## 为什么用副本：GameFlow 是 Autoload 单例，在它上面跑来跑去会真的把游戏切到别的场景。
 ## 这里 new 出独立实例跑状态机，并确认副本**不会**触发场景路由（owns_scene_routing）。
+##
+## PET-90：加了 MAIN_MENU 之后，下面的状态序号整体后移。序号只在 *_INDEX 常量里写一次，
+## 用例正文一律按名字读 —— 否则下次再插一个状态，满篇的数字都要重新数一遍。
+## 「序号没被谁悄悄改过」这件事由 _check_state_names 单独钉死。
 
 extends RefCounted
 
-## 从 BOOT 出发，一条走得通的完整回路。
-const HAPPY_PATH: PackedInt32Array = [1, 4, 2, 3, 1]  # BOOT→EDITOR→MAP→COMBAT→REWARD→EDITOR
+const BOOT: int = 0
+const MAIN_MENU: int = 1
+const EDITOR: int = 2
+const COMBAT: int = 3
+const REWARD: int = 4
+const MAP: int = 5
+
+## 全部状态，供「两两互查合法性」之类的遍历用。
+const ALL_STATES: PackedInt32Array = [BOOT, MAIN_MENU, EDITOR, COMBAT, REWARD, MAP]
+## 需要场景路由的状态（BOOT 除外：它是主场景，由引擎落地）。
+const ROUTED_STATES: PackedInt32Array = [MAIN_MENU, EDITOR, COMBAT, REWARD, MAP]
+
+## 从 BOOT 出发，一条走得通的完整回路（装的是**每一次切换的目标状态**）。
+const HAPPY_PATH: PackedInt32Array = [MAIN_MENU, EDITOR, MAP, COMBAT, REWARD, EDITOR]
 
 
 func run(ctx: RefCounted, tree: SceneTree) -> void:
@@ -28,27 +44,44 @@ func run(ctx: RefCounted, tree: SceneTree) -> void:
 
 
 func _check_transition_table(ctx: RefCounted, live: Node) -> void:
-	var states: Array = [1, 2, 3, 4]
-	for from: int in states:
-		for to: int in states:
+	for from: int in ALL_STATES:
+		for to: int in ALL_STATES:
 			if from == to:
 				ctx.check(not live.is_transition_allowed(from, to),
 					"%s 不能切到自己" % live.state_name(from))
-	ctx.check(live.is_transition_allowed(1, 4), "编辑器 → 路线图 合法")
-	ctx.check(live.is_transition_allowed(4, 1), "路线图 → 编辑器 合法")
-	ctx.check(not live.is_transition_allowed(1, 2), "编辑器 → 战斗 **不合法**（必须走玩家动作，R1）")
-	ctx.check(not live.is_transition_allowed(3, 2), "奖励 → 战斗 不合法（必须先回编辑器）")
-	ctx.check(not live.is_transition_allowed(1, 3), "编辑器 → 奖励 不合法")
-	ctx.check(not live.is_transition_allowed(0, 2), "启动 → 战斗 不合法")
+	# PET-90：启动的落点。旧工程有这一步，新工程此前漏了 —— 于是启动直接落进编辑器。
+	ctx.check(live.is_transition_allowed(BOOT, MAIN_MENU), "启动 → 主菜单 合法")
+	ctx.check(not live.is_transition_allowed(BOOT, EDITOR), "启动 → 编辑器 **不合法**（必须经主菜单）")
+	ctx.check(not live.is_transition_allowed(BOOT, COMBAT), "启动 → 战斗 不合法")
+	# 主菜单的两条去向：新开一局走编辑器，继续一局走路线图。
+	ctx.check(live.is_transition_allowed(MAIN_MENU, EDITOR), "主菜单 → 编辑器 合法（开始新一局）")
+	ctx.check(live.is_transition_allowed(MAIN_MENU, MAP), "主菜单 → 路线图 合法（继续一局）")
+	ctx.check(not live.is_transition_allowed(MAIN_MENU, COMBAT), "主菜单 → 战斗 不合法（R1）")
+	ctx.check(not live.is_transition_allowed(MAIN_MENU, REWARD), "主菜单 → 奖励 不合法")
+	ctx.check(not live.is_transition_allowed(EDITOR, MAIN_MENU), "编辑器 → 主菜单 不合法（还没有回主菜单这条路）")
+	ctx.check(live.is_transition_allowed(EDITOR, MAP), "编辑器 → 路线图 合法")
+	ctx.check(live.is_transition_allowed(MAP, EDITOR), "路线图 → 编辑器 合法")
+	ctx.check(not live.is_transition_allowed(EDITOR, COMBAT), "编辑器 → 战斗 **不合法**（必须走玩家动作，R1）")
+	ctx.check(not live.is_transition_allowed(REWARD, COMBAT), "奖励 → 战斗 不合法（必须先回编辑器）")
+	ctx.check(not live.is_transition_allowed(EDITOR, REWARD), "编辑器 → 奖励 不合法")
 	# 每个状态都要有出路，否则切进去就出不来了。
-	for from: int in states:
+	for from: int in ALL_STATES:
 		var targets: Array = live.ALLOWED_TRANSITIONS[from]
 		ctx.check(targets.size() > 0, "%s 有出路" % live.state_name(from))
+	# 每个状态也都要**进得去**：没有任何一条边指向它 = 死状态（主菜单正是靠这一条盯着的）。
+	for state: int in ALL_STATES:
+		if state == BOOT:
+			continue
+		var inbound: int = 0
+		for from: int in ALL_STATES:
+			if live.is_transition_allowed(from, state):
+				inbound += 1
+		ctx.check(inbound > 0, "%s 进得去（有 %d 条入边）" % [live.state_name(state), inbound])
 
 
 func _check_happy_path(ctx: RefCounted, live: Node) -> void:
 	var flow: Node = _fresh(live)
-	ctx.equal(flow.get_state(), 0, "副本从 BOOT 开始")
+	ctx.equal(flow.get_state(), BOOT, "副本从 BOOT 开始")
 	# HAPPY_PATH 装的是**每一次切换的目标状态**，所以从第 0 项就开始切（从第 1 项开始会漏掉第一步）。
 	for index: int in HAPPY_PATH.size():
 		var to: int = HAPPY_PATH[index]
@@ -62,28 +95,31 @@ func _check_happy_path(ctx: RefCounted, live: Node) -> void:
 func _check_combat_entry_is_guarded(ctx: RefCounted, live: Node) -> void:
 	var flow: Node = _fresh(live)
 	ctx.check(not flow.request_start_combat(), "BOOT 下不能开始战斗")
-	ctx.equal(flow.get_state(), 0, "被拒绝的请求没有改动状态")
-	flow.change_state(1)
+	ctx.equal(flow.get_state(), BOOT, "被拒绝的请求没有改动状态")
+	flow.change_state(MAIN_MENU)
+	ctx.check(not flow.request_start_combat(), "主菜单里也不能开始战斗（要先开一局）")
+	ctx.equal(flow.get_state(), MAIN_MENU, "主菜单里被拒绝的请求没有改动状态")
+	flow.change_state(EDITOR)
 	ctx.check(flow.request_start_combat(), "编辑器里可以开始战斗")
-	ctx.equal(flow.get_state(), 2, "开始战斗后进入 COMBAT")
+	ctx.equal(flow.get_state(), COMBAT, "开始战斗后进入 COMBAT")
 	# 反向对照：COMBAT 里再按一次不该有任何效果。
 	ctx.check(not flow.request_start_combat(), "战斗进行中不能再次开始战斗")
-	ctx.equal(flow.get_state(), 2, "第二次请求没有改动状态")
+	ctx.equal(flow.get_state(), COMBAT, "第二次请求没有改动状态")
 
 	# MAP 是另一条合法入口（从路线图上选一个战斗节点）。
 	var from_map: Node = _fresh(live)
-	from_map.change_state(1)
-	from_map.change_state(4)
+	from_map.change_state(MAIN_MENU)
+	from_map.change_state(MAP)
 	ctx.check(from_map.request_start_combat(), "路线图里也可以开始战斗")
 
 	# REWARD 里不行 —— 奖励屏不能直接跳回战斗。
 	var from_reward: Node = _fresh(live)
-	from_reward.change_state(1)
-	from_reward.change_state(4)
+	from_reward.change_state(MAIN_MENU)
+	from_reward.change_state(MAP)
 	from_reward.request_start_combat()
-	from_reward.change_state(3)
+	from_reward.change_state(REWARD)
 	ctx.check(not from_reward.request_start_combat(), "奖励屏里不能开始战斗")
-	ctx.equal(from_reward.get_state(), 3, "被拒绝后仍停在奖励屏")
+	ctx.equal(from_reward.get_state(), REWARD, "被拒绝后仍停在奖励屏")
 
 
 ## R5：切换期间（信号回调里）再次请求切换必须被拒绝。
@@ -91,12 +127,12 @@ func _check_reentry_gate(ctx: RefCounted, live: Node) -> void:
 	var flow: Node = _fresh(live)
 	var outcome: Array = [null]
 	flow.state_changed.connect(func(_from: int, _to: int) -> void:
-		outcome[0] = flow.change_state(3))
-	ctx.check(flow.change_state(1), "第一次切换成功")
+		outcome[0] = flow.change_state(REWARD))
+	ctx.check(flow.change_state(MAIN_MENU), "第一次切换成功")
 	ctx.check(outcome[0] != null and not outcome[0], "信号回调里的重入请求被拒绝（R5）")
-	ctx.equal(flow.get_state(), 1, "重入被拒后状态仍是第一次切到的那个")
+	ctx.equal(flow.get_state(), MAIN_MENU, "重入被拒后状态仍是第一次切到的那个")
 	# 闸门在切换结束后必须落回 —— 否则状态机会永久卡死。
-	ctx.check(flow.change_state(4), "重入闸门已落闸，下一次切换正常")
+	ctx.check(flow.change_state(EDITOR), "重入闸门已落闸，下一次切换正常")
 
 
 ## R4：一次切换只发一次信号，且 from / to 正确。
@@ -104,34 +140,37 @@ func _check_signals(ctx: RefCounted, live: Node) -> void:
 	var flow: Node = _fresh(live)
 	var seen: Array = []
 	flow.state_changed.connect(func(from: int, to: int) -> void: seen.append([from, to]))
-	flow.change_state(1)
-	flow.change_state(4)
+	flow.change_state(MAIN_MENU)
+	flow.change_state(EDITOR)
 	ctx.equal(seen.size(), 2, "两次切换发两次信号")
-	ctx.equal(seen[0], [0, 1], "第一次信号 from=BOOT to=EDITOR")
-	ctx.equal(seen[1], [1, 4], "第二次信号 from=EDITOR to=MAP")
+	ctx.equal(seen[0], [BOOT, MAIN_MENU], "第一次信号 from=BOOT to=MAIN_MENU")
+	ctx.equal(seen[1], [MAIN_MENU, EDITOR], "第二次信号 from=MAIN_MENU to=EDITOR")
+	ctx.check(flow.change_state(MAP), "编辑器 → 路线图 合法")
 	# 唯一一处刻意触发的非法迁移（会记一条 ERROR 日志，属预期）：
 	# 价值在于证明「被拒绝的切换**不发信号**、也不改状态」。
-	ctx.check(not flow.change_state(3), "MAP → REWARD 不合法，被拒绝")
-	ctx.equal(seen.size(), 2, "被拒绝的切换没有发信号")
-	ctx.equal(flow.get_state(), 4, "被拒绝的切换没有改状态")
+	ctx.check(not flow.change_state(REWARD), "路线图 → 奖励 不合法，被拒绝")
+	ctx.equal(seen.size(), 3, "被拒绝的切换没有发信号")
+	ctx.equal(flow.get_state(), MAP, "被拒绝的切换没有改状态")
 
 
 func _check_copies_do_not_route(ctx: RefCounted, live: Node) -> void:
 	var flow: Node = _fresh(live)
 	ctx.check(live.owns_scene_routing(), "单例本尊承担场景路由")
 	ctx.check(not flow.owns_scene_routing(), "测试副本**不**承担场景路由（所以跑状态机不会把游戏切走）")
-	for state: int in [1, 2, 3, 4]:
+	for state: int in ROUTED_STATES:
 		ctx.check(ResourceLoader.exists(live.get_scene_path_for(state)),
 			"%s 的场景文件存在" % live.state_name(state))
-	ctx.equal(live.get_scene_path_for(0), "", "BOOT 不经路由（它是主场景，由引擎落地）")
+	ctx.equal(live.get_scene_path_for(BOOT), "", "BOOT 不经路由（它是主场景，由引擎落地）")
 
 
+## 序号本身也要钉死：别的用例（含 --script 工具）按名气取，这里按序号核对 —— 两边对不上就红。
 func _check_state_names(ctx: RefCounted, live: Node) -> void:
-	ctx.equal(live.state_name(0), &"BOOT", "0 = BOOT")
-	ctx.equal(live.state_name(1), &"EDITOR", "1 = EDITOR")
-	ctx.equal(live.state_name(2), &"COMBAT", "2 = COMBAT")
-	ctx.equal(live.state_name(3), &"REWARD", "3 = REWARD")
-	ctx.equal(live.state_name(4), &"MAP", "4 = MAP")
+	ctx.equal(live.state_name(BOOT), &"BOOT", "0 = BOOT")
+	ctx.equal(live.state_name(MAIN_MENU), &"MAIN_MENU", "1 = MAIN_MENU")
+	ctx.equal(live.state_name(EDITOR), &"EDITOR", "2 = EDITOR")
+	ctx.equal(live.state_name(COMBAT), &"COMBAT", "3 = COMBAT")
+	ctx.equal(live.state_name(REWARD), &"REWARD", "4 = REWARD")
+	ctx.equal(live.state_name(MAP), &"MAP", "5 = MAP")
 	ctx.equal(live.state_name(99), &"UNKNOWN", "反向对照：未知状态有名可查，不崩")
 
 

@@ -53,13 +53,15 @@ func _check_autoloads(ctx: RefCounted, tree: SceneTree) -> void:
 		and tree.root.get_node_or_null(^"EventBus") != null, "核心单例可经 /root 取到")
 
 
-## 主场景与四条状态路由必须真实存在 —— 少一个文件，那条路径就会「走到一半掉下去」。
+## 主场景与五条状态路由必须真实存在 —— 少一个文件，那条路径就会「走到一半掉下去」。
+## PET-90：MAIN_MENU 插到第 1 位之后这里也要跟着长一位，否则 MAP 那条路由会**静默脱管**
+## （断言仍然是绿的，只是不再覆盖它了）。
 func _check_routes(ctx: RefCounted, tree: SceneTree) -> void:
 	ctx.equal(ProjectSettings.get_setting("application/run/main_scene"), "res://scenes/boot.tscn", "主场景")
 	var flow: Node = tree.root.get_node_or_null(^"GameFlow")
 	if not ctx.check(flow != null, "GameFlow 存在，可查路由表"):
 		return
-	for state: int in [1, 2, 3, 4]:
+	for state: int in [1, 2, 3, 4, 5]:
 		var path: String = flow.get_scene_path_for(state)
 		ctx.check(not path.is_empty(), "状态 %d 登记了场景路径" % state)
 		ctx.check(ResourceLoader.exists(path), "场景文件存在：%s" % path)

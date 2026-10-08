@@ -13,6 +13,7 @@ extends RefCounted
 const TreeProbe = preload("res://tests/tree_probe.gd")
 
 const SCREEN_SCENES: PackedStringArray = [
+	"res://scenes/main_menu.tscn",
 	"res://scenes/editor.tscn",
 	"res://scenes/combat.tscn",
 	"res://scenes/reward.tscn",
@@ -64,6 +65,13 @@ func _smoke_screen(ctx: RefCounted, tree: SceneTree, path: String) -> void:
 
 func _check_contents(ctx: RefCounted, file: String, screen: Node) -> void:
 	match file:
+		"main_menu.tscn":
+			ctx.equal(TreeProbe.count_of(screen, "Button"), 5,
+				"主菜单：四个入口 + 设置面板里那颗语言开关")
+			ctx.check(TreeProbe.count_of(screen, "ColorRect") >= 2,
+				"主菜单有整屏底色与入口板")
+			ctx.check(TreeProbe.count_of(screen, "Label") >= 3,
+				"主菜单有 %d 行文字（标题 / 置灰说明 / 设置行）" % TreeProbe.count_of(screen, "Label"))
 		"editor.tscn":
 			ctx.equal(TreeProbe.count_of(screen, "BoardView"), 1, "编辑器有一块书页画布")
 			ctx.equal(TreeProbe.count_of(screen, "CardChip"), CardCatalog.all().size(),

@@ -114,3 +114,8 @@ keys,zh_CN,en
 "攻速 -%d 拍","攻速 -%d 拍","Attack speed -%d ticks"
 "减速 +%d 秒","减速 +%d 秒","Slow +%d sec"
 "冷却 -%d","冷却 -%d","Cooldown -%d"
+"开始新一局","开始新一局","NEW RUN"
+"设置","设置","SETTINGS"
+"退出","退出","QUIT"
+"中文 / English","中文 / English","中文 / English"
+"没有进行中的一局","没有进行中的一局","No run in progress"

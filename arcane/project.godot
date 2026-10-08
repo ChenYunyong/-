@@ -10,7 +10,8 @@ config_version=5
 
 config/name="ArcaneBlueprint"
 config/description="奥术蓝图 —— 自由摆放的卡牌构筑 + 自动施法（新工程骨架）"
-; 启动场景固定为 BOOT：自检通过后由 GameFlow 路由到模块编辑器。
+; 启动场景固定为 BOOT：自检通过后由 GameFlow 路由到主菜单（PET-90 起不再直接进编辑器 ——
+; 开新局是玩家在主菜单按「开始新一局」的动作）。
 run/main_scene="res://scenes/boot.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 

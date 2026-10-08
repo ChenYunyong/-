@@ -1,13 +1,18 @@
 ## boot_screen.gd
-## 职责：启动自检 + 开一局 + 进模块编辑器。BOOT 是本工程唯一由引擎直接落地的场景。
+## 职责：启动自检 + 进主菜单。BOOT 是本工程唯一由引擎直接落地的场景。
 ## 所属系统：ui
-## 依赖：Palette, Fonts, RunState, GameFlow, UiKit, ArcaneTheme
-## 禁止：本文件不得自己 change_scene_to_file()（03 §1.1 R3）；不得吞掉自检失败（02 §9）。
+## 依赖：Palette, Fonts, GameFlow, UiKit, ArcaneTheme
+## 禁止：本文件不得自己 change_scene_to_file()（03 §1.1 R3）；不得吞掉自检失败（02 §9）；
+##       不得开一局 —— 开新局是玩家在主菜单按「开始新一局」的动作（PET-90）。
 ##
 ## 自检三条，每条都是「资源在不在 / 画不画得出来」，不是「配置看起来对不对」：
 ##   1. 调色板资源能加载；
 ##   2. 界面主题资源能加载；
 ##   3. 系统字体真的能画出中文 —— 缺这一条，界面上所有中文都会变成空白方块。
+##
+## PET-90：落点由 EDITOR 改成 MAIN_MENU，并**去掉**这里的 RunState.start_run()。
+## 启动就开局的话，主菜单上的「继续」会永远亮着 —— 那是在替玩家宣称「你有一局没打完」，
+## 而玩家这一局根本还没开始。自检通过 = 机器能跑，不等于玩家已经开了一局。
 
 extends Control
 
@@ -20,9 +25,7 @@ func _ready() -> void:
 	if not problem.is_empty():
 		_show_problem(problem)
 		return
-	# 只有 BOOT 开新局。别的屏重进不该把波次拨回第 1 波。
-	RunState.start_run()
-	GameFlow.change_state(GameFlow.GameState.EDITOR)
+	GameFlow.change_state(GameFlow.GameState.MAIN_MENU)
 
 
 ## 返回空串 = 全部通过；否则返回给玩家看的失败原因（已 tr()）。

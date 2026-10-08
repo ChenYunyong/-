@@ -1,13 +1,15 @@
 ## loop_smoke.gd
-## 职责：一局完整循环的端到端冒烟 —— 启动 → 编辑器摆卡连线 → 自动施法战斗 → 奖励 → 回编辑器。
+## 职责：一局完整循环的端到端冒烟 —— 启动 → 主菜单开新局 → 编辑器摆卡连线 → 自动施法战斗 →
+##       奖励 → 回编辑器。
 ## 所属系统：tests
 ## 依赖：TreeProbe, CardCatalog, BoardModel, CombatSim
 ## 禁止：本文件**必须留在 TEST_SCRIPTS 的最后一行** —— 它会一路把真实的 GameFlow 换过去。
 ##
 ## 与其它用例的分工：别的用例都刻意避开单例副作用（造副本、只读、只算数）；
 ## 这一条恰恰相反，它要证明的就是**真实那条路真的通**：
-##   点仓库的卡 → 卡真的落到书页上 → 丝线真的连得上 → 战斗真的按队列施法 →
-##   三波真的打完 → 真的进奖励屏 → 选一张真的回到编辑器、而且卡真的在书页上。
+##   启动真的落在主菜单 → 按「开始新一局」真的开出一局 → 点仓库的卡 → 卡真的落到书页上 →
+##   丝线真的连得上 → 战斗真的按队列施法 → 三波真的打完 → 真的进奖励屏 →
+##   选一张真的回到编辑器、而且卡真的在书页上。
 ## 任何一环断开这条就红 —— 这是唯一能抓住「各模块单测都绿、拼起来是断的」的用例。
 
 extends RefCounted
@@ -22,6 +24,7 @@ const BOOT_SCENE: String = "res://scenes/boot.tscn"
 const FIGHT_TIME_SCALE: float = 50.0
 const MAX_FRAMES: int = 8000
 ## 按钮文案的 key。按钮上的字是 UiKit 用 TranslationServer 翻好的，故按译文找。
+const KEY_NEW_RUN: String = "开始新一局"
 const KEY_START_BATTLE: String = "开始战斗"
 const KEY_CHOOSE: String = "选择"
 
@@ -50,7 +53,8 @@ func run(ctx: RefCounted, tree: SceneTree) -> void:
 
 # ---------------------------------------------------------------- 第一步：启动
 
-## 引擎启动走的就是这条路：落地 boot 主场景 → 自检 → 开一局 → 进编辑器。
+## 引擎启动走的就是这条路：落地 boot 主场景 → 自检 → **主菜单**（PET-90 起不再直接进编辑器），
+## 再由玩家按「开始新一局」把这一局开出来。
 func _boot(ctx: RefCounted) -> bool:
 	var packed: PackedScene = load(BOOT_SCENE)
 	if not ctx.check(packed != null, "boot.tscn 可加载"):
@@ -58,15 +62,30 @@ func _boot(ctx: RefCounted) -> bool:
 	var boot: Node = packed.instantiate()
 	_tree.root.add_child(boot)
 	# 引擎会把主场景记成 current_scene，这一步必须补：change_scene_to_file() 只回收
-	# current_scene，不补的话 boot 会留在树里跟编辑器并存（而且在管理器眼里它不是「当前」）。
+	# current_scene，不补的话 boot 会留在树里跟主菜单并存（而且在管理器眼里它不是「当前」）。
 	_tree.current_scene = boot
 	var boot_id: int = boot.get_instance_id()
 
 	var routed: bool = await _await_until(func() -> bool: return _scene_changed_from(boot_id), 12)
-	if not ctx.check(routed, "boot 自检通过、开了一局并请求了切场景"):
+	if not ctx.check(routed, "boot 自检通过并请求了切场景"):
 		return false
-	ctx.equal(_flow.get_state(), _flow.GameState.EDITOR, "启动后落在 EDITOR")
-	ctx.check(_run.is_active(), "启动时真的开了一局")
+	ctx.equal(_flow.get_state(), _flow.GameState.MAIN_MENU, "启动后落在主菜单")
+	ctx.check(not _run.is_active(), "启动时**没有**替玩家开局（否则「继续」会永远是亮的）")
+	ctx.check(_tree.current_scene is Control, "当前场景是主菜单")
+
+	# 玩家动作：按「开始新一局」。这一步必须走**按钮** —— 直接调 RunState.start_run()
+	# 就绕开了「主菜单真的接对了线」这件事，而那正是 §1 要证明的。
+	var menu: Node = _tree.current_scene
+	var start: Button = _button_for(menu, KEY_NEW_RUN)
+	if not ctx.check(start != null, "主菜单有「开始新一局」按钮"):
+		return false
+	var menu_id: int = menu.get_instance_id()
+	start.pressed.emit()
+	var entered: bool = await _await_until(func() -> bool:
+		return _flow.get_state() == _flow.GameState.EDITOR and _scene_changed_from(menu_id), 12)
+	if not ctx.check(entered, "按「开始新一局」后真的切到了编辑器"):
+		return false
+	ctx.check(_run.is_active(), "按下去才真的开了一局")
 	ctx.equal(_run.current_wave(), 1, "新的一局从第 1 波开始")
 	ctx.check(_tree.current_scene is Control, "当前场景是编辑器")
 	return true

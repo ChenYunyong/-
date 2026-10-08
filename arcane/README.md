@@ -7,13 +7,15 @@
 ```bash
 # 工程根目录：arcane/
 godot --headless --path . --import                    # 新克隆必须先跑一次，生成 *.translation 与导入缓存
-godot --path .                                        # 双击 project.godot 等价：落地 boot → 自检 → 开一局 → 编辑器
+godot --path .                                        # 双击 project.godot 等价：落地 boot → 自检 → 主菜单
 godot --headless --path . --script res://tests/unit/run_tests.gd -- --task "任务号"
+godot --path . --script res://tools/capture_main_menu.gd # 像素证据（**不要**加 --headless）
 godot --path . --script res://tools/capture_editor.gd # 像素证据（**不要**加 --headless）
 ```
 
 `tools/capture_editor.gd` 会用**真鼠标事件**走一遍「点卡位 → 拖卡 → 连线」，把实测数字打到 stdout，
 并在 `tests/output/` 落下两张截图。它是证据采集，不是测试 —— 判定在 `tests/` 里。
+`tools/capture_main_menu.gd` 同路数：走启动路径落在主菜单，截常态 / 打开设置 / 按过语言开关三张。
 
 ## 二、带过来了什么 / 没带什么（PET-85 允许清单）
 

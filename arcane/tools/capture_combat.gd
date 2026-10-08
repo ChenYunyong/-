@@ -27,6 +27,8 @@ const OUTPUT_DIR: String = "res://tests/output"
 const LOCALE: String = "zh_CN"
 ## 本局种子。写死一个数：战斗本身不吃它，但「固定种子」四个字要落到实处。
 const SEED: int = 20261008
+## 主菜单上那颗按钮的文案 key。PET-90 起 boot 落在主菜单，编辑器要玩家按一下才去。
+const KEY_NEW_RUN: String = "开始新一局"
 ## 截图前推进多少拍（TICK_HZ = 20，故 100 拍 = 5 秒）。取 100 是因为这个点上：
 ## 功能卡已经打出来过、加成攒了不止一档、能力卡也真的打进去过，
 ## 而这一波还没打完 —— 侧栏每一项都是「打起来之后」的读数，而不是开局的一片零。
@@ -93,7 +95,7 @@ func _initialize() -> void:
 
 # ------------------------------------------------------------------ 启动
 
-## 走引擎那条路：落地 boot 主场景 → 自检 → 开一局 → 编辑器。
+## 走引擎那条路：落地 boot 主场景 → 自检 → 主菜单 →（按「开始新一局」）→ 编辑器。
 func _boot_to_editor() -> bool:
 	var packed: PackedScene = load("res://scenes/boot.tscn")
 	if packed == null:
@@ -106,14 +108,41 @@ func _boot_to_editor() -> bool:
 	_say("窗口：%s，窗口尺寸 %s，视口 %s，倍率 %.2f" % [
 		DisplayServer.get_name(), str(DisplayServer.window_get_size()),
 		str(root.get_visible_rect().size), _window_scale()])
+	if not await _press_new_run():
+		return false
 	for _frame: int in 20:
 		await process_frame
 		if current_scene != null and TreeProbe.count_of(current_scene, "BoardView") == 1:
 			break
 	if current_scene == null or TreeProbe.count_of(current_scene, "BoardView") != 1:
-		_say("致命：没有从 boot 走到编辑器")
+		_say("致命：按了「开始新一局」也没走到编辑器")
 		return false
 	return true
+
+
+## 等主菜单落地，然后按那颗按钮。**必须走按钮**：启动时不再有别人替玩家开局
+## （PET-90 去掉了 boot 里的 start_run），主菜单那一颗就是唯一入口。
+func _press_new_run() -> bool:
+	for _frame: int in 20:
+		await process_frame
+		var start: Button = _new_run_button()
+		if start != null:
+			start.pressed.emit()
+			return true
+	_say("致命：没有从 boot 走到主菜单（当前场景 %s）" % str(current_scene))
+	return false
+
+
+## 当前场景里那颗「开始新一局」。按**译文**找 —— 按钮上的字是 UiKit 翻好的。
+func _new_run_button() -> Button:
+	if current_scene == null:
+		return null
+	var wanted: String = TranslationServer.translate(KEY_NEW_RUN)
+	for node: Node in TreeProbe.find_all(current_scene, "Button"):
+		var button: Button = node
+		if button.text == wanted:
+			return button
+	return null
 
 
 ## 摆局面：重开一局（钉死种子）→ 推到第 WAVE 波 → 填书页。

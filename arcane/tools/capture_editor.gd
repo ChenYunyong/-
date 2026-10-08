@@ -24,6 +24,8 @@ const OUTPUT_DIR: String = "res://tests/output"
 const FREE_OFFSET: Vector2 = Vector2(197.0, 71.0)
 ## 吸附对照：故意只偏离对齐边 5px。半径是 18，所以必须被拉回去。
 const SNAP_OFFSET_Y: float = 5.0
+## 主菜单上那颗按钮的文案 key。PET-90 起 boot 落在主菜单，编辑器要玩家按一下才去。
+const KEY_NEW_RUN: String = "开始新一局"
 
 var _run: Node = null
 var _editor: Node = null
@@ -61,7 +63,7 @@ func _initialize() -> void:
 
 # ------------------------------------------------------------------ 启动
 
-## 走引擎那条路：落地 boot 主场景 → 自检 → 开一局 → 切到编辑器。
+## 走引擎那条路：落地 boot 主场景 → 自检 → 主菜单 →（按「开始新一局」）→ 编辑器。
 func _boot_to_editor() -> bool:
 	var packed: PackedScene = load("res://scenes/boot.tscn")
 	if packed == null:
@@ -76,19 +78,46 @@ func _boot_to_editor() -> bool:
 		str(DisplayServer.window_get_size()),
 		str(root.get_visible_rect().size),
 	])
+	if not await _press_new_run():
+		return false
 	for _frame: int in 20:
 		await process_frame
 		if current_scene != null and TreeProbe.count_of(current_scene, "BoardView") == 1:
 			break
 	_editor = current_scene
 	if TreeProbe.count_of(_editor, "BoardView") != 1:
-		_say("致命：没有从 boot 走到编辑器（当前场景 %s）" % _editor.name)
+		_say("致命：按了「开始新一局」也没走到编辑器（当前场景 %s）" % _editor.name)
 		return false
 	_board_view = TreeProbe.find_all(_editor, "BoardView")[0]
 	_board = _run.board()
-	_say("启动：boot 自检 → 开一局 → 编辑器，画布 %s，书页上 %d 张卡" % [
+	_say("启动：boot 自检 → 主菜单 → 按「开始新一局」→ 编辑器，画布 %s，书页上 %d 张卡" % [
 		str(_board_view.size), _board.cards().size()])
 	return true
+
+
+## 等主菜单落地，然后按那颗按钮。**必须走按钮**：启动时不再有别人替玩家开局，
+## 直接调 RunState.start_run() 就绕开了「主菜单真的接对了线」这件事（同 loop_smoke）。
+func _press_new_run() -> bool:
+	for _frame: int in 20:
+		await process_frame
+		var start: Button = _new_run_button()
+		if start != null:
+			start.pressed.emit()
+			return true
+	_say("致命：没有从 boot 走到主菜单（当前场景 %s）" % str(current_scene))
+	return false
+
+
+## 当前场景里那颗「开始新一局」。按**译文**找 —— 按钮上的字是 UiKit 翻好的。
+func _new_run_button() -> Button:
+	if current_scene == null:
+		return null
+	var wanted: String = TranslationServer.translate(KEY_NEW_RUN)
+	for node: Node in TreeProbe.find_all(current_scene, "Button"):
+		var button: Button = node
+		if button.text == wanted:
+			return button
+	return null
 
 
 # ------------------------------------------------------- 摆两张卡 + 连一条丝线
