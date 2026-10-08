@@ -80,8 +80,8 @@ func _check_event_decoding(ctx: RefCounted) -> void:
 ## 图与羊皮卷同尺寸同位置 —— 于是 _draw() 里的坐标就是 MapLayout 那套局部坐标，
 ## 测试断言的落点与真机画出来的落点是同一组数。
 func _check_wiring(ctx: RefCounted, screen: Control, view: MapView) -> void:
-	ctx.equal(view.position, MapLayout.parchment().position, "图和羊皮卷左上角对齐")
-	ctx.equal(view.size, MapLayout.parchment().size, "图和羊皮卷同尺寸")
+	ctx.equal(view.position, MapLayout.PAPER.position, "图和羊皮卷左上角对齐")
+	ctx.equal(view.size, MapLayout.PAPER.size, "图和羊皮卷同尺寸")
 	ctx.check(view.mouse_filter == Control.MOUSE_FILTER_STOP, "图自己吃鼠标事件（不然点不到）")
 	ctx.check(_status_text(screen) != "", "顶上那行写着当前位置")
 	ctx.check(_continue_button(screen) != null, "底部有「继续」")
@@ -239,10 +239,10 @@ func _first_of(root: Node, kind: String) -> Node:
 	return found[0] if not found.is_empty() else null
 
 
-## 顶上那行「当前位置」。按**落点**找（MapLayout.status_rect() 是版式契约），
+## 顶上那行「当前位置」。按**落点**找（MapLayout.STATUS_RECT 是版式契约），
 ## 不按文案前缀 —— 开局那行写的是「还没出发」，前缀根本对不上。
 func _status_text(screen: Control) -> String:
-	var want: Vector2 = MapLayout.status_rect().position
+	var want: Vector2 = MapLayout.STATUS_RECT.position
 	for node: Node in TreeProbe.find_all(screen, "Label"):
 		var label: Label = node
 		if label.position.is_equal_approx(want):
@@ -277,7 +277,7 @@ static func _touch_at(at: Vector2) -> InputEventScreenTouch:
 ## 一个节点在**窗口**坐标里的位置：屏幕铺满根视口，故先加上图在屏上的位置换成屏坐标，
 ## 再乘拉伸比（与 tools/capture_editor.gd 同一个口径）。
 func _to_window(screen: Control, node: MapModel.MapNode) -> Vector2:
-	var local: Vector2 = MapLayout.parchment().position \
+	var local: Vector2 = MapLayout.PAPER.position \
 		+ MapLayout.node_position(node.tier, node.column)
 	return (screen.get_global_transform() * local) * _window_scale()
 

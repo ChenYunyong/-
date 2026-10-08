@@ -1,7 +1,7 @@
 ## map_view.gd
 ## 职责：羊皮卷路线图的绘制与命中 —— 纸面、边线、四态节点、图例，以及鼠标 / 触摸的选择。
 ## 所属系统：roguelike（表现部分）
-## 依赖：MapModel, MapLayout, MapParchment, MapNodePainter, MapSymbolPainter, Fonts, ArcaneTheme
+## 依赖：MapModel, MapLayout, MapParchment, MapNodePainter, MapSymbolPainter, Fonts
 ## 禁止：本文件不得改图数据（选择走 MapModel.select()）；不得自己算「能去哪」（走 MapModel.selectable()）；
 ##       不得出现裸色值；不得直接 draw_line —— 线一律经 StrokePainter（test_map_paint 扫源码钉住）。
 ##
@@ -29,7 +29,8 @@ const LEGEND_STATES: Array[MapNodePainter.State] = [MapNodePainter.State.SELECTA
 
 var _model: MapModel = null
 var _font: Font = null
-var _font_size: int = ArcaneTheme.PARAM_FONT_SIZE
+## 短名 16、图例名 12 —— 都是 §2.2 那两行的字号。屏标题 24 在 map_screen 的 Label 上。
+var _font_size: int = MapLayout.LABEL_FONT_SIZE
 ## 最近一次点了走不了的节点的 id（-1 = 没有）。它一直留到下一次点击 ——
 ## 界面不用计时器，也不会自己往下走（R1）。
 var _rejected_id: int = -1
@@ -42,7 +43,7 @@ func _ready() -> void:
 func setup(model: MapModel) -> void:
 	_model = model
 	_font = Fonts.ui_font()
-	_font_size = ArcaneTheme.PARAM_FONT_SIZE
+	_font_size = MapLayout.LABEL_FONT_SIZE
 	_rejected_id = -1
 	queue_redraw()
 
@@ -56,26 +57,41 @@ func rejected_id() -> int:
 func _draw() -> void:
 	if _model == null:
 		return
-	MapParchment.paint(self, Rect2(Vector2.ZERO, MapLayout.PARCHMENT_SIZE), MapLayout.LEGEND_SEAM_Y)
+	# 纸纹在下 —— 它得让开节点与短名（M04 的保护区），画在别的东西上面就晚了。
+	MapParchment.paint(self, _paper_face(), MapLayout.protected_rects())
 	_draw_edges()
 	_draw_nodes()
 	_draw_legend()
 	_draw_rejection()
 
 
-## 边线分三档：走过的（粗墨）、现在能走的（中墨）、还走不到的（淡墨）。
+## 纸**面**的范围：整个 PAPER 扣掉 8px 材质边带。纤维只许长在这块里 ——
+## 边带是 Theme 画的暖色框，纸上多一根纤维就多一道压边的脏线。
+## 不直接用 size：本控件的 size 由 map_screen 给，而这张纸多大是 §2.2 定的。
+static func _paper_face() -> Rect2:
+	return Rect2(Vector2.ZERO, MapLayout.PAPER.size).grow(-MapLayout.PAPER_BAND)
+
+
+## 边线分三档：走过的（实线 + 箭头）、现在能走的（长虚线）、还走不到的（细短虚线）。
 ## 于是「一条走过的路线」在地图上是一道压得最重的墨迹，而不是换个颜色。
+##
+## 折线由 MapNodePainter.edge_points 给 —— 端点裁到圆边、必要时绕开短名框。
+## 相邻两个节点的短名框都要传进去：往右上走时挡路的是自己的，往左上走时是**目标**的。
 func _draw_edges() -> void:
 	var path: Array[int] = _model.path()
 	var current: int = _model.current_id()
 	for node: MapModel.MapNode in _model.nodes():
-		var from: Vector2 = MapLayout.node_position(node.tier, node.column)
 		for next_id: int in node.next:
 			var target: MapModel.MapNode = _model.find(next_id)
 			if target == null:
 				continue
-			MapNodePainter.paint_edge(self, from,
-				MapLayout.node_position(target.tier, target.column),
+			MapNodePainter.paint_edge(self,
+				MapNodePainter.edge_points(
+					MapLayout.node_position(node.tier, node.column),
+					MapLayout.node_position(target.tier, target.column),
+					NODE_RADIUS,
+					MapLayout.node_label_rect(node.tier, node.column),
+					MapLayout.node_label_rect(target.tier, target.column)),
 				MapNodePainter.edge_style(node.id, next_id, path, current))
 
 
@@ -84,27 +100,30 @@ func _draw_nodes() -> void:
 		var state: MapNodePainter.State = MapNodePainter.state_of(_model, node.id)
 		var center: Vector2 = MapLayout.node_position(node.tier, node.column)
 		MapNodePainter.paint_node(self, center, NODE_RADIUS, state)
-		MapSymbolPainter.paint(self, node.kind, center, MapLayout.SYMBOL_RADIUS,
-			MapNodePainter.ink(state))
-		_draw_label(MapLayout.node_label_baseline(node.tier, node.column), kind_text(node.kind))
+		MapSymbolPainter.paint_mark(self, MapNodePainter.STATE_MARK[state], node.kind,
+			center, MapLayout.SYMBOL_RADIUS, MapNodePainter.ink(state))
+		_draw_label(MapLayout.node_label_baseline(node.tier, node.column), kind_text(node.kind),
+			_font_size)
 
 
 ## 节点右边那行短名。符号与文字同时在场：颜色认不出时，文字还认得（06 §11）。
-func _draw_label(baseline: Vector2, text: String) -> void:
+func _draw_label(baseline: Vector2, text: String, font_size: int) -> void:
 	if _font == null:
 		return
-	draw_string(_font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size,
+	draw_string(_font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size,
 		Palette.get_color(MapNodePainter.INK_ON_PAPER))
 
 
-## 图例：四个状态各画一个**真的**小节点（走同一支画笔），旁边写状态名。
-## 用同一个画笔而不是另画四块色卡 —— 图例上看到的与地图上看到的必须是同一个东西。
+## 图例：四个状态各画一个**真的**小色样（走同一支画笔），旁边写状态名。
+## 用同一个画笔而不是另画四块色卡 —— 图例上看到的与地图上看到的必须是同一套取色。
+##
+## 色样只承担「填 / 边」那一半编码，形状标记由图例名承担（Ø12 的圆塞不下 24×24 的标记）。
 func _draw_legend() -> void:
 	for index: int in LEGEND_STATES.size():
-		var state: MapNodePainter.State = LEGEND_STATES[index]
-		MapNodePainter.paint_node(self, MapLayout.legend_node_position(index),
-			MapLayout.LEGEND_NODE_RADIUS, state)
-		_draw_label(MapLayout.legend_label_baseline(index), state_text(state))
+		MapNodePainter.paint_swatch(self, MapLayout.legend_node_position(index),
+			MapLayout.LEGEND_NODE_RADIUS, LEGEND_STATES[index])
+		_draw_label(MapLayout.legend_label_baseline(index), state_text(LEGEND_STATES[index]),
+			MapLayout.LEGEND_FONT_SIZE)
 
 
 func _draw_rejection() -> void:

@@ -1,14 +1,15 @@
 ## test_map_paint.gd
-## 职责：羊皮卷路线图**画法**的验收 —— 四状态两两分得开、纸面与墨色读得出、符号画得出来。
+## 职责：羊皮卷路线图**画法**的验收 —— 四状态两两分得开、取色与 §3 逐字对得上、纸面与墨色读得出。
 ## 所属系统：tests
-## 依赖：MapModel, MapLayout, MapView, MapNodePainter, MapParchment, MapSymbolPainter
+## 依赖：MapModel, MapNodePainter, MapParchment, Palette
 ## 禁止：本文件不得写入布局 / 颜色常量，只断言。
 ##
 ## 为什么四状态要「算」而不是「看」：06 §11 禁止只靠明度区分状态。这条规则如果只靠肉眼过一遍，
 ## 下一个改配色的人会把某一对又调回同一个亮度，而且没有任何东西会响。这里把每个状态拆成
 ## 六个可比的维度，逐对要求至少两维不同 —— 改坏了就是一条红的算术，不是一句审美意见。
 ##
-## 版式（东西摆在哪、摆不摆得下）在 test_map_layout 里，本文件只管画上去长什么样。
+## 版式（东西摆在哪、摆不摆得下）在 test_map_layout，路线几何在 test_map_route，
+## 符号与形状标记在 test_map_symbol —— 本文件只管画上去长什么样。
 
 extends RefCounted
 
@@ -21,7 +22,7 @@ const ROGUELIKE_DIR: String = "res://scripts/roguelike"
 ## 路线图这一摊的三支画笔。它们只许把几何交给 StrokePainter（见 _check_unified_pen）。
 const PAINTERS: PackedStringArray = ["map_parchment.gd", "map_node_painter.gd",
 	"map_symbol_painter.gd"]
-## 维度里哪几个是颜色（其余是结构：空心 / 外扩 / 内环）。
+## 维度里哪几个是颜色（其余是结构：空心 / 外圈外扩 / 形状标记）。
 const COLOR_DIMS: PackedStringArray = ["fill", "ring", "ink"]
 const STATE_NAMES: PackedStringArray = ["不可达", "可选", "已访问", "当前"]
 
@@ -29,11 +30,11 @@ const STATE_NAMES: PackedStringArray = ["不可达", "可选", "已访问", "当
 func run(ctx: RefCounted, _tree: SceneTree) -> void:
 	ctx.begin_case("test_map_paint")
 	_check_states_separable(ctx)
+	_check_state_tokens(ctx)
 	_check_states_on_paper(ctx)
 	_check_ink_legible(ctx)
 	_check_state_of(ctx)
-	_check_edges(ctx)
-	_check_symbols(ctx)
+	_check_fibers(ctx)
 	_check_unified_pen(ctx)
 
 
@@ -65,15 +66,57 @@ func _check_states_separable(ctx: RefCounted) -> void:
 	ctx.check(_rgb_distance(visited["fill"], current["fill"]) < COLLAPSE_DISTANCE,
 		"反向对照：已访问与当前的填充只差 %.1f < %.0f，颜色本身分不开它们"
 			% [_rgb_distance(visited["fill"], current["fill"]), COLLAPSE_DISTANCE])
-	# 它们靠哪几维分开的，也要点名钉住 —— 免得日后「简化」掉外圈或内环。
-	ctx.not_equal(visited["ring"], current["ring"], "已访问与当前的外圈不是一个颜色")
-	ctx.not_equal(visited["mark"], current["mark"], "当前节点多一圈内环")
+	# 它们靠哪几维分开的，也要点名钉住 —— 免得日后「简化」掉外圈或形状标记。
+	ctx.not_equal(visited["ring"], current["ring"], "已走与当前的边不同（已走的边与底同色 = 没有边）")
+	ctx.not_equal(visited["mark"], current["mark"], "已访问与当前的形状标记也不同（勾 / 定位三角）")
+
+
+## §3 的四行「地图…」逐字对照。配色是契约给的，不是这里挑的 ——
+## 换一支 Token 就是改这一屏的样子，所以它值得一条点名到 Token 的断言。
+##
+## 顺带把 §2.2 重复元素表里的圈宽 / 外扩 / 暗底也钉在这里：它们和取色是同一张表上的事。
+func _check_state_tokens(ctx: RefCounted) -> void:
+	var rows: Array = [
+		["地图未到达", MapNodePainter.State.UNREACHABLE, Palette.Key.GOLD_200,
+			Palette.Key.BROWN_300, Palette.Key.BROWN_700],
+		["地图可选", MapNodePainter.State.SELECTABLE, Palette.Key.GOLD_500,
+			Palette.Key.BROWN_700, Palette.Key.BROWN_700],
+		["地图当前", MapNodePainter.State.CURRENT, Palette.Key.NAVY_800,
+			Palette.Key.GOLD_500, Palette.Key.BLUE_100],
+		["地图已走", MapNodePainter.State.VISITED, Palette.Key.BROWN_700,
+			Palette.Key.BROWN_700, Palette.Key.GOLD_200],
+	]
+	for row: Array in rows:
+		ctx.equal(MapNodePainter.STATE_FILL[row[1]], row[2], "%s 填 = %s（§3）" % [row[0], row[2]])
+		ctx.equal(MapNodePainter.STATE_RING[row[1]], row[3], "%s 环 = %s（§3）" % [row[0], row[3]])
+		ctx.equal(MapNodePainter.STATE_INK[row[1]], row[4], "%s 墨 = %s（§3）" % [row[0], row[4]])
+	ctx.equal(MapNodePainter.fill_color(MapNodePainter.State.UNREACHABLE),
+		MapParchment.paper_color(), "羊皮纸面就是不可达的填充色（GOLD_200）")
+	# §2.2：普通圈宽 1、当前圈宽 3 且外扩 4，其下暗底宽 5。
+	var plain: int = 0
+	for state: MapNodePainter.State in MapNodePainter.State.size():
+		if MapNodePainter.STATE_RING_GROW[state] > 0.0:
+			ctx.equal(state, MapNodePainter.State.CURRENT, "只有当前那个圈外扩")
+			ctx.equal(MapNodePainter.STATE_RING_GROW[state], 4.0, "当前圈外扩 4")
+			ctx.equal(MapNodePainter.STATE_RING_WIDTH[state], 3.0, "当前圈宽 3")
+		else:
+			plain += 1
+			ctx.equal(MapNodePainter.STATE_RING_WIDTH[state], 1.0, "普通圈宽 1")
+	ctx.equal(plain, 3, "四个状态里三个是普通圈（否则上面那条没量到东西）")
+	ctx.equal(MapNodePainter.needs_dark_backing(MapNodePainter.State.CURRENT), true,
+		"当前圈垫暗底")
+	ctx.equal(MapNodePainter.UNDER_RING_WIDTH, 5.0, "暗底宽 5（比它上面那圈金边宽）")
+	# 暗底存在的**理由**是 §3.2：金圈贴纸面只有 1.218:1，没有它就几乎没有边界。
+	var paper: Color = MapParchment.paper_color()
+	ctx.check(_contrast(Palette.get_color(MapNodePainter.UNDER_RING), paper) >= MIN_CONTRAST,
+		"暗底对纸面 %.2f:1 ≥ %.1f（它替金圈把边界画出来）"
+			% [_contrast(Palette.get_color(MapNodePainter.UNDER_RING), paper), MIN_CONTRAST])
 
 
 ## 每种状态在纸面上都要**至少有一条线读得出来**。不可达是靠外圈（它是空心的），
-## 当前是靠填充（它那圈金色在纸上只有 64 的距离，单靠它读不出来）。
+## 当前是靠暗底 + 填充（它那圈金色在纸上只有 69 的距离，单靠它读不出来）。
 func _check_states_on_paper(ctx: RefCounted) -> void:
-	var paper: Color = MapParchment.edge_color(0.0)
+	var paper: Color = MapParchment.paper_color()
 	for state: MapNodePainter.State in MapNodePainter.State.size():
 		var dimensions: Dictionary = MapNodePainter.dimensions(state)
 		var ring: float = _rgb_distance(dimensions["ring"], paper)
@@ -87,10 +130,10 @@ func _check_states_on_paper(ctx: RefCounted) -> void:
 		paper), 0.0, "不可达的填充色就是纸色 —— 它不靠填充说话")
 
 
-## 纸面上的字。金色**做不了**纸面文字：GOLD_500 对 WARM_300 实测 1.03:1，
-## 远在 4.5 之下，金字的纸面等于没字 —— 所以纸上的字一律走墨色。
+## 纸面上的字。金色**做不了**纸面文字：GOLD_500 对纸面 GOLD_200 实测 1.218:1（§3.2），
+## 远在 4.5 之下，金字的纸面等于没字 —— 所以纸上的字一律走墨色 BROWN_700（10.947:1）。
 func _check_ink_legible(ctx: RefCounted) -> void:
-	var paper: Color = MapParchment.edge_color(0.0)
+	var paper: Color = MapParchment.paper_color()
 	var ink: Color = Palette.get_color(MapNodePainter.INK_ON_PAPER)
 	ctx.check(_contrast(ink, paper) >= MIN_CONTRAST,
 		"节点短名 / 图例的墨色对纸面 %.2f:1 ≥ %.1f" % [_contrast(ink, paper), MIN_CONTRAST])
@@ -135,78 +178,37 @@ func _check_state_of(ctx: RefCounted) -> void:
 		"上一步走过的那里退成已访问")
 
 
-## 走过的边加粗留痕，当前节点的出边是可走的，其余一律是淡的。
-func _check_edges(ctx: RefCounted) -> void:
-	var map: MapModel = MapModel.new()
-	map.generate(777)
-	var first: MapModel.MapNode = map.selectable()[0]
-	map.select(first.id)
-	var second: MapModel.MapNode = map.selectable()[0]
-	map.select(second.id)
-
-	var expected: Array[int] = [first.id, second.id]
-	ctx.equal(map.path(), expected, "走过的顺序记得住")
-	ctx.equal(MapNodePainter.edge_style(first.id, second.id, map.path(), map.current_id()),
-		MapNodePainter.EdgeStyle.WALKED, "走过的那条边是 WALKED")
-	var open: int = 0
-	for id: int in second.next:
-		open += 1
-		ctx.equal(MapNodePainter.edge_style(second.id, id, map.path(), map.current_id()),
-			MapNodePainter.EdgeStyle.OPEN, "当前节点的出边 %d 是可走的" % id)
-	ctx.check(open > 0, "当前节点确实有出边（否则上一条是空断言）")
-	# 反向对照：没走的那些边一律是淡的 —— 痕迹只沿着走过的那条线，不会整片亮起来。
-	# 挑第 0 层里**另外两个**节点（= 既不是走过的起点，也不是当前节点），量它们自己的出边。
-	var others: Array[MapModel.MapNode] = []
-	for node: MapModel.MapNode in map.nodes_in_tier(0):
-		if node.id != first.id:
-			others.append(node)
-	ctx.equal(others.size(), MapModel.COLUMNS - 1, "第 0 层还有两个没走过的节点")
-	var dormant: int = 0
-	for node: MapModel.MapNode in others:
-		for id: int in node.next:
-			dormant += 1
-			ctx.equal(MapNodePainter.edge_style(node.id, id, map.path(), map.current_id()),
-				MapNodePainter.EdgeStyle.DORMANT, "没走过的节点 %d 的出边 %d 还是淡的" % [node.id, id])
-	ctx.check(dormant > 0, "那些节点确实有出边（否则上两条是空断言）")
-	ctx.check(MapNodePainter.EDGE_WIDTH[MapNodePainter.EdgeStyle.WALKED]
-		> MapNodePainter.EDGE_WIDTH[MapNodePainter.EdgeStyle.OPEN],
-		"走过的痕迹比可走的更粗 —— 痕迹不是只换个颜色")
+## M04：纸纹不许长进**节点外扩 8** 与**短名外扩 4** 的保护区，也不许压到 8px 材质边带上。
+## 它是纸上的装饰，压到符号或字上就是脏 —— 而「有点脏」在 headless 下不会报错。
+func _check_fibers(ctx: RefCounted) -> void:
+	ctx.check(MapParchment.FIBER_ALPHA <= 0.08, "纸纹 alpha %.2f ≤ 0.08（§4 M04）"
+		% MapParchment.FIBER_ALPHA)
+	# 纤维只画在纸**面**上：整个 PAPER 扣掉 8px 边带，暖色材质层那圈不许被压。
+	var face: Rect2 = Rect2(Vector2.ZERO, MapLayout.PAPER.size).grow(-MapLayout.PAPER_BAND)
+	var zones: Array[Rect2] = MapLayout.protected_rects()
+	ctx.equal(zones.size(), 36, "保护区 = 18 个节点的外扩框 + 18 个短名框的外扩框")
+	var fibers: Array[Rect2] = MapParchment.fibers(face, zones)
+	ctx.check(fibers.size() >= 100, "纸面铺了 %d 根纤维（太少就不像纸了）" % fibers.size())
+	var outside: int = 0
+	for fiber: Rect2 in fibers:
+		if not face.encloses(fiber):
+			outside += 1
+	ctx.equal(outside, 0, "纤维都长在纸面里（不压 8px 材质边带）")
+	# 「文字框下 ≤ 0.03」在这条实现里是更强的结论：纤维一根都不进那些框，那里是 0。
+	ctx.check(not _overlaps_any(fibers, zones), "纤维一根都没进保护区（节点外扩 8 / 短名外扩 4）")
+	# 反向对照：不让路的话确实有纤维会落进去 —— 否则上面那条是白来的。
+	var none: Array[Rect2] = []
+	ctx.check(_overlaps_any(MapParchment.fibers(face, none), zones),
+		"反向对照：不让路的话有纤维会落进保护区")
 
 
-## 两种节点的符号：都画得出来、都在半径内、而且彼此不是同一个图形。
-func _check_symbols(ctx: RefCounted) -> void:
-	var drawn: Dictionary = {}
-	var kinds: Array[MapModel.Kind] = [MapModel.Kind.BATTLE, MapModel.Kind.WORKSHOP]
-	for kind: MapModel.Kind in kinds:
-		var paths: Array[Dictionary] = MapSymbolPainter.paths(kind, Vector2.ZERO,
-			MapLayout.SYMBOL_RADIUS)
-		if not ctx.check(not paths.is_empty(), "%s 有几何" % MapView.kind_text(kind)):
-			continue
-		var bad: int = 0
-		for path: Dictionary in paths:
-			if path["points"].size() < 2:
-				bad += 1
-			for point: Vector2 in path["points"]:
-				if not (is_finite(point.x) and is_finite(point.y)) \
-						or point.length() > MapLayout.SYMBOL_RADIUS:
-					bad += 1
-		ctx.equal(bad, 0, "%s 的每一笔都在符号半径内、至少两点" % MapView.kind_text(kind))
-		drawn[kind] = _flatten(paths)
-	ctx.not_equal(drawn[MapModel.Kind.BATTLE], drawn[MapModel.Kind.WORKSHOP],
-		"战斗与工坊不是同一个图形（符号 + 短名两重区分）")
-	# 反向对照：同一个 kind 画两次当然一样 —— 证明上面那条比的是几何本身。
-	ctx.equal(_flatten(MapSymbolPainter.paths(MapModel.Kind.BATTLE, Vector2.ZERO,
-		MapLayout.SYMBOL_RADIUS)), drawn[MapModel.Kind.BATTLE], "反向对照：同一种 kind 画两次一致")
-	ctx.check(MapSymbolPainter.SYMBOL_WIDTH < StrokePainter.WIDTH,
-		"符号比笔的默认线宽细一档（22px 的圆里再压 3px 就糊了）")
-	# 两种 kind 的短名也得是两个词 —— 图形之外的第二重区分。
-	ctx.not_equal(MapView.kind_text(MapModel.Kind.BATTLE), MapView.kind_text(MapModel.Kind.WORKSHOP),
-		"两种节点的短名不同")
-	# 四个状态的图例名两两不同 —— 图例上写着同一个词就等于没写。
-	var names: Dictionary = {}
-	for state: MapNodePainter.State in MapNodePainter.State.size():
-		names[MapView.state_text(state)] = true
-	ctx.equal(names.size(), 4, "四种状态的说明各是一个词")
+## 有没有一根纤维落进保护区。
+static func _overlaps_any(fibers: Array[Rect2], zones: Array[Rect2]) -> bool:
+	for fiber: Rect2 in fibers:
+		for zone: Rect2 in zones:
+			if _overlaps(fiber, zone):
+				return true
+	return false
 
 
 ## 路线图这一摊不许另起一支笔 —— PET-87 那套（线宽 / 圆角 / 端点）只有一处定义。
@@ -243,14 +245,14 @@ static func _differing_dims(one: Dictionary, other: Dictionary) -> int:
 	return count
 
 
-## 二维几何展开成一串坐标，用来直接比较两组图形是不是同一个。
-static func _flatten(paths: Array[Dictionary]) -> PackedVector2Array:
-	var points: PackedVector2Array = PackedVector2Array()
-	for path: Dictionary in paths:
-		points.append_array(path["points"] as PackedVector2Array)
-	return points
+## 两个矩形是不是**真的**压在一起。Rect2.intersects() 默认把「仅相邻」也算相交，
+## 而这里问的是「有没有一块共同面积」—— 擦边不算。
+static func _overlaps(a: Rect2, b: Rect2) -> bool:
+	return a.position.x < b.end.x and b.position.x < a.end.x \
+		and a.position.y < b.end.y and b.position.y < a.end.y
 
 
+## 两个颜色在 0-255 的 RGB 空间里的欧氏距离 —— 本工程判「已塌成一家」的那把尺。
 static func _rgb_distance(a: Color, b: Color) -> float:
 	return Vector3(a.r - b.r, a.g - b.g, a.b - b.b).length() * 255.0
 

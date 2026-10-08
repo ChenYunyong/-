@@ -48,6 +48,9 @@ const TYPE_LABEL_BODY_MUTED: StringName = &"LabelBodyMuted"
 const TYPE_LABEL_CAPTION_DANGER: StringName = &"LabelCaptionDanger"
 const TYPE_BUTTON_PAGE_PRIMARY: StringName = &"ButtonPagePrimary"
 const TYPE_BUTTON_PAGE_ICON: StringName = &"ButtonPageIcon"
+## 屏②的次按钮（§2.2 MAP_BACK，16/24）。与 ButtonPageIcon 同一张 NAVY 填色表，但那一支是
+## **无文字图标控件**（scene_smoke 钉着「图标控件不含文字」），带文字的次按钮不能借它的名。
+const TYPE_BUTTON_DARK_SECONDARY: StringName = &"ButtonDarkSecondary"
 
 const BASE_TYPE_PANEL: StringName = &"Panel"
 const BASE_TYPE_LABEL: StringName = &"Label"
@@ -180,6 +183,25 @@ static func _build_buttons(theme: Theme) -> void:
 	]:
 		theme.set_stylebox(state["slot"], TYPE_BUTTON_PAGE_ICON,
 			_button_box(state["fill"], Palette.Key.GREY_300))
+
+	# 带文字的次按钮。同一张 NAVY 三态 + GREY_300 关键边（§3「次按钮 NAVY_800 / NAVY_700 /
+	# NAVY_900 + 墨 BLUE_100 + 边 GREY_300」），只有字号与图标控件不同：§2.2 给的是 16/24。
+	theme.set_type_variation(TYPE_BUTTON_DARK_SECONDARY, BASE_TYPE_BUTTON)
+	for state: Dictionary in [
+		{"slot": &"normal", "fill": Palette.Key.NAVY_800},
+		{"slot": &"hover", "fill": Palette.Key.NAVY_700},
+		{"slot": &"pressed", "fill": Palette.Key.NAVY_900},
+		{"slot": &"disabled", "fill": Palette.Key.NAVY_800},
+		{"slot": &"focus", "fill": Palette.Key.NAVY_700},
+	]:
+		theme.set_stylebox(state["slot"], TYPE_BUTTON_DARK_SECONDARY,
+			_button_box(state["fill"], Palette.Key.GREY_300))
+	var dim: Color = Palette.get_color(Palette.Key.BLUE_100)
+	for slot: StringName in [&"font_color", &"font_hover_color", &"font_pressed_color", &"font_focus_color"]:
+		theme.set_color(slot, TYPE_BUTTON_DARK_SECONDARY, dim)
+	theme.set_color(&"font_disabled_color", TYPE_BUTTON_DARK_SECONDARY,
+		Palette.get_color(Palette.Key.GREY_500))
+	theme.set_font_size(&"font_size", TYPE_BUTTON_DARK_SECONDARY, FONT_BODY)
 
 
 # ---------------------------------------------------------------- 工具

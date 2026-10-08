@@ -33,12 +33,19 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 	{"path": "res://tests/unit/test_map_model.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_map_paint.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_map_layout.gd", "layer": "unit"},
+	# 路线几何与节点符号：PET-93 给四态加了形状标记、给边加了绕开短名框的折线，
+	# 于是各自从 test_map_paint 里分出来（源码有 300 行上限）。
+	{"path": "res://tests/unit/test_map_symbol.gd", "layer": "unit"},
+	{"path": "res://tests/unit/test_map_route.gd", "layer": "unit"},
 	# 奖励与本局账本：纯数据侧（选项的抽取 / 拿卡落到书页 / 加成进仿真），不碰节点。
 	{"path": "res://tests/unit/test_reward.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_game_flow.gd", "layer": "unit"},
 	# 路线图屏要真的入树才验得了「点得动 / 重进复原」，但它在测试收尾时会 free 掉自己，
 	# 不换 GameFlow 的状态（见文件头的禁止项），所以排在场景冒烟之前即可。
 	{"path": "res://tests/integration/map_view_smoke.gd", "layer": "integration"},
+	# 路线图屏装配后的**控件账**（§2.2 的 rect 上真的有控件、角色也对）：
+	# 从 scene_smoke 里分出来 —— 那个文件已经顶到源码 300 行上限。
+	{"path": "res://tests/integration/map_screen_smoke.gd", "layer": "integration"},
 	# 主菜单屏同上：要入树才验得了四个入口与语言开关，但不换场景。
 	{"path": "res://tests/integration/main_menu_smoke.gd", "layer": "integration"},
 	# 场景冒烟要真的把场景入树，放在单元层之后。
