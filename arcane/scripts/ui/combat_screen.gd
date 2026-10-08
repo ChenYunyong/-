@@ -76,7 +76,7 @@ func _build() -> void:
 ## 不写「玩家 HP」—— 本波模型里没有玩家生命值这一项（§2.3），不画虚构数值（C05）。
 func _build_header() -> void:
 	add_child(UiKit.panel(ContractScreenTheme.TYPE_PANEL_DARK_GOLD, CombatLayout.HEADER))
-	_label(tr("自动施法"), CombatLayout.TITLE_RECT)
+	_label(tr("自动施法"), CombatLayout.TITLE_RECT, ContractScreenTheme.TYPE_LABEL_SCREEN_TITLE)
 	# 标签与真实数值分清（§2.3）：同一个 rect 里一左一右两种变体，标签退后、数值在前。
 	_label(tr("魔力"), CombatLayout.MANA_LABEL_RECT, ContractTheme.TYPE_LABEL_BODY_MUTED)
 	_mana_text = _label("", CombatLayout.MANA_LABEL_RECT, ContractTheme.TYPE_LABEL_BODY,

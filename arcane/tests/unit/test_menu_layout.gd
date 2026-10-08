@@ -189,7 +189,7 @@ func _check_focus_vs_selected(ctx: RefCounted) -> void:
 		"焦点角标取 BLUE_300（§1.1「不能画完整金圈」）")
 	ctx.equal(MenuTheme.token_of(MenuTheme.Role.HIGHLIGHT), Palette.Key.GOLD_200,
 		"悬停高光取 GOLD_200（§3「材质上/左高光」）")
-	ctx.equal(MenuTheme.role_count(), 2, "角色表就是这两个，没有多余的色")
+	ctx.equal(MenuTheme.role_count(), 3, "角色表就是三笔：焦点 / 悬停 / 焦点暗底（§3）")
 	var focus: Color = MenuTheme.color(MenuTheme.Role.FOCUS)
 	var selected: Color = Palette.get_color(Palette.Key.GOLD_500)
 	# §1.1 的 158.392 是 **0..255 刻度**上的欧氏距离，不是 0..1 刻度（0..1 上同一个值是 0.621）。

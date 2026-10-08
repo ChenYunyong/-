@@ -220,10 +220,11 @@ func _check_window(ctx: RefCounted) -> void:
 	for total: int in range(1, 10):
 		for current: int in total:
 			var band: Vector2i = CombatLayout.chain_window(current, total)
-			ctx.check(band.y == mini(total, CombatLayout.CHAIN_SLOTS),
-				"链条 %d 张时窗口恒为 %d 张" % [total, mini(total, CombatLayout.CHAIN_SLOTS)])
-			ctx.check(current >= band.x and current < band.x + band.y,
-				"第 %d/%d 张落在窗口 [%d, %d) 里" % [current + 1, total, band.x, band.x + band.y])
+			var want: int = mini(current + 1, mini(total, CombatLayout.CHAIN_SLOTS))
+			ctx.check(band.y == want,
+				"第 %d/%d 张：窗口 %d 张（队首放不下 4 张就少画）" % [current + 1, total, want])
+			ctx.check(band.x + band.y == current + 1,
+				"窗口的**终点**就是当前施法卡（不超前：%d vs %d）" % [band.x + band.y, current + 1])
 			ctx.check(band.x >= 0 and band.x + band.y <= total, "窗口不越出链条")
 
 

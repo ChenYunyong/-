@@ -26,6 +26,10 @@ const TYPE_LABEL_ACTIVE: StringName = &"LabelActive"
 const TYPE_LABEL_CAPTION: StringName = &"LabelCaption"
 const TYPE_LABEL_LOGO: StringName = &"LabelLogo"
 const TYPE_LABEL_PAGE_CAPTION: StringName = &"LabelPageCaption"
+## 屏③的标题（COMBAT_TITLE 24/32）。它与主题默认档同字号，但英文 `AUTO CASTING` 在 24 号上
+## 实测宽 179 > 表列 176 —— §1 要「两种语言实际 shaping 后宽度 ≤ 内容区」，不许缩字号、
+## 不许截断，故单独走**字距**收紧的那支字体。默认档因此继续保持 0 字距（其余屏标题没超宽）。
+const TYPE_LABEL_SCREEN_TITLE: StringName = &"LabelScreenTitle"
 const TYPE_BUTTON_DARK_ENTRY: StringName = &"ButtonDarkEntry"
 
 const BASE_TYPE_PANEL: StringName = &"Panel"
@@ -44,6 +48,10 @@ static func apply(theme: Theme) -> void:
 	_label(theme, TYPE_LABEL_CAPTION, ContractTheme.FONT_CAPTION, Palette.Key.GREY_300)
 	_label(theme, TYPE_LABEL_LOGO, FONT_LOGO, Palette.Key.GOLD_200)
 	_label(theme, TYPE_LABEL_PAGE_CAPTION, ContractTheme.FONT_CAPTION, Palette.Key.BROWN_700)
+	# 屏标题档：同 24 号，只换字距收紧的那支字体（理由见 TYPE_LABEL_SCREEN_TITLE）。
+	theme.set_type_variation(TYPE_LABEL_SCREEN_TITLE, BASE_TYPE_LABEL)
+	theme.set_font(&"font", TYPE_LABEL_SCREEN_TITLE, ContractFont.tightened())
+	theme.set_font_size(&"font_size", TYPE_LABEL_SCREEN_TITLE, ContractTheme.FONT_TITLE)
 	_build_dark_entry(theme)
 
 
@@ -75,7 +83,7 @@ static func _build_dark_entry(theme: Theme) -> void:
 	]:
 		var box: StyleBoxFlat = _box(state["fill"], state["edge"])
 		if state["slot"] == &"pressed":
-			box.set_content_margin(SIDE_TOP, 2.0)
+			box.set_content_margin(SIDE_TOP, ContractTheme.PRESS_CONTENT_MARGIN)
 		theme.set_stylebox(state["slot"], TYPE_BUTTON_DARK_ENTRY, box)
 	var dim: Color = Palette.get_color(Palette.Key.BLUE_100)
 	for slot: StringName in [&"font_color", &"font_hover_color", &"font_pressed_color", &"font_focus_color"]:

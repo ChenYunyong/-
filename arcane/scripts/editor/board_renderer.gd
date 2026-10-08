@@ -149,3 +149,38 @@ static func find_card_at(model: BoardModel, at: Vector2) -> BoardModel.PlacedCar
 		if BoardView.card_rect(cards[index]).has_point(at):
 			return cards[index]
 	return null
+
+
+## 端口命中位：卡身 / 输出口 / 输入口。`hit_at()` 返回的第二个元素就是它。
+const PORT_NONE: int = 0
+const PORT_OUT: int = 1
+const PORT_IN: int = -1
+
+
+## 端口优先的命中测试，返回 `[卡, 命中位]`；没命中返回空数组。
+##
+## 倒序 = 后画的在上（与 find_card_at 同一条口径）；**同一张卡内端口先于卡身** ——
+## §1.1 的端口命中直径 32（半径 16）有一半在卡身之外，「卡缘正中」那一点也正好在卡身之外
+## （半开区间的 has_point 把它判在外面），按卡身先判就把中心与外侧都判成「没点着」。
+## 同一张卡内先量端口，是为了不让下面那张卡的端口抢走上面那张卡的卡身。
+static func hit_at(model: BoardModel, at: Vector2) -> Array:
+	if model == null:
+		return []
+	var cards: Array[BoardModel.PlacedCard] = model.cards()
+	for index: int in range(cards.size() - 1, -1, -1):
+		var card: BoardModel.PlacedCard = cards[index]
+		if BoardView.port_hit(BoardView.output_port(card), at):
+			return [card, PORT_OUT]
+		if BoardView.port_hit(BoardView.input_port(card), at):
+			return [card, PORT_IN]
+		if BoardView.card_rect(card).has_point(at):
+			return [card, PORT_NONE]
+	return []
+
+
+## 落线的目标卡：**输入端口 Ø32 或卡身**都算；输出端口是起手位，不是落点。
+static func drop_target(model: BoardModel, at: Vector2) -> BoardModel.PlacedCard:
+	var hit: Array = hit_at(model, at)
+	if hit.is_empty() or int(hit[1]) == PORT_OUT:
+		return null
+	return hit[0]

@@ -19,6 +19,11 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 	{"path": "res://tests/unit/test_palette.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_source_rules.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_fonts.gd", "layer": "unit"},
+	# PET-97 的两条收口：字体**实际度量**（§1 行高 / 英文 shaping 宽度 / 折行不截断）与
+	# 主题里那几条按 §3/§2.4 改回来的角色（书脊 Token / 焦点暗衬 / 按下态 / 卡链窗口）。
+	# 它们都只读主题与布局常量，故排在装配类里。
+	{"path": "res://tests/unit/test_text_metrics.gd", "layer": "unit"},
+	{"path": "res://tests/unit/test_contract_closure.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_catalog.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_glyphs.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_i18n.gd", "layer": "unit"},
@@ -48,6 +53,10 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 	# 路线图屏要真的入树才验得了「点得动 / 重进复原」，但它在测试收尾时会 free 掉自己，
 	# 不换 GameFlow 的状态（见文件头的禁止项），所以排在场景冒烟之前即可。
 	{"path": "res://tests/integration/map_view_smoke.gd", "layer": "integration"},
+	# 书页输出端口 Ø32 的**中心 / 外侧**起手（PET-97 #1）：同样是「要入树 + 真事件」才验得了的
+	# 那类 —— 命中先后与控件收不收得到指针事件，缺一条都测不出来。它只在共享书页上临时摆两张卡，
+	# 收尾按快照还原。
+	{"path": "res://tests/integration/port_hit_smoke.gd", "layer": "integration"},
 	# 路线图屏装配后的**控件账**（§2.2 的 rect 上真的有控件、角色也对）：
 	# 从 scene_smoke 里分出来 —— 那个文件已经顶到源码 300 行上限。
 	{"path": "res://tests/integration/map_screen_smoke.gd", "layer": "integration"},
@@ -59,6 +68,9 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 	{"path": "res://tests/integration/battle_report_smoke.gd", "layer": "integration"},
 	# 主菜单屏同上：要入树才验得了四个入口与语言开关，但不换场景。
 	{"path": "res://tests/integration/main_menu_smoke.gd", "layer": "integration"},
+	# 主菜单的 PET-97 两条**真屏**收口：英文说明折行放得下（#7）与金底主按钮的焦点暗衬（#8）。
+	# 它们量的是屏幕上那一条真控件 / 那一颗真按钮的装饰层，不能只靠 unit 层的口径断言。
+	{"path": "res://tests/integration/menu_closure_smoke.gd", "layer": "integration"},
 	# 场景冒烟要真的把场景入树，放在单元层之后。
 	{"path": "res://tests/integration/scene_smoke.gd", "layer": "integration"},
 	# 一局闭环的两条端到端：输（核心被摧毁 → 结算 → 回主菜单）与赢（一路打到通关 → 再来一局）。

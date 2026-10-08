@@ -32,6 +32,8 @@ const SELECT_UNDER_WIDTH: float = 6.0
 const FOCUS_ARM: float = 12.0
 const FOCUS_WIDTH: float = 2.0
 const FOCUS_INSET: float = 1.0
+## 亮纸 / 金底上那圈 NAVY_600 暗底的线宽。比芯线宽 1px 两侧 —— 与 SELECT_UNDER_WIDTH 同一条手法。
+const FOCUS_UNDER_WIDTH: float = 4.0
 ## 辅助线：底线 4 + 芯线 2（§3「吸附参考线 NAVY_600 底 / BLUE_300 芯」）。
 ## 端点杠总长 8，故半长 4。虚线节拍在 StrokePainter 里（8/4）。
 ##
@@ -53,6 +55,20 @@ static func paint_selected(target: CanvasItem, rect: Rect2, color: Color, under:
 ## 焦点：四角浅蓝细角标（13 §10.1「Focus 用浅蓝 / 亮色细框或角标」）。
 ## 画四个 L 形而**不画整圈** —— 整圈与选中轮廓在缩略图尺度上分不出来。
 static func paint_focus(target: CanvasItem, rect: Rect2, color: Color) -> void:
+	_paint_corners(target, rect, color, FOCUS_WIDTH)
+
+
+## 焦点 + 其下的 NAVY_600 暗底。**亮纸 / 金底上的控件走这一支**（§3「亮纸上的控件加
+## NAVY_600 暗底」）：BLUE_300 直接压在 GOLD_500 上只有 **1.057:1**（§3.2 的算法，
+## PET-95 实测值），等于没画；垫一圈更宽的暗线之后 BLUE_300 / NAVY_600 = 6.948，
+## 角标才对得起「焦点看得见」这条。与 Selected 的「金圈 + 暗线」是同一手法。
+static func paint_focus_backed(target: CanvasItem, rect: Rect2, color: Color, under: Color) -> void:
+	_paint_corners(target, rect, under, FOCUS_UNDER_WIDTH)
+	_paint_corners(target, rect, color, FOCUS_WIDTH)
+
+
+## 四角 L 的**唯一**画法。两支入口只差一个线宽与画几遍，L 的形状因此不会分家。
+static func _paint_corners(target: CanvasItem, rect: Rect2, color: Color, width: float) -> void:
 	var frame: Rect2 = rect.grow(-FOCUS_INSET)
 	for corner: int in 4:
 		var x: float = frame.position.x if corner % 2 == 0 else frame.end.x
@@ -61,7 +77,7 @@ static func paint_focus(target: CanvasItem, rect: Rect2, color: Color) -> void:
 		var dy: float = FOCUS_ARM if corner < 2 else -FOCUS_ARM
 		StrokePainter.stroke_path(target, PackedVector2Array([
 			Vector2(x + dx, y), Vector2(x, y), Vector2(x, y + dy),
-		]), color, FOCUS_WIDTH, false)
+		]), color, width, false)
 
 
 ## 吸附辅助线：**只在相关两个对象之间**画一小段虚线，两端各加一个端点杠。

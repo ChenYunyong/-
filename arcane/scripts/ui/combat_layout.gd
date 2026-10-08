@@ -128,13 +128,20 @@ static func result_rect(settled: bool) -> Rect2:
 ## current < 0（本波还没施法）时从队首起 —— 一进战斗就让玩家看见这一波会按什么顺序放。
 ## 抽成布局上的纯函数而不是画布里的字段运算：C02 的「最多 4 张同时可见、以当前施法卡为终点」
 ## 是可算的，算在布局层就不必为了量它去建一个控件。
+##
+## PET-97 修的是**终点**这一条：原来写的是 `clampi(current − 4 + 1, 0, total − 4)`，
+## 头 4 次施法被队首那道钳制按住，窗口的**末张**停在第 4 张 —— 第 8 张链、第 1/2/3 次施法时
+## 窗口分别超前当前施法卡 3 / 2 / 1 张（PET-95 量到的数）。契约要的是「以当前施法卡为终点」，
+## 队首放不下 4 张时就**少画几张**（第 1 次施法只画 1 张），而不是让窗口越到前头去。
 static func chain_window(current: int, total: int) -> Vector2i:
-	var count: int = mini(total, CHAIN_SLOTS)
-	if count <= 0:
+	if total <= 0:
 		return Vector2i(0, 0)
-	if current >= 0:
-		return Vector2i(clampi(current - count + 1, 0, total - count), count)
-	return Vector2i(0, count)
+	if current < 0:
+		return Vector2i(0, mini(total, CHAIN_SLOTS))
+	# 终点 = 当前施法卡（越界时钳到末张）；张数 = 能取到的最近 4 张，「当前」之前的不足就少画。
+	var last: int = mini(current, total - 1)
+	var count: int = mini(last + 1, CHAIN_SLOTS)
+	return Vector2i(last - count + 1, count)
 
 
 ## 屏坐标 → **战场局部坐标**。版式表给的一律是屏坐标，而战场是屏内自己的一层

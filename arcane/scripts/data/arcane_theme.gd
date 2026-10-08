@@ -75,7 +75,12 @@ func _init() -> void:
 func apply_palette() -> void:
 	# 字体必须是主题的 default_font，而不是逐个控件设置 —— 06 §11「文本必须走 key」的
 	# 前提是文字画得出来：Godot 内置字体没有 CJK 字形，中文会整片空白（见 fonts.gd）。
-	default_font = Fonts.ui_font()
+	#
+	# PET-97：挂的是 ContractFont.contracted()（包着 Fonts.ui_font() 的 FontVariation，
+	# 只收字体行距）。系统 CJK 字体在 24 / 36 号上的实际行高是 33 / 49，比 §1 的 32 / 48 各多 1，
+	# 而 §1 要求「文字的实际 ascent+descent ≤ 表列行高」、G02 不豁免行高 —— 不收的话
+	# 每个 24 号 Label 的最小行盒都会把声明 32 的 rect 顶高 1px。字号一个都没动。
+	default_font = ContractFont.contracted()
 	default_font_size = BODY_FONT_SIZE
 	_build_button_primary()
 	_build_button_secondary()

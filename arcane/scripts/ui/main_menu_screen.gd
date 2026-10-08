@@ -64,8 +64,9 @@ func _build_logo() -> void:
 ## 默认那档（16px，行盒 23），挂上去之后主题才换成 12px（行盒 17）。Godot 只把尺寸往**大**顶、
 ## 从不自己缩回来，于是 (324,280,312,20) 那一格会停在 23 高 —— 声明 20、实际 23，
 ## 正是 G02 拦的「宽高不能由字体撑开」，也是 N02 那条「声明 48 实际 57」的同一种病。
-## 进树后重量一次，值就是主题解析之后的行盒（标题那一档 24px 的行盒是 33，比表里的 32 多 1，
-## 落在 G02 的 ≤1 里；剩下四行都严丝合缝）。
+## 进树后重量一次，值就是主题解析之后的行盒。PET-97 把字体行距收进 §1 的行高之后，
+## 每一档的行盒都在表列行高之内（24 档 31 ≤ 32），于是「声明多少就是多少」。例如那 20 高的
+## 原因行此前会停在 23，现在真的落在 20 上。**先把尺寸写对，再让字体自己站住**。
 func _add_pinned_label(parent: Node, text: String, rect: Rect2, variation: StringName) -> Label:
 	var label: Label = UiKit.label(text, rect, variation)
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -96,6 +97,8 @@ func _build_entries() -> void:
 
 ## 一颗带文字的按钮：矩形由表给死（G02 第三条「宽高不能由字体撑开」），
 ## 再挂上 §2.4 的两笔状态装饰（悬停高光 / 焦点角标）。
+## 焦点暗底按**这颗按钮落不落在亮底上**给：只有金底的那颗主按钮要（§3 原话），
+## 深色入口上 BLUE_300 本来就是 9.930:1，多垫一圈反而把角标画糊。
 func _add_button(key: String, rect: Rect2, variation: StringName, handler: Callable) -> Button:
 	var button: Button = UiKit.button(key, variation, handler)
 	button.position = rect.position
@@ -103,7 +106,8 @@ func _add_button(key: String, rect: Rect2, variation: StringName, handler: Calla
 	add_child(button)
 	_texts.append({"node": button, "key": key})
 	ButtonMarks.attach(button, MenuTheme.color(MenuTheme.Role.FOCUS),
-		MenuTheme.color(MenuTheme.Role.HIGHLIGHT))
+		MenuTheme.color(MenuTheme.Role.HIGHLIGHT),
+		MenuTheme.focus_under(key == MenuLayout.KEY_PRIMARY))
 	return button
 
 
@@ -134,7 +138,7 @@ func _build_settings() -> void:
 	_close_button.size = MenuLayout.SETTINGS_CLOSE_RECT.size
 	_settings_panel.add_child(_close_button)
 	ButtonMarks.attach(_close_button, MenuTheme.color(MenuTheme.Role.FOCUS),
-		MenuTheme.color(MenuTheme.Role.HIGHLIGHT))
+		MenuTheme.color(MenuTheme.Role.HIGHLIGHT), MenuTheme.focus_under(false))
 	_settings_panel.visible = false
 
 
@@ -152,8 +156,9 @@ func _add_panel_button(key: String, rect: Rect2, variation: StringName, handler:
 	button.size = rect.size
 	_settings_panel.add_child(button)
 	_texts.append({"node": button, "key": key})
+	# 浮层是深面板，两颗控件都在暗底上 —— 焦点角标不垫暗底（理由同 _add_button）。
 	ButtonMarks.attach(button, MenuTheme.color(MenuTheme.Role.FOCUS),
-		MenuTheme.color(MenuTheme.Role.HIGHLIGHT))
+		MenuTheme.color(MenuTheme.Role.HIGHLIGHT), MenuTheme.focus_under(false))
 	return button
 
 

@@ -152,15 +152,25 @@ func _gui_input(event: InputEvent) -> void:
 
 func _on_press(position: Vector2) -> void:
 	_renderer.pointer = position
-	var card: BoardModel.PlacedCard = _find_card_at(position)
-	if card == null:
+	# **端口先于卡身**：§1.1 给的端口命中直径是 32（半径 16），而端口中心正好落在卡身边缘上 ——
+	# 外侧那半圆与**正中那一点**都在卡身之外，卡身的 has_point 判不到它们。
+	# PET-95 量到的「只有卡身内半圆可起手」就是按卡身先判的后果。
+	var hit: Array = BoardRenderer.hit_at(_model, position)
+	if hit.is_empty():
 		clear_selection()
 		return
-	select(card.uid)
-	if position.distance_to(output_port(card)) <= PORT_HIT_RADIUS:
+	var card: BoardModel.PlacedCard = hit[0]
+	if int(hit[1]) == BoardRenderer.PORT_OUT:
+		select(card.uid)
 		_renderer.link_from = card.uid
 		queue_redraw()
 		return
+	# 输入口那半圆也在卡身外，但它**不是起手位**（落线时才用它）—— 那里按下去与点空白等价，
+	# 「点空白收起详情」这条交互因此不会被端口命中圈悄悄吃掉。
+	if not card_rect(card).has_point(position):
+		clear_selection()
+		return
+	select(card.uid)
 	# 推入撤销快照必须发生在改动之前，因此这里先发信号，再开始改坐标。
 	edit_started.emit()
 	_drag_uid = card.uid
@@ -196,7 +206,7 @@ func _on_motion(position: Vector2) -> void:
 func _on_release(position: Vector2) -> void:
 	_renderer.pointer = position
 	if _renderer.link_from != 0:
-		var target: BoardModel.PlacedCard = _find_card_at(position)
+		var target: BoardModel.PlacedCard = BoardRenderer.drop_target(_model, position)
 		var source_uid: int = _renderer.link_from
 		_renderer.link_from = 0
 		_clear_guides()
@@ -249,3 +259,10 @@ func _find_card_at(position: Vector2) -> BoardModel.PlacedCard:
 	if _model == null:
 		return null
 	return BoardRenderer.find_card_at(_model, position)
+
+
+## 端口命中：以端口中心为圆心、PORT_HIT_RADIUS 为半径的圆。§1.1 的「命中直径 32 逻辑 =
+## 64 设备像素；触摸命中中心与可见中心一致」就是这一条。做成静态纯函数，中心 / 外侧 / 圆外
+## 三点可以在单测里逐点对照，不必为此建一个控件。
+static func port_hit(center: Vector2, at: Vector2) -> bool:
+	return at.distance_to(center) <= PORT_HIT_RADIUS

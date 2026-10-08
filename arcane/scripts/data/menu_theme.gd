@@ -18,12 +18,14 @@
 class_name MenuTheme
 extends RefCounted
 
-## 主菜单自己画的两笔「状态装饰」。**按用途命名，不按颜色命名**。
+## 主菜单自己画的「状态装饰」。**按用途命名，不按颜色命名**。
 enum Role {
 	## 焦点角标：四角 L（§1.1「BLUE_300；不能画完整金圈」）。
 	FOCUS,
 	## 悬停高光：材质上 / 左各 1px（§2.4、§3「材质上/左高光 GOLD_200」）。
 	HIGHLIGHT,
+	## 焦点暗底：§3「亮纸上的控件加 NAVY_600 暗底」。**只在亮底上垫**（金底的新局那颗）。
+	FOCUS_UNDER,
 }
 
 ## 角色 → Token。**这是这一屏唯一一处「哪个 Token 用在哪」的映射**。
@@ -31,9 +33,14 @@ enum Role {
 ## 为什么焦点必须是 BLUE_300 而不是金色：§1.1 末段要求 Focus 与 Selected 分得开，
 ## 而本屏的强主动作（开始新一局）本身就是**整面金**的 —— 金角标压在金底上等于没画。
 ## 两个语义色的 RGB 欧氏距离 §1.1 给了实测值 158.392（≥150，G09）。
+##
+## 为什么还要一道 NAVY_600 暗底：BLUE_300 直接压在金底 GOLD_500 上实测只有 **1.057:1**
+## （PET-95 量到的数），远低于 §4 G04/G09 的 ≥3 —— 角标画了却看不见。垫上暗底之后
+## BLUE_300 / NAVY_600 = 6.948、NAVY_600 / GOLD_500 = 6.574，两个方向都过线。
 const ROLE_TOKEN: Dictionary = {
 	Role.FOCUS: Palette.Key.BLUE_300,
 	Role.HIGHLIGHT: Palette.Key.GOLD_200,
+	Role.FOCUS_UNDER: Palette.Key.NAVY_600,
 }
 
 ## 角色缺登记时的兜底色。灰是「这里没设计过」的颜色，不是某一档色阶 ——
@@ -55,3 +62,12 @@ static func token_of(role: Role) -> Palette.Key:
 ## 表里登记了多少个角色。反向对照用：表被清空时「每个角色都查得到」会变成空真。
 static func role_count() -> int:
 	return ROLE_TOKEN.size()
+
+
+## 焦点暗底的颜色：**只在亮底（金底主按钮）上垫**，深色入口上返回同一个 Token 的 alpha=0 副本
+## （色相仍来自唯一真值来源，只是这一层不画）。§3 那一行把适用范围写得很清楚 ——
+## 「暗卡内侧四角 2px；**亮纸上的控件**加 NAVY_600 暗底」。
+static func focus_under(on_light: bool) -> Color:
+	var color: Color = Palette.get_color(token_of(Role.FOCUS_UNDER))
+	color.a = 1.0 if on_light else 0.0
+	return color

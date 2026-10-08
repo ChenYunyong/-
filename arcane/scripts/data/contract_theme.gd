@@ -10,7 +10,8 @@
 ## 第一屏（书页卡牌画布）落地后其余三屏逐屏搬过来，搬完这一支就是四屏共用的那张角色表。
 ##
 ## §3 的取色只走「视觉角色 → 既有 Token」：羊皮纸面 GOLD_200、纸边 8px 边带 WARM_500、
-## 纸面折影 BROWN_300 / 书脊 BROWN_400、深面板 NAVY_800、关键边 GREY_300、材质上左高光 GOLD_200。
+## 纸面折影 BROWN_300 / 书脊 BROWN_700+BROWN_600、深面板 NAVY_800、关键边 GREY_300、
+## 材质上左高光 GOLD_200、按下内嵌暗边 NAVY_600。
 
 @tool
 class_name ContractTheme
@@ -34,6 +35,13 @@ const BOOK_SHADOW_SIZE: int = 8
 const BOOK_SHADOW_ALPHA: float = 0.28
 ## §3「纸纹/地图装饰墨 alpha≤0.08」—— 折痕、书脊折影这类**装饰**纹样都取这个上界。
 const DECOR_ALPHA: float = 0.08
+## §2.4 的按下态：**内容下移 2**、内嵌暗边 1（见 apply_press 的实测表）。
+const PRESS_SHIFT: float = 2.0
+## 样式盒要写的上内边距。**不是** PRESS_SHIFT 本身：Button 把文字在「尺寸 − 内容边距」里居中，
+## 上内边距只有一半变成向下的位移。真渲染实测（tools/press_probe.gd，960×540）：
+##   上内边距 0 → 位移 0 · 1 → 0 · 2 → 1 · 4 → 2。
+## 故写 2 × PRESS_SHIFT 才真的下移 2px；下内边距不动，内容区高度因此不变。
+const PRESS_CONTENT_MARGIN: float = PRESS_SHIFT * 2.0
 
 ## 变体名。屏①（编辑器）用到的全部在此；后续三屏按同一张角色表继续往这里加。
 const TYPE_BACKDROP: StringName = &"Backdrop"
@@ -108,9 +116,12 @@ static func _build_page(theme: Theme) -> void:
 	theme.set_stylebox(&"panel", TYPE_PAGE_HILIGHT, lit)
 
 	# 书脊：16px 中带的**折影**，不是一条实心暗杠（§2.1 原话「两侧低对比折影；纯装饰」）。
+	# 取色按 §3 的角色表：书脊 / 皮革走 **BROWN_700 底 + BROWN_600 折影线**
+	# （PET-95 记作「书脊 Token 偏离契约」）；BROWN_400 / BROWN_300 是「边带 / 纸纹」那一行，
+	# 不属于书脊。alpha 仍取装饰上界，故底与折影只差一档、读起来是折影不是暗杠。
 	theme.set_type_variation(TYPE_PAGE_SPINE, BASE_TYPE_PANEL)
-	var spine: StyleBoxFlat = _flat_tinted(Palette.Key.BROWN_400, DECOR_ALPHA, 0)
-	spine.border_color = _tinted(Palette.Key.BROWN_300, DECOR_ALPHA)
+	var spine: StyleBoxFlat = _flat_tinted(Palette.Key.BROWN_700, DECOR_ALPHA, 0)
+	spine.border_color = _tinted(Palette.Key.BROWN_600, DECOR_ALPHA)
 	spine.border_width_left = HAIRLINE
 	spine.border_width_right = HAIRLINE
 	theme.set_stylebox(&"panel", TYPE_PAGE_SPINE, spine)
@@ -131,7 +142,11 @@ static func _build_popover(theme: Theme) -> void:
 ## §1 的四个字号档。屏标题走主题的 default_font_size（24，就是这一档），故此处不另开变体。
 static func _build_labels(theme: Theme) -> void:
 	# 详情名：深面板上唯一的暖色标题。GOLD_400 / NAVY_800 = 8.46:1（≥4.5，标题另计 ≥3）。
+	# 它同时挂 ContractFont.tightened()：英文最长的一张卡名 `Projectile Count` 在 24 号上
+	# 实测宽 183 > 176（表列 DETAIL_NAME 宽），会伸进收起键的框里 3px。§1 不许截断、
+	# 不许缩字号（G05 要 24 − 16 = 8），故按 §1 给的是**字距**口径。
 	theme.set_type_variation(TYPE_LABEL_DETAIL_NAME, BASE_TYPE_LABEL)
+	theme.set_font(&"font", TYPE_LABEL_DETAIL_NAME, ContractFont.tightened())
 	theme.set_font_size(&"font_size", TYPE_LABEL_DETAIL_NAME, FONT_TITLE)
 	theme.set_color(&"font_color", TYPE_LABEL_DETAIL_NAME, Palette.get_color(Palette.Key.GOLD_400))
 	# 正文：卡墨 BLUE_100 / NAVY_800 = 11.75:1。
@@ -155,17 +170,22 @@ static func _build_labels(theme: Theme) -> void:
 ## 给 14 的话，图标控件的最小边长变成 28（§2.1 要的是 24，实测被顶宽 4px），
 ## 主按钮的最小高变成字体行高 28 + 28 = 56（表列要的是 48，实测被顶高 8px）。
 ## 字号仍然管着文字自己多大，只是不再管控件多大；文字在盒子里居中，视觉上与内边距等效。
+##
+## PET-97 补的是 §2.4 的**按下态**：按下内容下移 2 + 内嵌暗边 1。它原来只有「换一档金底」，
+## 内边距与边都没动 —— 按下去与常态长得一样，玩家读不到「这一下按下去了」。
 static func _build_buttons(theme: Theme) -> void:
 	theme.set_type_variation(TYPE_BUTTON_PAGE_PRIMARY, BASE_TYPE_BUTTON)
 	for state: Dictionary in [
-		{"slot": &"normal", "fill": Palette.Key.GOLD_500},
-		{"slot": &"hover", "fill": Palette.Key.GOLD_200},
-		{"slot": &"pressed", "fill": Palette.Key.GOLD_600},
-		{"slot": &"disabled", "fill": Palette.Key.NAVY_800},
-		{"slot": &"focus", "fill": Palette.Key.GOLD_500},
+		{"slot": &"normal", "fill": Palette.Key.GOLD_500, "edge": Palette.Key.GOLD_600},
+		{"slot": &"hover", "fill": Palette.Key.GOLD_200, "edge": Palette.Key.GOLD_600},
+		{"slot": &"pressed", "fill": Palette.Key.GOLD_600, "edge": Palette.Key.NAVY_600},
+		{"slot": &"disabled", "fill": Palette.Key.NAVY_800, "edge": Palette.Key.GOLD_600},
+		{"slot": &"focus", "fill": Palette.Key.GOLD_500, "edge": Palette.Key.GOLD_600},
 	]:
-		theme.set_stylebox(state["slot"], TYPE_BUTTON_PAGE_PRIMARY,
-			_button_box(state["fill"], Palette.Key.GOLD_600))
+		var box: StyleBoxFlat = _button_box(state["fill"], state["edge"])
+		if state["slot"] == &"pressed":
+			box.set_content_margin(SIDE_TOP, PRESS_CONTENT_MARGIN)
+		theme.set_stylebox(state["slot"], TYPE_BUTTON_PAGE_PRIMARY, box)
 	var ink: Color = Palette.get_color(Palette.Key.NAVY_900)
 	for slot: StringName in [&"font_color", &"font_hover_color", &"font_pressed_color", &"font_focus_color"]:
 		theme.set_color(slot, TYPE_BUTTON_PAGE_PRIMARY, ink)

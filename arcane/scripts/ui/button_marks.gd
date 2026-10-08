@@ -32,6 +32,10 @@ const MARK_FOCUS: int = 2
 ## 给一个默认色就等于在「角色表」之外又多了一处色值来源，而它还是看不见的那一处。
 var focus_color: Color
 var highlight_color: Color
+## 焦点角标下面那道 NAVY_600 暗底（§3「亮纸上的控件加 NAVY_600 暗底」）。
+## alpha = 0 表示这一层不画：深色入口上 BLUE_300 / NAVY_800 = 9.930（§3.2）本来就够，
+## 多垫一圈反而把角标画糊。哪些按钮需要，由调用方按「它是不是落在亮底上」决定。
+var focus_under: Color
 
 var _host: Button = null
 
@@ -48,10 +52,11 @@ static func marks_for(hovered: bool, focused: bool, pressed: bool) -> int:
 
 
 ## 给一颗按钮挂上装饰层。返回挂上去的控件，调用方不必自己保存 —— 它跟着宿主一起生死。
-static func attach(host: Button, focus: Color, highlight: Color) -> ButtonMarks:
+static func attach(host: Button, focus: Color, highlight: Color, under: Color) -> ButtonMarks:
 	var node: ButtonMarks = ButtonMarks.new()
 	node.focus_color = focus
 	node.highlight_color = highlight
+	node.focus_under = under
 	# 装饰层不吃指针事件：它铺满宿主，否则会把宿主自己的点击全挡掉。
 	node.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	host.add_child(node)
@@ -79,14 +84,24 @@ func marks() -> int:
 	return marks_for(_host.is_hovered(), _host.has_focus(), _host.is_pressed())
 
 
+## 这一层的焦点角标要不要垫暗底。与 marks() 同一条口径：读状态而不在 _draw() 里另算。
+func paints_focus_under() -> bool:
+	return focus_under.a > 0.0
+
+
 func _draw() -> void:
 	var flags: int = marks()
 	if flags & MARK_HIGHLIGHT:
 		_paint_highlight()
 	if flags & MARK_FOCUS:
+		var rect: Rect2 = Rect2(Vector2.ZERO, size)
 		# 四角 L 全工程只有一处画法：§2.4 只说「加四角 L」，尺寸沿用 §1.1 那一行
 		# （内缩 1 / 臂 12 / 线宽 2）。按钮与卡片共用同一条，角标在四屏里长得一样。
-		BoardStatePainter.paint_focus(self, Rect2(Vector2.ZERO, size), focus_color)
+		# 落在亮底 / 金底上的按钮另垫一道 NAVY_600 暗底（§3），否则 BLUE_300 只有 1.057:1。
+		if paints_focus_under():
+			BoardStatePainter.paint_focus_backed(self, rect, focus_color, focus_under)
+		else:
+			BoardStatePainter.paint_focus(self, rect, focus_color)
 
 
 ## 上 / 左各一条 1px 高光。用填矩形而不是笔触：1px 的线在 2× 下要不糊只有整数矩形给得了，
