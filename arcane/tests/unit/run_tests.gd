@@ -30,6 +30,9 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 	{"path": "res://tests/unit/test_board_model.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_combat_sim.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_combat_cards.gd", "layer": "unit"},
+	# 战斗屏的版式与画法：§2.3 的几何表逐条对照，§3 的角色表逐条取色。
+	{"path": "res://tests/unit/test_combat_layout.gd", "layer": "unit"},
+	{"path": "res://tests/unit/test_combat_paint.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_map_model.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_map_paint.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_map_layout.gd", "layer": "unit"},
@@ -46,6 +49,9 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 	# 路线图屏装配后的**控件账**（§2.2 的 rect 上真的有控件、角色也对）：
 	# 从 scene_smoke 里分出来 —— 那个文件已经顶到源码 300 行上限。
 	{"path": "res://tests/integration/map_screen_smoke.gd", "layer": "integration"},
+	# 战斗屏装配后的控件账（§2.3 的 rect 上真的有控件、卡链与结算键的角色也对）：
+	# 同样是从 scene_smoke 里分出来的 —— 那里只数得下「有几个」，量不了真实的 rect。
+	{"path": "res://tests/integration/combat_screen_smoke.gd", "layer": "integration"},
 	# 主菜单屏同上：要入树才验得了四个入口与语言开关，但不换场景。
 	{"path": "res://tests/integration/main_menu_smoke.gd", "layer": "integration"},
 	# 场景冒烟要真的把场景入树，放在单元层之后。

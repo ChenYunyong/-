@@ -134,3 +134,8 @@ keys,zh_CN,en
 "再来一局","再来一局","NEW RUN"
 "伤害 +%d","伤害 +%d","Damage +%d"
 "魔力 +%d","魔力 +%d","Mana +%d"
+"尚未施法","尚未施法","No cast yet"
+"施法链 %d/%d","施法链 %d/%d","Chain %d/%d"
+"施法链 · 共 %d 张","施法链 · 共 %d 张","Chain · %d cards"
+"八通道 %d 档","八通道 %d 档","Channels %d"
+"链条为空","链条为空","Chain empty"

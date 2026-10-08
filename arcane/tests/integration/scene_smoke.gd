@@ -88,9 +88,11 @@ func _check_contents(ctx: RefCounted, file: String, screen: Node) -> void:
 			_check_editor_buttons(ctx, screen)
 		"combat.tscn":
 			ctx.equal(TreeProbe.count_of(screen, "Timer"), 1, "战斗屏有一个固定步长计时器")
-			ctx.check(TreeProbe.count_of(screen, "Label") >= 8,
-				"战斗屏有 %d 行状态文字" % TreeProbe.count_of(screen, "Label"))
-			ctx.check(TreeProbe.count_of(screen, "ColorRect") >= 1, "战斗屏有血条色块")
+			ctx.equal(TreeProbe.count_of(screen, "Label"), 11, "战斗屏 11 行读数（§2.3：头栏 6 + 底栏 5）")
+			ctx.equal(TreeProbe.count_of(screen, "CombatView"), 1, "战斗屏有一块战场")
+			ctx.equal(TreeProbe.count_of(screen, "CombatChain"), 1, "战斗屏有一条施法链")
+			ctx.equal(TreeProbe.count_of(screen, "ColorRect"), 2, "两条读数条各只有一个填充块（槽走 Theme 变体）")
+			ctx.equal(TreeProbe.count_of(screen, "Button"), 1, "进行中只有那颗结算键，且此刻不可见（C02）")
 		"reward.tscn":
 			_check_reward(ctx, screen)
 		"map.tscn":

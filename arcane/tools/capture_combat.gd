@@ -225,9 +225,13 @@ func _report() -> void:
 	_say("画面（一律按 CombatLayout 的落点取字，不按文案前缀）：")
 	_say("    标题「%s」/ 波次「%s」/ 本场结果「%s」" % [
 		_at(CombatLayout.TITLE_RECT), _at(CombatLayout.WAVE_RECT), _at(CombatLayout.RESULT_RECT)])
-	_say("    敌群血量「%s」/ 魔力「%s」" % [_at(CombatLayout.HP_TEXT_RECT), _at(CombatLayout.MANA_RECT)])
-	_say("    施法队列「%s」" % _at(CombatLayout.QUEUE_RECT))
-	_say("    本波加成「%s」" % _at(CombatLayout.BONUS_TEXT_RECT))
+	# 敌群与魔力那一格上各有两个 Label（标签退后、数值在前）—— 一起报，正好说明两者分得清。
+	_say("    敌群血量「%s」/ 魔力「%s」" % [
+		_at(CombatLayout.ENEMY_LABEL_RECT), _at(CombatLayout.MANA_LABEL_RECT)])
+	_say("    当前施法「%s」/「%s」" % [
+		_at(CombatLayout.ACTIVE_NAME_RECT), _at(CombatLayout.ACTIVE_VALUE_RECT)])
+	_say("    卡链「%s」" % _at(CombatLayout.QUEUE_TITLE_RECT))
+	_say("    队列加成「%s」" % _at(CombatLayout.QUEUE_SUMMARY_RECT))
 	_say("实测：打了 %d 拍（%.1f 秒 / 限时 %.1f 秒），敌群 %d/%d，魔力 %d，结局 %s" % [
 		sim.elapsed_ticks(), float(sim.elapsed_ticks()) / float(CombatSim.TICK_HZ),
 		float(sim.time_limit_ticks()) / float(CombatSim.TICK_HZ),
@@ -236,9 +240,16 @@ func _report() -> void:
 	_say("节拍：核心每 %d 拍产 %d 点，施法每 %d 拍一次；本波 %d 档加成效力中，队列 %d 张" % [
 		sim.mana_period_ticks(), _core_output(), sim.cast_interval_ticks(),
 		sim.mods().total_stacks(), sim.cast_order().size()])
-	_say("计件：%d 个 Label / %d 个 ColorRect / %d 个 Panel / %d 个 Timer" % [
+	_say("计件：%d 个 Label / %d 个 ColorRect / %d 个 Panel / %d 个 Timer / %d 条卡链" % [
 		TreeProbe.count_of(current_scene, "Label"), TreeProbe.count_of(current_scene, "ColorRect"),
-		TreeProbe.count_of(current_scene, "Panel"), TreeProbe.count_of(current_scene, "Timer")])
+		TreeProbe.count_of(current_scene, "Panel"), TreeProbe.count_of(current_scene, "Timer"),
+		TreeProbe.count_of(current_scene, "CombatChain")])
+	# C02「最多 4 张同时可见」：窗口是整个链条里的哪一段，这一行就是那一段的读数。
+	var chains: Array[Node] = TreeProbe.find_all(current_scene, "CombatChain")
+	if chains.size() == 1:
+		var band: Vector2i = (chains[0] as CombatChain).window()
+		_say("卡链：队列 %d 张，本帧画出第 %d..%d 张（窗口 %d 张，上限 %d）" % [
+			sim.cast_order().size(), band.x + 1, band.x + band.y, band.y, CombatLayout.CHAIN_SLOTS])
 
 
 ## 三张核心卡合计每秒出多少点。按**卡面**取，不重新推一遍仿真。
@@ -253,12 +264,15 @@ func _core_output() -> int:
 
 
 ## 某个落点上的 Label 文本。落点是版式契约（CombatLayout），文案不是。
+## 同一格上叠着两个 Label 时（§2.3 的「标签与真实数值分清」）一并报出来，用「|」隔开 ——
+## 只报第一个的话，图上明明写着「敌群 24/80」而这里只印「敌群」，看起来像数值没画上去。
 func _at(rect: Rect2) -> String:
+	var found: PackedStringArray = PackedStringArray()
 	for node: Node in TreeProbe.find_all(current_scene, "Label"):
 		var label: Label = node
 		if label.position.is_equal_approx(rect.position):
-			return label.text
-	return "（没找到）"
+			found.append(label.text)
+	return "（没找到）" if found.is_empty() else " | ".join(found)
 
 
 # ------------------------------------------------------------------ 重放

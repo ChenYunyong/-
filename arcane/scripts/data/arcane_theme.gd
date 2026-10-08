@@ -86,6 +86,8 @@ func apply_palette() -> void:
 	# docs/14 的契约层（PET-93）。它只**新增**变体，不改上面任何一支 —— 上面那批 ×3 常量
 	# 还有三屏在用，改第一屏不能顺手改掉它们。详见 contract_theme.gd 的文件头。
 	ContractTheme.apply(self)
+	# ③④ 两屏那一支（§2.3/§2.4 的深面板与两档字）。同样只新增；分两支是因为源码有 300 行上限。
+	ContractScreenTheme.apply(self)
 
 
 ## 06 §3 —— 主动作按钮的五态。底色/描边/文字全部走 Token。
