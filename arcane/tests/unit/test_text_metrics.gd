@@ -26,6 +26,7 @@ func run(ctx: RefCounted, tree: SceneTree) -> void:
 	await _check_detail_name(ctx, tree)
 	await _check_combat_title(ctx, tree)
 	await _check_settings_help(ctx, tree)
+	await _check_cold_entry(ctx, tree)
 	TranslationServer.set_locale(original)
 	ctx.equal(TranslationServer.get_locale(), original, "测试结束后语言恢复原样")
 
@@ -150,6 +151,33 @@ func _check_settings_help(ctx: RefCounted, tree: SceneTree) -> void:
 			% [plain.get_combined_minimum_size().x, rect.size.x])
 	wrapped.queue_free()
 	plain.queue_free()
+	TranslationServer.set_locale("zh_CN")
+
+
+## #7 的第二半 —— **英文冷进入**（PET-95 第 7 项第二轮量到的那条路径）。
+##
+## 差别只在**建 Label 那一刻 locale 是什么**：中文那句短，`set_size(384)` 顶不动它；
+## 英文那句在 AUTOWRAP_OFF 下的最小宽是整段一行的 490，`set_size` 当场被顶到 490 ——
+## 而引擎只往大顶、从不缩回来，之后再开折行也回不去。`UiKit.wrapped_label` 因此在**进树之后**
+## 把表列尺寸再钉一次。把那一手去掉（或把 locale 改成建屏之后再切），这一条就红。
+func _check_cold_entry(ctx: RefCounted, tree: SceneTree) -> void:
+	TranslationServer.set_locale("en")
+	var text: String = TranslationServer.translate(MenuLayout.KEY_SETTINGS_HELP)
+	var rect: Rect2 = MenuLayout.SETTINGS_HELP_RECT
+	var holder: Control = Control.new()
+	holder.theme = load(THEME_PATH)
+	holder.size = MenuLayout.SCREEN
+	tree.root.add_child(holder)
+	var cold: Label = UiKit.wrapped_label(text, rect, ContractTheme.TYPE_LABEL_BODY_MUTED)
+	ctx.check(not cold.is_inside_tree(), "冷进入的前提：Label 是先建好、再进树的")
+	holder.add_child(cold)
+	await tree.process_frame
+	ctx.equal(cold.size, rect.size,
+		"英文冷进入：UiKit.wrapped_label 的尺寸仍 = 表列 %s（实为 %s）" % [rect.size, cold.size])
+	ctx.check(cold.get_line_count() <= 2 and cold.get_visible_line_count() == cold.get_line_count(),
+		"英文冷进入：%d 行 / 可见 %d 行（折行生效且没截断）"
+			% [cold.get_line_count(), cold.get_visible_line_count()])
+	holder.queue_free()
 	TranslationServer.set_locale("zh_CN")
 
 

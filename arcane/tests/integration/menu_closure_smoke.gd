@@ -10,12 +10,17 @@
 ## 而这里要的是**屏幕上那一条真控件**的排版与那一颗真按钮的装饰层 —— 前者证明得了口径，
 ## 证明不了「这一屏真的照着口径接线了」（把 autowrap 关掉、把暗衬不给主按钮，它都不会红）。
 ## 主菜单冒烟的源码已顶到 300 行上限，故另开一支。
+##
+## **两条路径都要走**（PET-95 第 7 项第二轮）：`英文冷进入`（locale 在建屏之前就是 en）与
+## `中文冷进入 + 当场切英文`。只看后者会漏 —— 热切换时折行早就生效、控件顶不动 384，
+## 而冷进入时 Label 的最小宽还是「整段一行」的 490。
 
 extends RefCounted
 
 const TreeProbe = preload("res://tests/tree_probe.gd")
 const SCENE_PATH: String = "res://scenes/main_menu.tscn"
 const LOCALE_EN: String = "en"
+const LOCALE_ZH: String = "zh_CN"
 
 var _tree: SceneTree = null
 var _menu: Node = null
@@ -29,16 +34,22 @@ func run(ctx: RefCounted, tree: SceneTree) -> void:
 	if not ctx.check(_settings != null, "Settings 单例在（语言开关归它）"):
 		return
 	var original: String = _settings.get_locale()
-	await _mount(ctx)
+	# 第一条路径是**英文冷进入**：locale 在**建屏之前**就是 en。PET-95 第 7 项第二轮量到的
+	# 「490×48」只在路径上出现 —— 先建屏再切语言时，折行早就生效了，控件顶不动 384。
 	_settings.set_locale(LOCALE_EN, false)
-	await _tree.process_frame
+	await _mount(ctx)
 	_open_settings()
-	_check_help_wraps(ctx)
+	_check_help_wraps(ctx, "英文冷进入")
 	_check_focus_under(ctx)
+	await _unmount()
+	# 第二条路径是**中文冷进入 + 当场切英文**（N04 的热切换那一半）：两条路都要落在 384×48。
+	_settings.set_locale(LOCALE_ZH, false)
+	await _mount(ctx)
+	_open_settings()
+	await _check_help_wraps(ctx, "中文冷进入 → 热切英文", true)
+	await _unmount()
 	_settings.set_locale(original, false)
 	ctx.equal(_settings.get_locale(), original, "测试结束后语言恢复原样")
-	_menu.queue_free()
-	await _tree.process_frame
 
 
 func _mount(ctx: RefCounted) -> void:
@@ -50,6 +61,15 @@ func _mount(ctx: RefCounted) -> void:
 	await _tree.process_frame
 
 
+## 摘屏并等一帧 —— 下一条路径要重新实例化，旧的留着会撞上 `_menu` 这个名字。
+func _unmount() -> void:
+	if _menu == null:
+		return
+	_menu.queue_free()
+	await _tree.process_frame
+	_menu = null
+
+
 ## 打开设置浮层：按「设置」那颗入口（它只切 visible，不换屏）。
 func _open_settings() -> void:
 	var entry: Button = _button_with(MenuLayout.KEY_SETTINGS)
@@ -59,22 +79,31 @@ func _open_settings() -> void:
 
 ## #7：英文说明单行 491 > 384，§2.4 给这一格的是「16/24，最多 2 行」——
 ## 屏幕上那一条真 Label 必须**折行放得下**，而且不能靠把控件撑宽或截断来过关。
-func _check_help_wraps(ctx: RefCounted) -> void:
+## switch_after=true 时先按「中文冷进入」量一遍，再当场切成英文重量一遍（两条路同一套判据）。
+func _check_help_wraps(ctx: RefCounted, what: String, switch_after: bool = false) -> void:
+	if switch_after:
+		_settings.set_locale(LOCALE_EN, false)
+		await _tree.process_frame
 	var help: Label = _label_at(MenuLayout.SETTINGS_HELP_RECT.position)
-	if not ctx.check(help != null, "浮层里有那条说明（SETTINGS_HELP_RECT 上有一条 Label）"):
+	if not ctx.check(help != null, "[%s] 浮层里有那条说明（SETTINGS_HELP_RECT 上有一条 Label）" % what):
 		return
 	ctx.equal(help.text, TranslationServer.translate(MenuLayout.KEY_SETTINGS_HELP),
-		"它写的是语言表里那一格（英文）")
-	ctx.check(help.autowrap_mode != TextServer.AUTOWRAP_OFF, "这条说明是**折行**的，不是硬排一行")
-	ctx.check(help.size.x <= MenuLayout.SETTINGS_HELP_RECT.size.x + 0.001,
-		"控件宽 %.0f 没有被字体撑出内容区 %.0f（G02）"
-			% [help.size.x, MenuLayout.SETTINGS_HELP_RECT.size.x])
+		"[%s] 它写的是语言表里那一格（英文）" % what)
+	ctx.check(help.autowrap_mode != TextServer.AUTOWRAP_OFF,
+		"[%s] 这条说明是**折行**的，不是硬排一行" % what)
+	# 尺寸要**钉死在表列值**上，不是「没超过就行」：PET-95 第 7 项第二轮量到的是
+	# (288,336,490,48)，右缘 778 一路捅出设置面板右缘 688 共 90px。
+	ctx.equal(help.size, MenuLayout.SETTINGS_HELP_RECT.size,
+		"[%s] 控件尺寸 = 表列 %s（实为 %s）" % [what, MenuLayout.SETTINGS_HELP_RECT.size, help.size])
+	ctx.check(MenuLayout.SETTINGS_PANEL.encloses(Rect2(help.position, help.size)),
+		"[%s] 控件整份落在设置面板 %s 里（实为 %s）"
+			% [what, MenuLayout.SETTINGS_PANEL, Rect2(help.position, help.size)])
 	var lines: int = help.get_line_count()
-	ctx.check(lines <= 2, "§2.4「最多 2 行」：实际 %d 行" % lines)
-	ctx.equal(help.get_visible_line_count(), lines, "可见行数 = 排出的行数（**没有截断**）")
+	ctx.check(lines <= 2, "[%s] §2.4「最多 2 行」：实际 %d 行" % [what, lines])
+	ctx.equal(help.get_visible_line_count(), lines, "[%s] 可见行数 = 排出的行数（**没有截断**）" % what)
 	ctx.check(float(lines) * help.get_line_height() <= MenuLayout.SETTINGS_HELP_RECT.size.y + 0.001,
-		"%d 行 × 行高 %.0f ≤ 说明框高 %.0f"
-			% [lines, help.get_line_height(), MenuLayout.SETTINGS_HELP_RECT.size.y])
+		"[%s] %d 行 × 行高 %.0f ≤ 说明框高 %.0f"
+			% [what, lines, help.get_line_height(), MenuLayout.SETTINGS_HELP_RECT.size.y])
 
 
 ## #8：焦点角标 BLUE_300 压在金底上只有 1.057:1（PET-95 的数），§3 要求「亮纸上的控件加

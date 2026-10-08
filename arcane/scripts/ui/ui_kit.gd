@@ -49,9 +49,21 @@ static func label(text: String, rect: Rect2, variation: StringName = &"") -> Lab
 
 
 ## 建一个多行 Label。
+##
+## 它比 `label()` 多一道**进树后再钉尺寸**：`set_size()` 会把尺寸往上顶到
+## `get_combined_minimum_size()`，而 Label 的最小宽在主题解析前后不是同一个数 ——
+##   · 定量那一刻（还没进树、主题没解析）：AUTOWRAP_OFF 状态下它就是「整段排一行」的宽度；
+##   · 进树之后（主题解析完、折行生效）：最小宽才回到 1。
+## 引擎**只往大顶、从不缩回来**，所以顺序不对时那条 Label 就永远停在 490 宽（表列 384 作废）。
+## PET-95 第 7 项复验量到的「英文冷进入 490×48」正是这一条：中文那句话短、顶不动 384，
+## 切成英文（文本是后来改的，那时折行已经生效）也顶不动 —— 只有**建屏前就把 locale 设成 en**
+## 才会露出来。`_add_pinned_label` 那类手工摆放的屏幕一直是「进树后再定量」，这里补上同一手。
 static func wrapped_label(text: String, rect: Rect2, variation: StringName = &"") -> Label:
 	var node: Label = label(text, rect, variation)
 	node.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	node.size = rect.size
+	# tree_entered 在 NOTIFICATION_ENTER_TREE（主题在这一步解析）之后才发，故这里钉的尺寸是真的落得上去的。
+	node.tree_entered.connect(func() -> void: node.size = rect.size, CONNECT_ONE_SHOT)
 	return node
 
 

@@ -30,11 +30,14 @@ const OUTPUT_DIR: String = "res://tests/output"
 ## 强制中文再截：这一屏的字全走 i18n，系统语言不是中文时截出来是英文，
 ## 而这几张图要说明的正是「新文案进了表」（四颗入口与置灰说明全经 TranslationServer）。
 const LOCALE_ZH: String = "zh_CN"
+## `-- --locale en` 走**英文冷进入**那一帧（PET-97 #7 的复量路径）。
+const ARG_LOCALE: String = "--locale"
 
 var _run: Node = null
 var _flow: Node = null
 var _settings: Node = null
 var _original_locale: String = ""
+var _cold_locale: String = ""
 var _lines: Array[String] = []
 
 
@@ -42,6 +45,7 @@ func _initialize() -> void:
 	# 与 run_tests 同一个理由：--script 入口在 _initialize() 时 Autoload 还没 _ready()。
 	await process_frame
 	await process_frame
+	_parse_args()
 	_run = root.get_node_or_null(^"RunState")
 	_flow = root.get_node_or_null(^"GameFlow")
 	_settings = root.get_node_or_null(^"Settings")
@@ -49,6 +53,10 @@ func _initialize() -> void:
 		_fail("RunState / GameFlow / Settings 单例不在树里")
 		return
 	_original_locale = _settings.get_locale()
+	# 冷进入那一帧要先设语言**再**建屏，故它单独一条路。
+	if _cold_locale != "":
+		await _capture_cold()
+		return
 	_settings.set_locale(LOCALE_ZH, false)
 
 	if not await _boot_to_menu():
@@ -72,6 +80,35 @@ func _initialize() -> void:
 
 
 # ------------------------------------------------------------------ 启动
+
+## 只认 `--` 之后的用户参数。
+func _parse_args() -> void:
+	var args: PackedStringArray = OS.get_cmdline_user_args()
+	var index: int = 0
+	while index < args.size():
+		if args[index] == ARG_LOCALE and index + 1 < args.size():
+			_cold_locale = args[index + 1]
+			index += 2
+			continue
+		index += 1
+
+
+## PET-97 #7 的复量帧：**英文冷进入** —— locale 在 `_boot_to_menu()` **之前**就是 en，
+## 于是设置说明那条 Label 是在「最小宽 = 整段排成一行」的时刻被定量的。
+## 默认流程（先中文建屏、再切英文）量不到这条路径：热切换时折行早就生效，控件顶不动 384。
+## 两张图各证一条路，不能互相顶替。
+func _capture_cold() -> void:
+	_settings.set_locale(_cold_locale, false)
+	if not await _boot_to_menu():
+		return
+	_say("冷进入：建屏**之前** locale 就是 %s（不是建完再切）" % _settings.get_locale())
+	if not _open_settings():
+		return
+	await _capture("main_menu_settings_%s_cold.png" % _cold_locale)
+	_report_help()
+	_report_marks()
+	_settings.set_locale(_original_locale, false)
+	_finish()
 
 ## 走引擎那条路：落地 boot 主场景 → 自检 → 主菜单。boot 自己**不开局**（PET-90）。
 func _boot_to_menu() -> bool:
