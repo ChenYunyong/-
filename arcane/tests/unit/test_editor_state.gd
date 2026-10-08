@@ -1,7 +1,8 @@
 ## test_editor_state.gd
 ## 职责：画布状态层级的验收（PET-87 §2）—— 选中与焦点可分、辅助线只跨相关两卡、金色不兼任。
 ## 所属系统：tests
-## 依赖：BoardRenderer, BoardStatePainter, StrokePainter, Snap, Palette, BoardModel, EditorLayout
+## 依赖：BoardRenderer, BoardStatePainter, StrokePainter, Snap, Palette, BoardModel, EditorLayout,
+##       BoardView, CardFace
 ## 禁止：本文件不得写入几何常量或色值，只断言。
 ##
 ## §2 报的是「金色现在承担了太多职责」。这类缺陷的麻烦之处在于它**不会报错**：
@@ -11,6 +12,10 @@
 ##   2. 辅助线的**范围**只跨相关那两张卡 —— 用 Snap 真跑一次，量出来；
 ##   3. 金色只出现在「选中」与「对齐提示」两处，丝线是蓝的；
 ##   4. 丝线画在卡后、辅助线画在卡前（顺序即层级）。
+##
+## PET-93 把取色统一到 docs/14 §3 的「角色 → 既有 Token」表：辅助线由金改浅蓝、丝线/辅助线/选中
+## 各加一条 NAVY_600 暗底（亮纸上单画浅色等于没画）。颜色分工因此**不再靠色相**，而靠线型与范围。
+## 「画布四周的余量够不够放下接口圆点」也归这一支 —— 那是 BoardView 的行为，不是版面。
 
 extends RefCounted
 
@@ -27,6 +32,7 @@ func run(ctx: RefCounted, _tree: SceneTree) -> void:
 	_check_guide_line_style(ctx)
 	_check_layer_order(ctx)
 	_check_no_glow(ctx)
+	_check_canvas_reserve(ctx)
 
 
 ## 焦点与选中：语义不同源，画法与粗细也必须分得开。
@@ -45,6 +51,11 @@ func _check_focus_vs_selected(ctx: RefCounted) -> void:
 			and BoardStatePainter.FOCUS_INSET < BoardStatePainter.SELECT_GROW,
 		"焦点角标内缩 %s、选中轮廓外扩 %s —— 一内一外，不叠在同一条线上"
 			% [BoardStatePainter.FOCUS_INSET, BoardStatePainter.SELECT_GROW])
+	# §1.1：选中 = 外扩 5 的 4px 金轮廓 + 其下 6px 暗底（暗底比芯线宽，两侧各漏 1px）。
+	ctx.near(BoardStatePainter.SELECT_GROW, 5.0, "选中外扩 = §1.1 的 5")
+	ctx.check(BoardStatePainter.SELECT_UNDER_WIDTH > BoardStatePainter.SELECT_WIDTH,
+		"选中轮廓的暗底 %s 比金线 %s 宽，两侧漏得出边"
+			% [BoardStatePainter.SELECT_UNDER_WIDTH, BoardStatePainter.SELECT_WIDTH])
 
 
 ## 状态层各画各的色 —— 逐个钉死 Token，而不是「看着不一样就行」。
@@ -54,14 +65,21 @@ func _check_palette_roles(ctx: RefCounted) -> void:
 	ctx.equal(renderer.focus, Palette.get_color(Palette.Key.BLUE_300), "焦点 = 浅蓝（不抢金色的语义）")
 	ctx.check(not renderer.focus.is_equal_approx(renderer.selected),
 		"焦点与选中是两支不同的颜色（%s / %s）" % [renderer.focus, renderer.selected])
-	ctx.equal(renderer.guide, Palette.get_color(Palette.Key.GOLD_400), "辅助线 = 金色（对齐提示）")
+	# §3 的角色表：辅助线 BLUE_300、丝线 BLUE_400 —— 同族两档，靠线型 / 端点 / 范围分开
+	# （§1.1：丝线实线带箭头，辅助线虚线 8/4 带端点杠）。
+	ctx.equal(renderer.guide, Palette.get_color(Palette.Key.BLUE_300), "辅助线 = 浅蓝（对齐提示）")
 	ctx.equal(renderer.link, Palette.get_color(Palette.Key.BLUE_400), "常驻丝线 = 蓝，金色不参与连线")
-	ctx.check(not renderer.link.is_equal_approx(renderer.guide), "丝线与辅助线不同色")
-	ctx.check(not renderer.link_active.is_equal_approx(renderer.guide), "激活丝线也不与辅助线撞色")
+	ctx.check(not renderer.link.is_equal_approx(renderer.guide), "丝线与辅助线不同芯色")
+	# 三条底线共用 NAVY_600（§3「连线/选中/焦点暗底保证边界」）—— 亮纸上单画浅色等于没画。
+	for pair: Array in [["丝线", renderer.link_under], ["辅助线", renderer.guide_under],
+			["选中轮廓", renderer.selected_under]]:
+		ctx.equal(pair[1], Palette.get_color(Palette.Key.NAVY_600), "%s 的暗底 = NAVY_600" % pair[0])
 	ctx.check(not renderer.port_in.is_equal_approx(renderer.port_out),
 		"进出口两个接口用同族深浅分开（%s / %s）" % [renderer.port_in, renderer.port_out])
 	ctx.check(not renderer.card_selected.is_equal_approx(renderer.card_fill),
 		"选中时底板抬一档（状态不改牌面，只抬底）")
+	# 写在**净纸**上的字必须是纸面墨：亮纸 GOLD_200 上卡墨 BLUE_100 只有 1.166:1。
+	ctx.equal(renderer.paper_ink, Palette.get_color(Palette.Key.BROWN_700), "纸面墨 = BROWN_700")
 
 
 ## 辅助线的**范围**：只跨相关的那两张卡，不是通高 / 通宽一条亮线。
@@ -110,8 +128,17 @@ func _check_guide_is_short(ctx: RefCounted) -> void:
 		"水平辅助线两端夹住两张卡的 x 区间（%s）" % horizontal)
 
 
-## 辅助线与丝线即使同色，线型也要分得开（13 §10.1）：辅助线是虚线。
+## 辅助线与丝线即使同族同色，线型也要分得开（13 §10.1）：辅助线是虚线 8/4，两端各一杠。
 func _check_guide_line_style(ctx: RefCounted) -> void:
+	# §1.1 把虚线的节拍写死了：实段 8、间隔 4。改这两个数就等于改「虚线长什么样」。
+	ctx.near(StrokePainter.DASH_LENGTH, 8.0, "虚线实段 = §1.1 的 8")
+	ctx.near(StrokePainter.DASH_GAP, 4.0, "虚线间隔 = §1.1 的 4")
+	# GUIDE_TICK 是**半长**（paint_tick 往两端各画一截），故总长 = 2×它。
+	ctx.near(BoardStatePainter.GUIDE_TICK * 2.0, 8.0, "端点杠总长 = §1.1 的 8（常量存的是半长）")
+	ctx.check(BoardStatePainter.GUIDE_UNDER_WIDTH > BoardStatePainter.GUIDE_WIDTH,
+		"辅助线的暗底 %s 比芯线 %s 宽"
+			% [BoardStatePainter.GUIDE_UNDER_WIDTH, BoardStatePainter.GUIDE_WIDTH])
+
 	var period: float = StrokePainter.DASH_LENGTH + StrokePainter.DASH_GAP
 	# 取节拍的整十倍长 —— 长度不是整数个节拍时，末尾会多出一小截被截断的实线，
 	# 占空比就不再等于节拍比（那是分段器的正常行为，不是「虚线被画成了实线」）。
@@ -154,6 +181,49 @@ func _check_no_glow(ctx: RefCounted) -> void:
 	for forbidden: String in ["glow", "shader", "modulate", "WorldEnvironment", "draw_texture"]:
 		ctx.check(not body.to_lower().contains(forbidden.to_lower()),
 			"状态层没有出现「%s」—— 不堆辉光" % forbidden)
+
+
+## 画布四周必须留出「接口圆点 + 状态边」画得下的余量。
+##
+## 靶子是自由摆放的卡停在角上时，输出接口（画在卡片右缘外）被 clip_contents 切掉半个圆。
+## 这里不看截图、也不复述常量，而是把余量拿去和「最远要画到哪」逐个比，再用恒等式钉住它。
+func _check_canvas_reserve(ctx: RefCounted) -> void:
+	var reach: float = maxf(BoardView.PORT_RADIUS,
+		BoardStatePainter.SELECT_GROW + BoardStatePainter.SELECT_WIDTH * 0.5)
+	ctx.check(BoardView.EDGE_PADDING >= reach,
+		"四周余量 %s ≥ 卡外最远要画到的 %s（接口半径与选中轮廓取大）"
+			% [BoardView.EDGE_PADDING, reach])
+	# §1.1：卡到裁切边 ≥16（E05）—— 余量本身就是契约给的这条数。
+	ctx.near(BoardView.EDGE_PADDING, 16.0, "四周余量 = §1.1 的卡到裁切边 16")
+
+	var view: BoardView = BoardView.new()
+	view.size = EditorLayout.CANVAS_VIEW_SIZE
+	var origin: Vector2 = view.play_origin()
+	var limit: Vector2 = view.play_limit()
+	ctx.check(limit.x >= 0.0 and limit.y >= 0.0, "可移动范围非负 %s" % limit)
+	# 恒等式：最远落点 + 卡宽 + 余量 = 画布宽。余量是**留出来**的，不是碰巧够。
+	ctx.near(origin.x + limit.x + CardFace.SIZE.x + BoardView.EDGE_PADDING, view.size.x,
+		"横向：最右落点 + 卡宽 + 余量 = 画布宽")
+	ctx.near(origin.y + limit.y + CardFace.SIZE.y + BoardView.EDGE_PADDING, view.size.y,
+		"纵向：最下落点 + 卡高 + 余量 = 画布高")
+	ctx.near(origin.x, BoardView.EDGE_PADDING, "左余量 = EDGE_PADDING")
+
+	# 右上角：卡贴在极限位置上时，输出接口整个圆仍然落在画布内。
+	var port: Vector2 = origin + limit + Vector2(CardFace.SIZE.x, CardFace.SIZE.y * 0.5)
+	ctx.check(port.x + BoardView.PORT_RADIUS <= view.size.x,
+		"右上角落点的输出接口右缘 %s ≤ 画布宽 %s" % [port.x + BoardView.PORT_RADIUS, view.size.x])
+	ctx.check(port.y - BoardView.PORT_RADIUS >= 0.0 and port.y + BoardView.PORT_RADIUS <= view.size.y,
+		"输出接口纵向也在画布内")
+	ctx.check(origin.x - BoardView.PORT_RADIUS >= 0.0, "左上角落点的输入接口整个画得下")
+
+	# 夹取真的生效：给出格外的坐标，落点必须回到合法范围内。
+	var low: Vector2 = view.clamp_to_play(Vector2(-999.0, -999.0))
+	var high: Vector2 = view.clamp_to_play(Vector2(99999.0, 99999.0))
+	ctx.near(low.x, origin.x, "越界坐标被夹回左边界")
+	ctx.near(low.y, origin.y, "越界坐标被夹回上边界")
+	ctx.near(high.x, origin.x + limit.x, "越界坐标被夹回右边界")
+	ctx.near(high.y, origin.y + limit.y, "越界坐标被夹回下边界")
+	view.free()
 
 
 ## 读一个脚本的正文，去掉注释行（注释里出现的词不该把源码扫描判红）。

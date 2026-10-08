@@ -15,13 +15,19 @@ extends RefCounted
 ## 圆弧类图形的采样段数（整圈）。16 段在 20px 半径上已经看不出折线。
 const ARC_SEGMENTS: int = 24
 
+## 卡面符号的笔宽（逻辑像素）。docs/14 §1.1 给主符号点名的就是 **2**。
+##
+## 与 StrokePainter.WIDTH 分开：那支笔的默认线宽还要给顶栏图标用，而符号这一档是契约写死的数。
+## 分开的只是**粗细**，笔本身仍是同一支 —— 圆角与圆端点因此还是全工程一处定义。
+const SYMBOL_WIDTH: float = 2.0
+
 
 ## 在 target 的 _draw() 里画一枚图形标记。
 ## center / radius 用的是 target 的局部坐标；color 由调用方决定（卡面用墨色，见 CardFace）。
 static func paint(target: CanvasItem, glyph: CardData.Glyph, center: Vector2, radius: float,
 		color: Color) -> void:
 	for path: Dictionary in paths(glyph, center, radius):
-		StrokePainter.stroke_path(target, path["points"], color, StrokePainter.WIDTH,
+		StrokePainter.stroke_path(target, path["points"], color, SYMBOL_WIDTH,
 			bool(path["closed"]))
 
 

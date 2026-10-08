@@ -1,7 +1,7 @@
 ## scene_smoke.gd
 ## 职责：五个正式场景的装配冒烟 —— 真的入树、_ready() 真的跑过、关键控件真的建出来了。
 ## 所属系统：tests
-## 依赖：TreeProbe, CardCatalog, EditorLayout, ArcaneTheme, IconButton, RunState, RewardModel
+## 依赖：TreeProbe, CardCatalog, ContractTheme, EditorLayout, IconButton, RunState, RewardModel
 ## 禁止：本文件不得把 boot.tscn 挂进树 —— 它的 _ready() 会自检、开局并请求切场景，
 ##       那是 loop_smoke 的职责（loop_smoke 排在最后，它换场景不会干扰别的用例）。
 ##       唯一一处会动 RunState 的是奖励池拿空的那条（见 _check_reward_fallback），
@@ -164,50 +164,127 @@ func _has_label(root: Node, text_key: String) -> bool:
 	return false
 
 
-## 编辑器屏的按钮分两组，各数各的。
+## 编辑器屏的按钮按**位置**分三组，各数各的。
 ##
-## 原来这里数的是「屏幕上所有 Button」＝ 顶栏数 —— PET-87 §3 给仓库两端加了两个滚动
-## 入口之后这个等式就不成立了。改按**位置**分组的理由是：两组按钮会各自增长
-## （顶栏以后可能加键、仓库以后可能加分类），而「总数 = 某一个常量」只会让人把
-## 另一个常量改一改糊过去；分组断言则要求新的那颗按钮真的落在它该在的区里。
+## 分组而不是「总数 = 某常量」：三组会各自增长（头栏以后可能加键、书槽以后可能加分类），
+## 而总数断言只会让人把另一个常量改一改糊过去；分组断言则要求新的那颗按钮真的落在它该在的
+## 区里。三组之外不许有漏网的 —— 那条等式是分组的兜底，也正因为它，第 7 颗按钮（浮层的
+## 收起键）当初没被静悄悄漏掉。
+##
+## PET-93 换了版式：强主动作从顶栏搬到了书槽右端（§2.1 EDITOR_PRIMARY），书槽因此是
+## 「两端滚动入口 + 唯一的主按钮」三颗，而顶栏只剩三颗图标控件。
 func _check_editor_buttons(ctx: RefCounted, screen: Node) -> void:
+	var all: Array[Button] = []
 	var top: Array[Button] = []
-	var tray: int = 0
+	var tray: Array[Button] = []
+	var popover: Array[Button] = []
 	for node: Node in TreeProbe.find_all(screen, "Button"):
-		var rect: Rect2 = (node as Control).get_global_rect()
+		var button: Button = node as Button
+		all.append(button)
+		var rect: Rect2 = button.get_global_rect()
 		if EditorLayout.top_bar().encloses(rect):
-			top.append(node as Button)
+			top.append(button)
 		elif EditorLayout.tray().encloses(rect):
-			tray += 1
+			tray.append(button)
+		elif EditorLayout.popover().encloses(rect):
+			popover.append(button)
 	ctx.equal(top.size(), EditorLayout.TOP_BUTTONS.size(),
 		"顶栏 %d 个按钮" % EditorLayout.TOP_BUTTONS.size())
-	ctx.equal(tray, 2, "仓库两端 2 个滚动入口（只靠滚轮的话触屏没法滚）")
-	_check_top_bar_roles(ctx, top)
+	ctx.equal(tray.size(), 3, "书槽 3 个按钮：两端滚动入口 + 主按钮（数到 %d 个）" % tray.size())
+	ctx.equal(popover.size(), 1, "详情浮层 1 个收起键（数到 %d 个）" % popover.size())
+	ctx.equal(top.size() + tray.size() + popover.size(), all.size(),
+		"每颗按钮都落在头栏 / 书槽 / 浮层里（三组之外没有漏网的，共 %d 颗）" % all.size())
+	_check_editor_roles(ctx, all)
+	_check_editor_rects(ctx, all)
 
 
-## 顶栏的主次必须**在树上**读得出来 —— 这是在跑起来的界面里验，不是读常量表。
+## G02 的实机版：§2.1 的每一条按钮 rect 上都必须有**真控件**，误差 ≤1 逻辑像素。
 ##
-## PET-87 §3 报的是「四个同级大按钮读不出主次」。改法有两半，缺一半就退回原样：
-##   1. 只有「开始战斗」是强主动作（金色 ButtonPrimary），**有且只有一个**；
-##   2. 另外三个退成无文字的图标控件 —— 于是它们**必须**自带 tooltip 与无障碍名，
+## 为什么单独立这一条：常量对常量在 test_layout 里已经比过一遍了，而「控件的真实 rect」是
+## 另一回事 —— Button 的最小尺寸 = 内容 + 内边距，主题的内边距一旦偏大，引擎就会把控件顶得
+## 比表列值宽。那时常量表可以全绿，画面上那颗按钮已经压过了邻居
+## （书槽箭头与浮层收起键的 24 宽 → 28 就是这么发生的）。
+func _check_editor_rects(ctx: RefCounted, buttons: Array[Button]) -> void:
+	var declared: Array = []
+	var top_rects: Array[Rect2] = EditorLayout.top_button_rects()
+	for index: int in top_rects.size():
+		declared.append(["头栏「%s」" % EditorLayout.TOP_BUTTONS[index], top_rects[index]])
+	declared.append(["书槽左入口", EditorLayout.tray_arrow_rect(-1.0)])
+	declared.append(["书槽右入口", EditorLayout.tray_arrow_rect(1.0)])
+	declared.append(["书槽主按钮", EditorLayout.primary_rect()])
+	declared.append(["浮层收起键", EditorLayout.detail_close_rect()])
+	ctx.equal(declared.size(), buttons.size(), "表列的按钮 rect 数与屏上按钮数相等（%d / %d）"
+		% [declared.size(), buttons.size()])
+	for item: Array in declared:
+		var wanted: Rect2 = item[1]
+		var hits: int = 0
+		for button: Button in buttons:
+			if _within(button.get_global_rect(), wanted, 1.0):
+				hits += 1
+		# 打回时把屏上真实的 rect 一并报出来 —— 只说「数到 0」看不出那颗控件跑到哪去了。
+		ctx.equal(hits, 1, "%s：表列 %s 上有且只有一个真控件（数到 %d）%s"
+			% [item[0], wanted, hits, "" if hits == 1 else "；屏上实为 %s" % _rect_list(buttons)])
+
+
+## 屏上按钮的真实 rect，一行报全 —— G02 打回时要能一眼看出控件跑到哪去了。
+static func _rect_list(buttons: Array[Button]) -> String:
+	var parts: PackedStringArray = PackedStringArray()
+	for button: Button in buttons:
+		parts.append(str(button.get_global_rect()))
+	return ", ".join(parts)
+
+
+## 两个矩形四边都在容差内 —— G02 的原话是「误差 ≤1 逻辑像素」。
+static func _within(a: Rect2, b: Rect2, tolerance: float) -> bool:
+	return absf(a.position.x - b.position.x) <= tolerance \
+		and absf(a.position.y - b.position.y) <= tolerance \
+		and absf(a.size.x - b.size.x) <= tolerance \
+		and absf(a.size.y - b.size.y) <= tolerance
+
+
+## 主次必须**在树上**读得出来 —— 这是在跑起来的界面里验，不是读常量表。
+##
+## PET-87 §3 报的是「四个同级大按钮读不出主次」。§2.1 把主次落成两半，缺一半就退回原样：
+##   1. 全屏**只有一颗**带文字的金底按钮（ButtonPagePrimary），它落在书槽右端的契约矩形上；
+##   2. 其余全是无文字的图标控件 —— 于是它们**必须**自带 tooltip 与无障碍名，
 ##      否则主次是分开了，代价是用户认不出那颗按钮是干什么的。
-func _check_top_bar_roles(ctx: RefCounted, top: Array[Button]) -> void:
-	var primary: int = 0
-	for button: Button in top:
-		if button.theme_type_variation == ArcaneTheme.TYPE_BUTTON_PRIMARY:
-			primary += 1
-			ctx.check(not button.text.strip_edges().is_empty(),
-				"主动作「%s」带文字（强按钮是靠文字读的）" % button.text)
+func _check_editor_roles(ctx: RefCounted, buttons: Array[Button]) -> void:
+	var primaries: Array[Button] = []
+	for button: Button in buttons:
+		if button.theme_type_variation == ContractTheme.TYPE_BUTTON_PAGE_PRIMARY:
+			primaries.append(button)
 			continue
-		ctx.equal(button.theme_type_variation, ArcaneTheme.TYPE_BUTTON_SECONDARY,
-			"次级按钮走次级变体")
-		ctx.check(button.text.strip_edges().is_empty(), "次级按钮不含文字（有文字就又是同级大按钮）")
-		ctx.check(not button.tooltip_text.strip_edges().is_empty(),
-			"无文字的图标控件必须靠 tooltip 自报家门")
-		ctx.check(not button.accessibility_name.strip_edges().is_empty(),
-			"无文字的图标控件必须有无障碍名（否则读屏念不出来）")
-		ctx.check(button is IconButton, "次级按钮是 IconButton（图标画在子控件上，压在按钮底之上）")
-	ctx.equal(primary, 1, "顶栏有且只有一个强主动作（数到 %d 个）" % primary)
+		_check_icon_button(ctx, button)
+	ctx.equal(primaries.size(), 1, "全屏有且只有一个强主动作（数到 %d 个）" % primaries.size())
+	if not primaries.is_empty():
+		_check_primary(ctx, primaries[0])
+
+
+## 无文字的图标控件：顶栏三颗与书槽两端入口都是这一档。
+func _check_icon_button(ctx: RefCounted, button: Button) -> void:
+	ctx.equal(button.theme_type_variation, ContractTheme.TYPE_BUTTON_PAGE_ICON,
+		"图标控件走 ButtonPageIcon 变体")
+	ctx.check(button.text.strip_edges().is_empty(), "图标控件不含文字（有文字就又是同级大按钮）")
+	ctx.check(not button.tooltip_text.strip_edges().is_empty(),
+		"无文字的图标控件必须靠 tooltip 自报家门")
+	ctx.check(not button.accessibility_name.strip_edges().is_empty(),
+		"无文字的图标控件必须有无障碍名（否则读屏念不出来）")
+	ctx.check(button is IconButton, "图标控件是 IconButton（图标画在子控件上，压在按钮底之上）")
+
+
+## 唯一的主按钮：文案是契约那一句，矩形是 §2.1 给的 EDITOR_PRIMARY，且比图标控件宽。
+func _check_primary(ctx: RefCounted, primary: Button) -> void:
+	ctx.check(not primary.text.strip_edges().is_empty(),
+		"主动作「%s」带文字（强按钮是靠文字读的）" % primary.text)
+	ctx.equal(primary.text, TranslationServer.translate(EditorLayout.PRIMARY_KEY),
+		"主动作的文案就是契约里的那一句")
+	var wanted: Rect2 = EditorLayout.primary_rect()
+	var rect: Rect2 = primary.get_global_rect()
+	ctx.near(rect.position.x, wanted.position.x, "主动作落在 §2.1 的矩形上（左缘）")
+	ctx.near(rect.position.y, wanted.position.y, "主动作落在 §2.1 的矩形上（上缘）")
+	ctx.near(rect.size.x, wanted.size.x, "主动作矩形 = §2.1 的 EDITOR_PRIMARY")
+	ctx.check(rect.size.x > EditorLayout.HEADER_BUTTON_SIZE.x,
+		"主动作 %s 比图标控件 %s 宽 —— 才是主次关系" % [rect.size.x, EditorLayout.HEADER_BUTTON_SIZE])
 
 
 func _instantiate(ctx: RefCounted, path: String) -> Node:

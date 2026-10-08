@@ -29,33 +29,46 @@ var spans_h: Array[Vector2] = []
 var snapped: bool = false
 
 ## 取色缓存。**来源仍是 Palette.get_color()** —— 缓存只为不在每帧 _draw 里反复查表。
+##
+## 有底线的三支（丝线 / 辅助线 / 选中轮廓）都要两个色：芯色 + 其下的 NAVY_600。这不是描边，
+## 是**可见性前提** —— 亮纸上单画 BLUE_400 是 1.371:1、单画金圈是 1.218:1（§3.2 实测）。
+## 三个底线共用 NAVY_600 一个 Token（§3：「连线/选中/焦点暗底保证边界」）。
 var card_fill: Color = Palette.MISSING_COLOR
 var card_selected: Color = Palette.MISSING_COLOR
 var text: Color = Palette.MISSING_COLOR
 var link: Color = Palette.MISSING_COLOR
-var link_active: Color = Palette.MISSING_COLOR
+var link_under: Color = Palette.MISSING_COLOR
 var guide: Color = Palette.MISSING_COLOR
+var guide_under: Color = Palette.MISSING_COLOR
 var selected: Color = Palette.MISSING_COLOR
+var selected_under: Color = Palette.MISSING_COLOR
 var focus: Color = Palette.MISSING_COLOR
 var port_in: Color = Palette.MISSING_COLOR
 var port_out: Color = Palette.MISSING_COLOR
+## 纸面墨。凡写在**净纸**上的字（吸附角标）都用它 —— 纸是亮的，卡墨 BLUE_100 在纸上读不出来。
+var paper_ink: Color = Palette.MISSING_COLOR
 
 
 func _init() -> void:
 	card_fill = Palette.get_color(Palette.Key.NAVY_800)
 	card_selected = Palette.get_color(Palette.Key.NAVY_700)
 	text = Palette.get_color(Palette.Key.BLUE_100)
-	# 丝线整体退到卡后：BLUE_400 常驻、激活时提亮到 BLUE_300。**金色不再参与连线**，
-	# 否则「金线」既可能是丝线也可能是辅助线，13 §10.1 要求的那种区分就无从谈起。
+	# 丝线整体退到卡后，芯色 BLUE_400 只有一种 —— 契约 §3 没给「激活」态第二个芯色，
+	# 而能用的浅蓝 BLUE_300 已经是辅助线的芯色，再加一支就会让两者再也分不开。
+	# 「哪张卡在编辑」由选中金圈回答，不需要丝线再喊一遍。
 	link = Palette.get_color(Palette.Key.BLUE_400)
-	link_active = Palette.get_color(Palette.Key.BLUE_300)
-	guide = Palette.get_color(Palette.Key.GOLD_400)
-	# 选中用金色（唯一承担「选中」的色），焦点用浅蓝细角标。
+	guide = Palette.get_color(Palette.Key.BLUE_300)
+	link_under = Palette.get_color(Palette.Key.NAVY_600)
+	guide_under = Palette.get_color(Palette.Key.NAVY_600)
+	# 选中用金色（唯一承担「选中」的色），焦点用浅蓝细角标 —— 两者实测 RGB 距离 158.392。
 	selected = Palette.get_color(Palette.Key.GOLD_500)
+	selected_under = Palette.get_color(Palette.Key.NAVY_600)
 	focus = Palette.get_color(Palette.Key.BLUE_300)
 	# 两个接口用同族深浅区分进出口：输入 BLUE_200、输出 BLUE_400。
 	port_in = Palette.get_color(Palette.Key.BLUE_200)
 	port_out = Palette.get_color(Palette.Key.BLUE_400)
+	# 纸面墨 BROWN_700 / 纸 GOLD_200 = 10.947:1（§3.2），是纸上唯一通过 4.5 的暗色。
+	paper_ink = Palette.get_color(Palette.Key.BROWN_700)
 
 
 ## 一次画完整层。顺序即层级，别调换。view_size 是画布控件的尺寸（角标要贴它的右上角）。
@@ -63,9 +76,9 @@ func paint(target: CanvasItem, model: BoardModel, view_size: Vector2) -> void:
 	_paint_links(target, model)
 	for card: BoardModel.PlacedCard in model.cards():
 		_paint_card(target, card)
-	BoardStatePainter.paint_guides(target, guides_v, spans_v, guides_h, spans_h, guide)
+	BoardStatePainter.paint_guides(target, guides_v, spans_v, guides_h, spans_h, guide, guide_under)
 	if snapped:
-		paint_snap_badge(target, view_size, TranslationServer.translate("吸附"), guide)
+		paint_snap_badge(target, view_size, TranslationServer.translate("吸附"), paper_ink)
 	if link_from != 0:
 		paint_link_preview(target, model, pointer)
 
@@ -76,9 +89,8 @@ func _paint_links(target: CanvasItem, model: BoardModel) -> void:
 		var target_card: BoardModel.PlacedCard = model.find_card(link_item.to_uid)
 		if source == null or target_card == null:
 			continue
-		var hot: bool = link_item.from_uid == selected_uid or link_item.to_uid == selected_uid
 		ThreadPainter.paint(target, BoardView.output_port(source), BoardView.input_port(target_card),
-			link_active if hot else link)
+			link, link_under)
 
 
 ## 画一张卡：牌面（不含状态）→ 选中轮廓 → 焦点角标 → 接口。
@@ -90,7 +102,7 @@ func _paint_card(target: CanvasItem, card: BoardModel.PlacedCard) -> void:
 	CardFace.paint(target, card.data(), card.position,
 		card_selected if is_selected else card_fill, text)
 	if is_selected:
-		BoardStatePainter.paint_selected(target, BoardView.card_rect(card), selected)
+		BoardStatePainter.paint_selected(target, BoardView.card_rect(card), selected, selected_under)
 	if is_focused:
 		BoardStatePainter.paint_focus(target, BoardView.card_rect(card), focus)
 	if is_selected or is_focused:
@@ -103,15 +115,18 @@ func paint_ports(target: CanvasItem, card: BoardModel.PlacedCard) -> void:
 	target.draw_circle(BoardView.output_port(card), BoardView.PORT_RADIUS, port_out)
 
 
-## 吸附瞬间的角标。位置固定在画布右上角，不跟着卡片乱跑（避免遮挡正在看的卡）。
+## 吸附瞬间的角标。位置固定在画布**左下角**，不跟着卡片乱跑（避免遮挡正在看的卡）。
+##
+## PET-93：它原来钉在右上角，而 §2.1 的详情浮层 (704,80,224,240) 正好落在净纸右上 ——
+## 两个东西会叠在一起。角标让位到对角，浮层因此是纸面右上唯一的东西。
+## 颜色由调用方给：它写在**纸**上，必须是纸面墨（§3「不在亮纸上用金字/浅蓝字」）。
 static func paint_snap_badge(target: CanvasItem, view_size: Vector2, text_in: String,
 		color: Color) -> void:
 	var font: Font = target.get_theme_default_font()
 	var font_size: int = target.get_theme_default_font_size()
 	if font == null:
 		return
-	var width: float = font.get_string_size(text_in, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-	target.draw_string(font, Vector2(view_size.x - width - 12.0, float(font_size) + 4.0), text_in,
+	target.draw_string(font, Vector2(12.0, view_size.y - 8.0), text_in,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, color)
 
 
@@ -124,7 +139,7 @@ func paint_link_preview(target: CanvasItem, model: BoardModel, at: Vector2) -> v
 	var hovered: BoardModel.PlacedCard = find_card_at(model, at)
 	if hovered != null and hovered.uid != link_from:
 		end = BoardView.input_port(hovered)
-	ThreadPainter.paint(target, BoardView.output_port(source), end, link_active)
+	ThreadPainter.paint(target, BoardView.output_port(source), end, link, link_under)
 
 
 ## 命中测试。倒序遍历 = 后画的在上，点谁选谁。

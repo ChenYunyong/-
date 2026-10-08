@@ -15,8 +15,9 @@ extends RefCounted
 const WIDTH: float = 3.0
 
 ## 虚线节拍：实线段长度与间隔。用来把「辅助线」与「丝线」在**线型**上分开（13 §10.1）。
-const DASH_LENGTH: float = 9.0
-const DASH_GAP: float = 6.0
+## 8/4 是 docs/14 §1.1 给吸附参考线定的数（2× 下为 16/8）—— 唯一使用虚线的地方就是它。
+const DASH_LENGTH: float = 8.0
+const DASH_GAP: float = 4.0
 
 
 ## 沿折线落笔。**圆角 + 圆端点**：每段画线，并在每个顶点补一个直径等于线宽的圆点。

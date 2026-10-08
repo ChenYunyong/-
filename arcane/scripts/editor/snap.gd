@@ -14,7 +14,10 @@ extends RefCounted
 const DEFAULT_RADIUS: float = 18.0
 
 ## 辅助线两端各向外多画的一点（端点杠要落得下）。
-const GUIDE_MARGIN: float = 5.0
+##
+## 8 来自 docs/14 §1.1「仅跨参与吸附的卡外接框并两端各伸 8」—— 于是线长恰好是
+## 「两个矩形联合包围框 + 16」，§4 的 E06 与 §1.1 的长度上界因此同时成立。
+const GUIDE_MARGIN: float = 8.0
 
 ## 一次吸附求解的结果。
 class Result:

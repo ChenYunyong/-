@@ -1,7 +1,7 @@
 ## ui_kit.gd
-## 职责：各屏共用的控件装配小工具（Label / Panel / Button 的建立与尺寸）。
+## 职责：各屏共用的控件装配小工具（Label / Panel / Button / IconButton 的建立与尺寸）。
 ## 所属系统：ui
-## 依赖：ArcaneTheme, Fonts
+## 依赖：ArcaneTheme, IconButton, IconPainter, Fonts
 ## 禁止：本文件不得写入玩法逻辑、不得出现裸色值（颜色一律由 Theme 变体决定）。
 ##
 ## 为什么按钮宽度是算出来的而不是量出来的：各屏用的是**手工定位**（各屏的几何常量在
@@ -83,3 +83,18 @@ static func place_right(button_node: Button, anchor: Rect2, cursor_right: float)
 	var y: float = anchor.position.y + (anchor.size.y - button_node.size.y) * 0.5
 	button_node.position = Vector2(cursor_right - width, y)
 	return cursor_right - width
+
+
+## 建一个图标控件。三处用它：头栏（40×32）· 书槽两端入口（24×48）· 浮层关闭键（24×24）——
+## 各自的半径由调用方给，装配顺序（先 setup 再摆放）在这里统一，省得三处各写一遍。
+## 尺寸**不在这里定**：它随用途变化，由调用方按 EditorLayout 的 rect 摆。
+static func icon_button(variation: StringName, icon: IconPainter.Icon, radius: float,
+		text_key: String, handler: Callable) -> IconButton:
+	var node: IconButton = IconButton.new()
+	node.theme_type_variation = variation
+	node.icon_radius = radius
+	# setup() 与 _ready() 无关：它要写 tooltip 与无障碍名，add_child() 前后都行。
+	node.setup(icon, text_key)
+	if handler.is_valid():
+		node.pressed.connect(handler)
+	return node

@@ -27,6 +27,12 @@ const SNAP_OFFSET_Y: float = 5.0
 ## 主菜单上那颗按钮的文案 key。PET-90 起 boot 落在主菜单，编辑器要玩家按一下才去。
 const KEY_NEW_RUN: String = "开始新一局"
 
+## G06 的判据色：引擎默认底 RGB(76,76,76)。没被自家暗底盖住的地方露的就是它。
+const ENGINE_GREY: Color = Color(0.2980392156862745, 0.2980392156862745, 0.2980392156862745)
+## 扫边带时的上下分界线。书本与书槽用的是同一支边带材质，只能按 y 分开扫；
+## §2.1 里书本止于 424、书槽起于 436，430 落在两者之间唯一的空隙里。
+const BAND_SPLIT_Y: float = 430.0
+
 var _run: Node = null
 var _editor: Node = null
 var _board_view: Node = null
@@ -51,9 +57,19 @@ func _initialize() -> void:
 	if not await _boot_to_editor():
 		quit(1)
 		return
+	# 顺序即证据链：裸底 → 带卡带浮层 → 收起浮层 → 自由落点 → 吸附。
+	# §4 要求「测面积时先关闭浮层、移走卡/线取一帧裸底」——刚进编辑器时书页本来就是空的、
+	# 也没有选中，这一帧不必去构造。
+	await _capture_bare()
 	_place_two_cards()
 	_link_them()
+	await _capture_detail()
+	await _dismiss_detail()
 	await _capture_free_placement()
+	# 自由落点那一帧**故意**把卡放到右上角（要证明接口不被裁切边切掉），而那正是浮层压着的地方；
+	# 拖动结束会重新选中它、浮层跟着开回来，于是吸附那一次的按下会落在浮层上而不是画布上
+	# ——「手势未生效」在上一版就是这么来的。再收一次，浮层让开。
+	await _dismiss_detail()
 	await _capture_snapping()
 	_report()
 	for line: String in _lines:
@@ -151,6 +167,226 @@ func _link_them() -> void:
 	_mouse_release(to)
 	_say("从卡 %d 的输出接口拖到卡 %d 的输入接口 → 起手命中接口=%s、丝线 %d 条" % [
 		source.uid, target.uid, str(aiming), _board.links().size()])
+
+
+# --------------------------------------------- 证据零：裸底 / 浮层 / 逐条像素实测
+
+## 裸底帧（§4 原话：「测面积时先关闭浮层、移走卡/线取一帧裸底」）。
+## 刚进编辑器时书页本来就是空的、也没有选中 —— 这一帧不必构造，走进去就是。
+func _capture_bare() -> void:
+	_say("裸底帧：书页 %d 张卡、%d 条丝线、选中 uid=%s、浮层可见=%s" % [
+		_board.cards().size(), _board.links().size(),
+		str(_board_view.selected_uid()), str(_detail_visible())])
+	var image: Image = await _capture("editor_bare.png")
+	if image != null:
+		_measure_bare(image)
+
+
+## 带卡 + 浮层打开的那一帧。E02 的两个半句各测一半：
+## 「纸区扣掉浮层仍 ≥48%」按像素量，「开关不改书页坐标 / 卡坐标」按开与关两次的坐标比对。
+func _capture_detail() -> void:
+	_say("详情帧：选中 uid=%s，卡坐标 %s" % [
+		str(_board_view.selected_uid()), _card_positions()])
+	var image: Image = await _capture("editor_detail.png")
+	if image != null:
+		_measure_detail(image)
+
+
+## 收起浮层 —— 走**它自己的收起键**，不直接 clear_selection()。
+## 「开得也要关得掉」本身是验收项（§2.1「按需开、可收起」），而且 §4 的纸面面积只有
+## 关上浮层之后才量得准，所以后面那两帧必须在收起状态下取。
+func _dismiss_detail() -> void:
+	var close_button: Button = _popover_close_button()
+	if close_button == null:
+		_say("致命：找不到浮层的收起键，后面两帧会带着浮层，纸面数字作废")
+		return
+	close_button.pressed.emit()
+	await process_frame
+	await process_frame
+	_say("收起浮层：按收起键 → 选中 uid=%s（期望 0）、浮层可见=%s" % [
+		str(_board_view.selected_uid()), str(_detail_visible())])
+	_say("E02 开关不改坐标：收起后卡坐标 %s（与「详情帧」那一行逐字相等即为通过）" % _card_positions())
+
+
+## 浮层的收起键。浮层里只有这一颗按钮，但**位置也要报出来** —— 版面一动，
+## 那一行就成了唯一能看出「收起键跑到别处去了」的地方。
+func _popover_close_button() -> Button:
+	var panels: Array[Node] = TreeProbe.find_all(_editor, "DetailPanel")
+	if panels.is_empty():
+		_say("警告：编辑器里找不到 DetailPanel")
+		return null
+	var buttons: Array[Node] = TreeProbe.find_all(panels[0], "Button")
+	if buttons.size() != 1:
+		_say("警告：浮层里数到 %d 颗按钮（期望 1 颗收起键）" % buttons.size())
+		return null
+	var button: Button = buttons[0]
+	_say("收起键：rect=%s，§2.1 的 DETAIL_CLOSE=%s" % [
+		str(button.get_global_rect()), str(EditorLayout.detail_close_rect())])
+	return button
+
+
+## 书页上每张卡的位置，按 uid 排序 —— E02 后半句靠它做前后比对。
+func _card_positions() -> String:
+	var parts: PackedStringArray = PackedStringArray()
+	for card: BoardModel.PlacedCard in _board.cards():
+		parts.append("#%d %s" % [card.uid, str(card.position)])
+	return "[%s]" % ", ".join(parts)
+
+
+func _detail_visible() -> bool:
+	var panels: Array[Node] = TreeProbe.find_all(_editor, "DetailPanel")
+	return not panels.is_empty() and (panels[0] as CanvasItem).is_visible_in_tree()
+
+
+## 裸底帧上的 §4 账。**全部在真截图的像素上量**，不复述常量 —— 常量在 test_layout /
+## test_layout_p0 里已经钉过一遍了，这里要证的是「画出来的就是那些常量」。
+func _measure_bare(image: Image) -> void:
+	var screen: Rect2 = Rect2(Vector2.ZERO, EditorLayout.SCREEN)
+	var safe_area: float = EditorLayout.SAFE_AREA.size.x * EditorLayout.SAFE_AREA.size.y
+	var backdrop: Color = _panel_box(ContractTheme.TYPE_BACKDROP).bg_color
+	var band: Color = _panel_box(ContractTheme.TYPE_PAGE_BAND).border_color
+
+	# G06：自家暗底必须盖满全屏，一个引擎默认灰的像素都不许露。一趟扫完，两个数都出来。
+	var full: Dictionary = _scan_cover(image, backdrop)
+	_say("G06 未绘制灰底：RGB(76,76,76) = %d 个像素（判据 = 0）" % full["grey"])
+	_say("G06 覆盖：全屏 %d 像素里 %d 个是暗底 NAVY_900，占 %.5f%%" % [
+		int(screen.size.x * screen.size.y), full["dark"],
+		100.0 * float(full["dark"]) / (screen.size.x * screen.size.y)])
+
+	# 书本与书槽同一支边带材质，按 y 分开扫再各自比表列值。
+	var book: Rect2 = _scan(image, band, Rect2(0.0, 0.0, screen.size.x, BAND_SPLIT_Y))["box"]
+	var tray: Rect2 = _scan(image, band,
+		Rect2(0.0, BAND_SPLIT_Y, screen.size.x, screen.size.y - BAND_SPLIT_Y))["box"]
+	_report_rect("E01 书本外框（扫边带色）", book, EditorLayout.book())
+	_report_rect("E01 书槽外框（扫边带色）", tray, EditorLayout.tray())
+	if book.size.x <= 0.0 or tray.size.x <= 0.0:
+		_say("警告：边带色没扫到，下面的面积账作废 —— 先看上面两行的实测矩形")
+		return
+
+	# 净纸的位置另有一支独立证据：来光只在净纸的上 / 左各画一条 1px 的 WARM_300。
+	var hilight: Color = _panel_box(ContractTheme.TYPE_PAGE_HILIGHT).border_color
+	var paper: Rect2 = _scan(image, hilight, book)["box"]
+	_report_rect("E01 净纸（扫来光边）", paper, EditorLayout.paper())
+
+	_say("E01 书本面积：%.5f%%（判据 ≥67%%、表列 67.538%%）" % (
+		100.0 * book.size.x * book.size.y / safe_area))
+	_say("E01 净纸面积：%.5f%%（外框 928×360 扣掉内缩 16 = 896×328；判据 ≥59%%、表列 59.413%%）" % (
+		100.0 * float((book.size.x - 32.0) * (book.size.y - 32.0)) / safe_area))
+	_say("E03 顶部预算：实测书顶 y=%.0f（内容顶端 16 + 头栏 40 + 净空 8 = 64；判据 ≤64）" % book.position.y)
+	_say("E03 头栏到书本净空：%.0f（判据 8）" % (book.position.y - EditorLayout.top_bar().end.y))
+	_say("E02 详情打开后纸面：%.5f%%（纸面扣 224×240；判据 ≥48%%、表列 48.544%%）" % (
+		100.0 * float((book.size.x - 32.0) * (book.size.y - 32.0)
+			- EditorLayout.popover().size.x * EditorLayout.popover().size.y) / safe_area))
+	# 反向对照：浮层这时候必须是收起的，净纸里不该有它的底色。
+	# 没有这一条，「浮层量到了 §2.1 的矩形」在浮层压根没画出来时就无法分辨。
+	var popover_fill: Color = _panel_box(ContractTheme.TYPE_POPOVER).bg_color
+	_say("E02 反向对照：裸底帧净纸内的浮层底色像素 = %d（判据 = 0，此刻浮层应收起）" % (
+		_scan(image, popover_fill, EditorLayout.paper())["count"]))
+
+
+## 浮层那一帧：浮层摆在哪、多大 —— E02 的前半句由像素量。
+func _measure_detail(image: Image) -> void:
+	var fill: Color = _panel_box(ContractTheme.TYPE_POPOVER).bg_color
+	# 先把画布上的卡挖掉再扫：**卡底与浮层同色**，不挖的话量到的是「卡 ∪ 浮层」的并集
+	# —— 上一版就是这么量出一个 541×238 的「浮层」的。
+	var found: Rect2 = _scan(image, fill, EditorLayout.paper(), _card_screen_rects())["box"]
+	# 量到的是**底色**的包围盒，四周那 1px 的 GREY_300 描边不在内 —— 所以拿表列值先内缩 1px
+	# 再比，比出来的 0 才是「浮层就在 §2.1 那个矩形上」，而不是「差 2px 也能忍」。
+	_report_rect("E02 详情浮层底色（净纸窗口内、挖掉卡之后扫）", found,
+		EditorLayout.popover().grow(-float(ContractTheme.HAIRLINE)))
+	_say("E02 浮层外框（底色外扩回描边）= %s，§2.1 的 DETAIL_POPOVER = %s" % [
+		str(found.grow(float(ContractTheme.HAIRLINE))), str(EditorLayout.popover())])
+
+
+## 画布上的卡在**屏幕**坐标里的矩形（画布原点 + 卡坐标），挖洞用。
+func _card_screen_rects() -> Array[Rect2]:
+	var rects: Array[Rect2] = []
+	var origin: Vector2 = _board_view.global_position
+	for card: BoardModel.PlacedCard in _board.cards():
+		rects.append(Rect2(origin + card.position, CardFace.SIZE))
+	return rects
+
+
+## 实测矩形 vs §2.1 表列值，误差直接打出来 —— G02 的判据就是 ≤1 逻辑像素。
+func _report_rect(label: String, measured: Rect2, expected: Rect2) -> void:
+	if measured.size.x <= 0.0 or measured.size.y <= 0.0:
+		_say("%s：**没扫到**（表列 %s）" % [label, str(expected)])
+		return
+	_say("%s：实测 %s，表列 %s，误差 左%.0f 上%.0f 宽%.0f 高%.0f" % [label, str(measured),
+		str(expected), measured.position.x - expected.position.x,
+		measured.position.y - expected.position.y,
+		measured.size.x - expected.size.x, measured.size.y - expected.size.y])
+
+
+## 屏幕上**这一支**主题里的面板样式 —— 取色一律问它，不另抄一份色值（G07：色值单一来源）。
+func _panel_box(variation: StringName) -> StyleBoxFlat:
+	return _editor.theme.get_stylebox(&"panel", variation)
+
+
+## 扫一帧：某个颜色在窗口里有多少个像素、包围盒落在哪。
+##
+## 个数与位置合并成**一趟**遍历：960×540 是 51.8 万个像素，GDScript 逐像素走一遍就要
+## 几百毫秒，分开数会让这个采集脚本慢一倍。包围盒的宽高按闭区间算（max − min + 1），
+## 于是 1px 的来光边量出来正好是 1 而不是 0。
+##
+## exclude 是挖洞用的：同一支底色出现在两处时（卡底 = 浮层底），不挖掉一处就量成并集。
+func _scan(image: Image, color: Color, window: Rect2,
+		exclude: Array[Rect2] = []) -> Dictionary:
+	var data: PackedByteArray = image.get_data()
+	var width: int = image.get_width()
+	var r: int = color.r8
+	var g: int = color.g8
+	var b: int = color.b8
+	var min_x: int = width
+	var min_y: int = image.get_height()
+	var max_x: int = -1
+	var max_y: int = -1
+	var count: int = 0
+	for y: int in range(int(window.position.y), int(window.end.y)):
+		var row: int = y * width * 4
+		for x: int in range(int(window.position.x), int(window.end.x)):
+			var at: int = row + x * 4
+			if data[at] != r or data[at + 1] != g or data[at + 2] != b:
+				continue
+			if _in_hole(exclude, x, y):
+				continue
+			count += 1
+			min_x = mini(min_x, x)
+			min_y = mini(min_y, y)
+			max_x = maxi(max_x, x)
+			max_y = maxi(max_y, y)
+	var box: Rect2 = Rect2()
+	if count > 0:
+		box = Rect2(float(min_x), float(min_y), float(max_x - min_x + 1), float(max_y - min_y + 1))
+	return {"count": count, "box": box}
+
+
+## 这个像素在不在任一挖洞里。洞是闭区间的整数矩形，与包围盒同一套口径。
+static func _in_hole(holes: Array[Rect2], x: int, y: int) -> bool:
+	for hole: Rect2 in holes:
+		if x >= int(hole.position.x) and x < int(hole.end.x) \
+				and y >= int(hole.position.y) and y < int(hole.end.y):
+			return true
+	return false
+
+
+## 全屏一趟，分三桶：自家暗底 / 引擎默认灰 / 其余。G06 的两个数都从这一趟里出。
+func _scan_cover(image: Image, backdrop: Color) -> Dictionary:
+	var data: PackedByteArray = image.get_data()
+	var width: int = image.get_width()
+	var height: int = image.get_height()
+	var dark: int = 0
+	var grey: int = 0
+	for y: int in height:
+		var row: int = y * width * 4
+		for x: int in width:
+			var at: int = row + x * 4
+			if data[at] == backdrop.r8 and data[at + 1] == backdrop.g8 and data[at + 2] == backdrop.b8:
+				dark += 1
+			elif data[at] == ENGINE_GREY.r8 and data[at + 1] == ENGINE_GREY.g8 \
+					and data[at + 2] == ENGINE_GREY.b8:
+				grey += 1
+	return {"dark": dark, "grey": grey}
 
 
 # ------------------------------------------------------------ 证据一：没有网格
@@ -361,19 +597,24 @@ func _hit_test(at: Vector2) -> String:
 
 # ------------------------------------------------------------------ 截图
 
-func _capture(file_name: String) -> void:
+## 截一帧并落盘，**返回这一帧的像素** —— 调用方接着就在同一张图上量（见 _scan）。
+## 量与写用同一张图是有意的：分两次取纹理会量到相邻帧，浮层开关这类差异会自己冒出来。
+func _capture(file_name: String) -> Image:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUTPUT_DIR))
 	# 等这一帧真的画完再取纹理，否则拿到的是上一帧（参考线还没画上去）。
 	await RenderingServer.frame_post_draw
 	var image: Image = root.get_texture().get_image()
 	if image == null:
 		_say("致命：拿不到窗口纹理，%s 未生成" % file_name)
-		return
+		return null
+	# 逐像素比对要求每像素 4 字节的 RGBA8；格式不是它就先转过去，免得步长算错。
+	if image.get_format() != Image.FORMAT_RGBA8:
+		image.convert(Image.FORMAT_RGBA8)
 	var path: String = "%s/%s" % [OUTPUT_DIR, file_name]
 	var error: Error = image.save_png(path)
 	if error != OK:
 		_say("致命：%s 写入失败（错误码 %d）" % [path, error])
-		return
+		return null
 	# 截图取的是**逻辑渲染目标**（960×540），不是窗口帧缓冲：stretch/mode=viewport 下
 	# 引擎先按 960×540 画，再整块放大贴到 1920×1080 的窗口上。所以「2×」这件事不能靠
 	# 数像素证明，只能靠窗口尺寸 ÷ 视口尺寸 + scale_mode=integer 这两条配置事实。
@@ -384,6 +625,7 @@ func _capture(file_name: String) -> void:
 		int(root.get_visible_rect().size.x), int(root.get_visible_rect().size.y),
 		float(window.x) / root.get_visible_rect().size.x,
 		str(ProjectSettings.get_setting("display/window/stretch/scale_mode"))])
+	return image
 
 
 # ------------------------------------------------------------------ 小工具

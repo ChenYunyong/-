@@ -1,81 +1,88 @@
 ## detail_panel.gd
-## 职责：右侧「卡片详情」面板 —— 木框 / 标题栏 / 三级排版的四段行，以及无选中时的引导文案。
+## 职责：卡片详情**浮层**（docs/14 §2.1 DETAIL_POPOVER）—— 名字 / 收起键 / 类型 / 参数 / 说明。
 ## 所属系统：ui
-## 依赖：EditorLayout, UiKit, ArcaneTheme, BoardModel, CardData, CardCatalog
-## 禁止：本文件不得查书页（数据由 editor 传进来）、不得出现裸色值、不得自己换场景。
+## 依赖：EditorLayout, UiKit, IconButton, IconPainter, ContractTheme, BoardModel, CardData, CardCatalog
+## 禁止：本文件不得查书页（数据由 editor 传进来）、不得持有选中状态（真值在 BoardView 上）、
+##       不得出现裸色值、不得自己换场景。
 ##
-## PET-87 §3：名字 / 类型 / 参数原本字号与亮度都太接近，读不出主次。现在分三级，
-## **行高在 EditorLayout 里按字号倒推**（每段 = 字号 × 1.25 × 最坏行数），四段之和
-## 受 DETAIL_CONTENT_HEIGHT 约束 —— 以后想加一段，test_layout 会先拦下来。
+## PET-93 之前它是常驻右栏；契约 §2.1 改成**按需浮层**，性质跟着变了三处：
+##   · 只在选中卡时出现（show_card 开 / show_none 关），不再长期占版面 —— E02 量的正是
+##     「纸区扣掉 224×240 之后仍 ≥48%」，常驻侧栏量不出这个数；
+##   · 浮层自己**截获本区域输入**（浮层那一层 STOP）：从它上面按下去不会穿透去拖背后的卡；
+##   · 收起只是「取消选中」的一个视图。本控件不持有选中状态，只上报 close_requested，
+##     由 editor 清掉选中 —— 浮层开关因此不改动任何模型坐标（E02 后半句）。
 ##
-## 面板是 Control 但自己不画也不占地方：三个 Panel 与五个 Label 都用 EditorLayout 给的
-## **整屏坐标**摆放，本控件只是个把四段刷新技术收在一处的容器（mouse_filter 因此设成 IGNORE）。
+## 空书页的操作引导**不在这里**：§2.1 没给空态提示独立的 rect，故它落在头栏的计数行上
+## （见 editor_screen._refresh_counts）。这是为了不凭空发明版面而做的取舍。
 
 class_name DetailPanel
 extends Control
 
-## 空书页时的引导文案。第二段讲连线，两句都只在「没选中任何卡」时出现。
-const HINT_EMPTY_KEY: String = "点下方仓库的卡片放到书页上"
-const HINT_LINK_KEY: String = "从卡片接口拖出奥术丝线连接另一张卡"
+## 收起键的文案 key（只进 tooltip 与无障碍名）。24×24 里放 16 直径的叉，四周各留 4。
+const CLOSE_KEY: String = "关闭详情"
+const CLOSE_ICON_RADIUS: float = 8.0
+
+## 玩家按下收起键。本控件不自己清选中 —— 选中的唯一真值在画布上。
+signal close_requested
 
 var _name_label: Label = null
+var _close_button: IconButton = null
 var _type_label: Label = null
 var _stats_label: Label = null
-var _warn_label: Label = null
-var _hint_label: Label = null
+var _note_label: Label = null
 
 
-## 建面板。三层结构（06 §2.1）：木框 PanelFrame 包住 NAVY_800 的 PanelSecondary，
-## 顶部一条 48 高的标题栏。
+## 建浮层。五块内容全用 EditorLayout 的**整屏坐标**摆放，本控件只是个容器：
+## 自身 IGNORE（不挡画布），浮层那一层 STOP（只挡它自己那 224×240）。
 func build() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(UiKit.panel(ArcaneTheme.TYPE_PANEL_FRAME, EditorLayout.detail_panel()))
-	add_child(UiKit.panel(ArcaneTheme.TYPE_PANEL_SECONDARY, EditorLayout.detail_body()))
-	add_child(UiKit.panel(ArcaneTheme.TYPE_PANEL_TITLE_BAR, EditorLayout.detail_title_bar()))
+	var backdrop: Panel = UiKit.panel(ContractTheme.TYPE_POPOVER, EditorLayout.popover())
+	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(backdrop)
 
-	var title_rect: Rect2 = EditorLayout.detail_title_bar()
-	title_rect.position.x += EditorLayout.DETAIL_PADDING
-	title_rect.size.x -= EditorLayout.DETAIL_PADDING * 2.0
-	var title: Label = UiKit.label(tr("卡片详情"), title_rect)
-	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	add_child(title)
-
-	_name_label = UiKit.label("", EditorLayout.detail_name_rect(), ArcaneTheme.TYPE_LABEL_TITLE)
+	_name_label = UiKit.label("", EditorLayout.detail_name_rect(), ContractTheme.TYPE_LABEL_DETAIL_NAME)
 	_name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_type_label = UiKit.label("", EditorLayout.detail_type_rect(), ArcaneTheme.TYPE_LABEL_SECONDARY)
-	_stats_label = UiKit.wrapped_label("", EditorLayout.detail_stats_rect(), ArcaneTheme.TYPE_LABEL_PARAM)
-	_warn_label = UiKit.wrapped_label("", EditorLayout.detail_warn_rect(), ArcaneTheme.TYPE_LABEL_WARN)
-	_hint_label = UiKit.wrapped_label("%s\n\n%s" % [tr(HINT_EMPTY_KEY), tr(HINT_LINK_KEY)],
-		Rect2(EditorLayout.DETAIL_CONTENT_ORIGIN,
-			Vector2(EditorLayout.DETAIL_CONTENT_WIDTH, EditorLayout.DETAIL_CONTENT_HEIGHT)),
-		ArcaneTheme.TYPE_LABEL_SECONDARY)
-	for node: Label in [_name_label, _type_label, _stats_label, _warn_label, _hint_label]:
+	_type_label = UiKit.label("", EditorLayout.detail_type_rect(), ContractTheme.TYPE_LABEL_BODY_MUTED)
+	_type_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_stats_label = UiKit.wrapped_label("", EditorLayout.detail_stats_rect(), ContractTheme.TYPE_LABEL_BODY)
+	_note_label = UiKit.wrapped_label("", EditorLayout.detail_note_rect(),
+		ContractTheme.TYPE_LABEL_CAPTION_DANGER)
+	for node: Label in [_name_label, _type_label, _stats_label, _note_label]:
 		add_child(node)
 
+	# 收起键**最后加**：同层里后加的在上，这颗才压在浮层底之上收得到点击。
+	var rect: Rect2 = EditorLayout.detail_close_rect()
+	_close_button = IconButton.new()
+	_close_button.theme_type_variation = ContractTheme.TYPE_BUTTON_PAGE_ICON
+	_close_button.icon_radius = CLOSE_ICON_RADIUS
+	_close_button.setup(IconPainter.Icon.CLOSE, CLOSE_KEY)
+	_close_button.position = rect.position
+	_close_button.size = rect.size
+	_close_button.pressed.connect(_on_close_pressed)
+	add_child(_close_button)
 
-## 没有选中任何卡：四段全隐，只留引导文案。
+
+## 收起键。本控件只上报意图 —— 清选中是 editor 的事。
+func _on_close_pressed() -> void:
+	close_requested.emit()
+
+
+## 没有选中任何卡：整个浮层收起（连内容一起，不只是藏起来）。
 func show_none() -> void:
-	_hint_label.visible = true
-	for node: Label in _rows():
-		node.visible = false
+	visible = false
 
 
-## 展示一张卡。connected = 这张卡顺着入边走得到核心卡（走不到就不会被施放）。
+## 展示一张卡并打开浮层。connected = 这张卡顺着入边走得到核心卡（走不到就不会被施放）。
 func show_card(data: CardData, connected: bool) -> void:
-	_hint_label.visible = false
-	for node: Label in _rows():
-		node.visible = true
 	if data == null:
+		show_none()
 		return
+	visible = true
 	_name_label.text = tr(data.name_key)
 	_type_label.text = "%s · %s" % [tr(CardCatalog.kind_label_key(data)),
 		tr(CardCatalog.type_label_key(data))]
 	_stats_label.text = _stats_text(data)
-	_warn_label.text = "" if connected else tr("未连接核心，不会被施放")
-
-
-func _rows() -> Array[Label]:
-	return [_name_label, _type_label, _stats_label, _warn_label]
+	_note_label.text = "" if connected else tr("未连接核心，不会被施放")
 
 
 ## 参数组。只列这张卡真正有的字段，没有的不占位（避免「费用 0」这种噪音）。
@@ -91,7 +98,7 @@ func _stats_text(data: CardData) -> String:
 
 
 ## 顺着入边一路往回找，能不能走到一张核心卡。找不到 = 这张卡在战斗里不会被施放，
-## 详情面板要明确告诉玩家，而不是让他自己拉线数。
+## 详情浮层要明确告诉玩家，而不是让他自己拉线数。
 static func reaches_core(model: BoardModel, uid: int) -> bool:
 	var stack: Array[int] = [uid]
 	var seen: Dictionary = {}

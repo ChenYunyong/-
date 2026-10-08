@@ -1,217 +1,204 @@
 ## editor_layout.gd
-## 职责：模块编辑器屏的几何常量与顶栏排布算法（唯一落点）。
+## 职责：模块编辑器屏的几何常量与排布算法（唯一落点）—— docs/14 §2.1 的逐条落地。
 ## 所属系统：editor
-## 依赖：ArcaneTheme（边框宽度）、UiKit（按钮尺寸估算）
-## 禁止：本文件不得引用节点 —— 它只有数字，供 editor_screen.gd 摆放控件、供 tests 断言。
+## 依赖：CanvasItem 无关，只有数字；供 editor_screen.gd 摆放控件、供 tests 断言。
+## 禁止：本文件不得引用节点、不得出现裸色值 —— 颜色归 Palette / Theme。
 ##
-## 960×540 画布上的分区（间距取自 docs/06 §1 的间距系统 4/8/12/16/24 ×3 = 12/24/36/48/72）：
-##   ┌───────────────────────────────────────────────┐ 24
-##   │ 顶栏 72：标题 · 状态 · 撤销/删除 · 路线图/开始战斗 │
-##   ├────────────────────────────┬──────────────────┤ 24
-##   │ 书页画布 672×276（木框）   │ 卡片详情 216×276 │
-##   ├────────────────────────────┴──────────────────┤ 24
-##   │ 卡牌仓库 912×96（72px 卡位，横向滚动）         │
-##   └───────────────────────────────────────────────┘ 24
-## 左右：24 + 672 + 24 + 216 + 24 = 960 ✓
-## 上下：24 + 72 + 24 + 276 + 24 + 96 + 24 = 540 ✓
+## 960×540 上的分区（**逐条照抄 docs/14 §2.1 的「rect @960」列**，不另行换算）：
+##   ┌───────────────────────────────────────────────┐ 16
+##   │ 头栏 40：标题 · 计数 · 撤销/删除/路线图(40×32) │
+##   ├───────────────────────────────────────────────┤  8
+##   │ 书本 928×360：8px 暖色边带 + 净纸 896×328     │
+##   ├───────────────────────────────────────────────┤ 12
+##   │ 书槽 928×88：箭头 · 卡位 672×72 · 唯一金底 CTA │
+##   └───────────────────────────────────────────────┘ 16
+## 上下：16 + 40 + 8 + 360 + 12 + 88 + 16 = 540 ✓
+## 左右：16 + 928 + 16 = 960 ✓
 ##
-## 顶栏的横向预算（左起）：
-##   24 边距 → 标题 144 → 12 → 状态 276 →（余量）→ 按钮组靠右贴 936 → 24 边距
-## 中英文文案长度差得很远（「开始战斗」= 4 全角字，「BATTLE」= 6 窄字），
-## 所以标题 / 状态的宽度按**较长的那个语种**留，按钮宽度则由 UiKit 按当前语言算。
-## tests/unit/test_layout.gd 会在两种语言下各断言一次「按钮组不压到状态文字上」。
+## 契约把顶栏压到 40 高（旧版 72）、书本撑到整宽 928×360（旧版 672×276）、详情从常驻侧栏
+## 改成**按需浮层**。三条改动合起来才够着 §4 的 E01：书本 67.538%、净纸 59.413%；
+## E03：内容顶端 16 + 头栏 40 + 书顶 64，书本上方总预算正好 64。
 
 class_name EditorLayout
 extends RefCounted
 
 ## 画布逻辑尺寸（= project.godot 的 viewport 尺寸；改这里等于改基准分辨率，须同步）。
 const SCREEN: Vector2 = Vector2(960.0, 540.0)
-## 安全边距。docs/06 §1 的 8px（320×180 参考系）×3 = 24。
+## 下面的 rect 一律**逐字**照抄 docs/14 §2.1 的「rect @960」列（含 16 的默认内容边距），
+## 不做二次推导 —— 复核的人拿这张表逐行对数字，比追一串算式快得多。
+##
+## **兼容用**：reward_screen.gd 仍借这一支的 MARGIN 摆它的选项。奖励屏不在契约的四屏之内
+## （它不在 PET-93 的顺序里），所以这一个常量维持旧值 24 不动它 —— 编辑器自己一个都不用，
+## 它的每个 rect 都直接写死在上面的表里。
 const MARGIN: float = 24.0
-## 分区之间的间距。同上 ×3 = 24。
-const GAP: float = 24.0
+## §1 的最小安全区。所有可交互包络都不得出这个矩形（G03）。
+const SAFE_AREA: Rect2 = Rect2(8.0, 8.0, 944.0, 524.0)
+## §1 的间距档位（不再乘旧倍率）。
+const SPACING_4: float = 4.0
+const SPACING_8: float = 8.0
+const SPACING_12: float = 12.0
+const SPACING_16: float = 16.0
+const SPACING_24: float = 24.0
 
-## 顶栏高度。取值下限由按钮决定：按钮高 = 12×2 内边距 + 一行 24px 正文 + 描边 ≈ 54，
-## 72 高留出上下各 9px 的呼吸位。顶栏本身不带木框（否则 9px 描边会把按钮挤到放不下）。
-const TOP_BAR_HEIGHT: float = 72.0
-const CANVAS_WIDTH: float = 672.0
-const CANVAS_HEIGHT: float = 276.0
-const DETAIL_WIDTH: float = 216.0
-## 仓库高度 = 9×2 木框 + 72 卡位 + 6 呼吸位。仓库自绘横向滚动（见 EditorScreen._on_tray_input），
-## 不挂 ScrollContainer：Godot 内置滚动条要用默认主题的样式，等于往像素风界面上贴一条系统灰条。
-const TRAY_HEIGHT: float = 96.0
-## 一格滚轮的横向滚动距离 = **一整张卡**（卡位 + 间距）。
+# ------------------------------------------------------------------ 头栏
+
+## EDITOR_HEADER (16,16,928,40)：无额外面板，R0/S0。
+const HEADER: Rect2 = Rect2(16.0, 16.0, 928.0, 40.0)
+## EDITOR_TITLE (24,20,232,32) 24/32 —— 屏标题走主题默认字号 24。
+const TITLE_RECT: Rect2 = Rect2(24.0, 20.0, 232.0, 32.0)
+## EDITOR_COUNTS (272,24,400,24) 16/24 —— 卡数 / 丝线数。
+const COUNTS_RECT: Rect2 = Rect2(272.0, 24.0, 400.0, 24.0)
+## 头栏图标控件的固定尺寸与图标直径。§2.1 三颗都是 40×32、24 图标、R4/S1、间距 8。
+const HEADER_BUTTON_SIZE: Vector2 = Vector2(40.0, 32.0)
+const HEADER_ICON_SIZE: float = 24.0
+## 最后一颗按钮的右缘到屏幕右边距还差 8（944 − 8 = 936 = 896 + 40）。
+const HEADER_BUTTONS_RIGHT: float = 936.0
+## 头栏按钮的文案 key，**从右往左**：index 0 最靠右（UNDO 800 / DELETE 848 / OPEN_MAP 896）。
+const TOP_BUTTONS: PackedStringArray = ["路线图", "删除", "撤销"]
+
+## 头栏按钮的矩形，顺序与 TOP_BUTTONS 一致。
 ##
-## PET-87 §3：原来一步 96 而卡位节拍是 84，滚两下之后就停在第 1.14 张卡上 ——
-## 仓库最右边那张「加速」因此永远只能看到一半。改成整张卡的整数倍之后，
-## 停靠位置与卡位对齐，第一张与最后一张都能完整读。
-const TRAY_SCROLL_STEP: float = TRAY_CHIP_SIZE + TRAY_CHIP_GAP
-
-## 仓库两端的滚动入口宽度（逻辑像素）。24 = 间距系统档位，也是 44 设备像素 ÷ 2 的触控下限。
-const TRAY_ARROW_ZONE: float = 24.0
-const TRAY_ARROW_HEIGHT: float = 48.0
-
-## 主面板木框描边宽度。取自主题，不另写一份数字 —— 否则改主题时这里会静默脱节。
-const FRAME_BORDER: float = ArcaneTheme.FRAME_BORDER_WIDTH
-## 仓库卡位尺寸 = 画布卡片 72×72（同一张牌在仓库和画布上一样大，减少一次心理换算）。
-const TRAY_CHIP_SIZE: float = 72.0
-const TRAY_CHIP_GAP: float = 12.0
-## 详情面板内边距。
-const DETAIL_PADDING: float = 12.0
-## 详情面板标题栏高度（docs/06 §2.2 的面板标题栏 16px ×3 = 48）。
-const DETAIL_TITLE_HEIGHT: float = 48.0
-
-## 详情面板的四段行高（PET-87 §3）。名字 / 类型 / 参数 / 警告依次往下排。
-##
-## 每段 = **该段字号 × 1.25（系统字体的行高比）× 最坏行数**，不是随手给的数：
-##   名字 40（30px × 1 行）· 类型 30（24px × 1 行）· 参数 76（20px × 3 行）· 警告 50（20px × 2 行）。
-## 参数之所以要三行：`_stats_text()` 每个字段独占一行，一张卡最多三个字段。
-## 四段之和必须 ≤ DETAIL_CONTENT_HEIGHT（test_layout 会断言，防止以后加一段就溢出面板）。
-const DETAIL_NAME_HEIGHT: float = 40.0
-const DETAIL_TYPE_HEIGHT: float = 30.0
-const DETAIL_STATS_HEIGHT: float = 76.0
-const DETAIL_WARN_HEIGHT: float = 50.0
-
-## 顶栏左半：标题与状态。宽度按较长的语种留（英文 "BLUEPRINT" ≈130、中文 5 字 = 120）。
-const TOP_TITLE_RECT: Rect2 = Rect2(MARGIN, MARGIN, 144.0, TOP_BAR_HEIGHT)
-## 顶栏中段：卡数 / 丝线数。英文 "%d CARDS · %d LINES" ≈274，比中文的 ≈212 长。
-const TOP_STATUS_RECT: Rect2 = Rect2(TOP_TITLE_RECT.end.x + 12.0, MARGIN, 276.0, TOP_BAR_HEIGHT)
-
-## 顶栏按钮的文案 key，**从右往左**（最右永远是主动作「开始战斗」）。
-##
-## 为什么只有 4 个：960 宽的条里还要放下标题与状态，而英文文案比中文长。
-## 「撤销 / 清空 / 删除 / 路线图 / 开始战斗」五个按钮在英文下必然压到状态文字上
-## （test_layout 的双语断言会当场抓住）。取舍是去掉「清空」—— 撤销 + 逐张删除
-## 已经覆盖了它的用途，而「一键清空整块书页」本来就是玩家最不敢按的那个键。
-const TOP_BUTTONS: PackedStringArray = ["开始战斗", "路线图", "删除", "撤销"]
-
-## 顶栏里唯一带文字的**强主动作**。其余键一律是紧凑图标控件（PET-87 §3：
-## 四个同级大按钮读不出主次，「开始战斗」必须是顶栏唯一的主按钮）。
-const TOP_PRIMARY_KEY: String = "开始战斗"
-## 图标控件的边长。与主动作按钮等高（48 = 24 字号 + 12×2 内边距），因此顶栏不会忽高忽低。
-const TOP_ICON_BUTTON: float = 48.0
-
-const TOP_BAR_ORIGIN: Vector2 = Vector2(MARGIN, MARGIN)
-const CANVAS_ORIGIN: Vector2 = Vector2(MARGIN, MARGIN + TOP_BAR_HEIGHT + GAP)
-const DETAIL_ORIGIN: Vector2 = Vector2(MARGIN + CANVAS_WIDTH + GAP, CANVAS_ORIGIN.y)
-const TRAY_ORIGIN: Vector2 = Vector2(MARGIN, CANVAS_ORIGIN.y + CANVAS_HEIGHT + GAP)
-
-const TOP_BAR_SIZE: Vector2 = Vector2(SCREEN.x - MARGIN * 2.0, TOP_BAR_HEIGHT)
-const CANVAS_SIZE: Vector2 = Vector2(CANVAS_WIDTH, CANVAS_HEIGHT)
-const DETAIL_SIZE: Vector2 = Vector2(DETAIL_WIDTH, CANVAS_HEIGHT)
-const TRAY_SIZE: Vector2 = Vector2(SCREEN.x - MARGIN * 2.0, TRAY_HEIGHT)
-
-## 画布控件在木框内的实际矩形：木框描边要让出来，否则卡片会被框线压住。
-const CANVAS_VIEW_ORIGIN: Vector2 = Vector2(CANVAS_ORIGIN.x + FRAME_BORDER, CANVAS_ORIGIN.y + FRAME_BORDER)
-const CANVAS_VIEW_SIZE: Vector2 = Vector2(
-	SCREEN.x - MARGIN * 2.0 - FRAME_BORDER * 2.0 - GAP - DETAIL_WIDTH,
-	CANVAS_HEIGHT - FRAME_BORDER * 2.0
-)
-
-## 详情面板内容区（标题栏之下、木框之内）。
-const DETAIL_CONTENT_ORIGIN: Vector2 = Vector2(
-	DETAIL_ORIGIN.x + FRAME_BORDER + DETAIL_PADDING,
-	DETAIL_ORIGIN.y + FRAME_BORDER + DETAIL_TITLE_HEIGHT + DETAIL_PADDING
-)
-const DETAIL_CONTENT_WIDTH: float = DETAIL_WIDTH - FRAME_BORDER * 2.0 - DETAIL_PADDING * 2.0
-## 详情内容区可用高度：内芯高度 − 标题栏 − 下内边距。
-const DETAIL_CONTENT_HEIGHT: float = CANVAS_HEIGHT - FRAME_BORDER * 2.0 - DETAIL_TITLE_HEIGHT - DETAIL_PADDING
-
-## 仓库滚动区（木框之内）。
-const TRAY_VIEW_ORIGIN: Vector2 = Vector2(TRAY_ORIGIN.x + FRAME_BORDER, TRAY_ORIGIN.y + FRAME_BORDER)
-const TRAY_VIEW_SIZE: Vector2 = Vector2(
-	SCREEN.x - MARGIN * 2.0 - FRAME_BORDER * 2.0,
-	TRAY_HEIGHT - FRAME_BORDER * 2.0
-)
-
-
-static func top_bar() -> Rect2:
-	return Rect2(TOP_BAR_ORIGIN, TOP_BAR_SIZE)
-
-
-## 顶栏按钮的矩形，顺序与 TOP_BUTTONS 一致。
-##
-## 这是顶栏按钮几何的**唯一算法**：editor_screen 用它摆放，test_layout 用它断言。
-## 测试因此断言的正是真机上跑的那组坐标，而不是照抄一遍公式算出来的「应该」。
+## 这是头栏按钮几何的**唯一算法**：editor_screen 用它摆放，test_layout 用它断言 ——
+## 测试断言的因此正是真机上跑的那组坐标，而不是照抄一遍公式算出来的「应该」。
 static func top_button_rects() -> Array[Rect2]:
 	var rects: Array[Rect2] = []
-	var cursor: float = top_bar().end.x
-	for key: String in TOP_BUTTONS:
-		var size: Vector2 = top_button_size(key)
-		var top: float = TOP_BAR_ORIGIN.y + (TOP_BAR_HEIGHT - size.y) * 0.5
-		rects.append(Rect2(cursor - size.x, top, size.x, size.y))
-		cursor -= size.x + GAP
+	var cursor: float = HEADER_BUTTONS_RIGHT
+	var y: float = HEADER.position.y + (HEADER.size.y - HEADER_BUTTON_SIZE.y) * 0.5
+	for _key: String in TOP_BUTTONS:
+		rects.append(Rect2(cursor - HEADER_BUTTON_SIZE.x, y,
+			HEADER_BUTTON_SIZE.x, HEADER_BUTTON_SIZE.y))
+		cursor -= HEADER_BUTTON_SIZE.x + SPACING_8
 	return rects
 
 
-## 单个顶栏控件的尺寸。主动作用**文字宽度**（按当前语言算，切英文不会把字挤出去），
-## 其余三个是固定边长的方形图标控件 —— 图标没有文字宽度可言。
-static func top_button_size(key: String) -> Vector2:
-	if key == TOP_PRIMARY_KEY:
-		return Vector2(UiKit.button_width(TranslationServer.translate(key)), UiKit.button_height())
-	return Vector2(TOP_ICON_BUTTON, TOP_ICON_BUTTON)
+static func top_bar() -> Rect2:
+	return HEADER
+
+
+# ------------------------------------------------------------------ 书本
+
+## EDITOR_BOOK (16,64,928,360) R4/S1；距头栏 8；8px 暖色边带。
+const BOOK: Rect2 = Rect2(16.0, 64.0, 928.0, 360.0)
+## EDITOR_PAPER (32,80,896,328) R4/S0 —— 书本内缩 16。E01 量的「净纸」就是它。
+const PAPER: Rect2 = Rect2(32.0, 80.0, 896.0, 328.0)
+## EDITOR_SPINE (472,80,16,328) 书脊中带，纯装饰、不阻断摆牌。
+const SPINE: Rect2 = Rect2(472.0, 80.0, 16.0, 328.0)
+
+## 画布控件矩形 = 净纸。画布不留自己的内缩：E05 的「卡距裁切边 ≥16」由
+## BoardView.EDGE_PADDING 保证，多扣一层会让净纸面积对不上 §2.1。
+const CANVAS_VIEW_ORIGIN: Vector2 = PAPER.position
+const CANVAS_VIEW_SIZE: Vector2 = PAPER.size
+
+
+static func book() -> Rect2:
+	return BOOK
+
+
+static func paper() -> Rect2:
+	return PAPER
+
+
+static func spine() -> Rect2:
+	return SPINE
 
 
 static func canvas_frame() -> Rect2:
-	return Rect2(CANVAS_ORIGIN, CANVAS_SIZE)
+	return PAPER
 
 
 static func canvas_view() -> Rect2:
-	return Rect2(CANVAS_VIEW_ORIGIN, CANVAS_VIEW_SIZE)
+	return PAPER
 
 
-static func detail_panel() -> Rect2:
-	return Rect2(DETAIL_ORIGIN, DETAIL_SIZE)
+# ------------------------------------------------------------------ 详情浮层
+
+## DETAIL_POPOVER (704,80,224,240) R4/S1 —— 选中后按需开，拖动/点空白收起。
+## 它压在净纸右上角：E02 的「扣掉 224×240 后仍 ≥48%」量的是这块。
+const POPOVER: Rect2 = Rect2(704.0, 80.0, 224.0, 240.0)
+## DETAIL_NAME (716,92,176,32) 24/32。左内缩 12、上内缩 12。
+const DETAIL_NAME_RECT: Rect2 = Rect2(716.0, 92.0, 176.0, 32.0)
+## DETAIL_CLOSE (896,92,24,24) —— 与名字间隔 4（716+176=892 → 896）。
+const DETAIL_CLOSE_RECT: Rect2 = Rect2(896.0, 92.0, 24.0, 24.0)
+## 下面三行的左缘与宽度：内容区 196 宽，右内缩 16（716+196=912，928−912=16）。
+const DETAIL_CONTENT_X: float = 716.0
+const DETAIL_CONTENT_WIDTH: float = 196.0
+## DETAIL_TYPE (716,132,196,24) 16/24，类型行上间距 8。
+const DETAIL_TYPE_RECT: Rect2 = Rect2(716.0, 132.0, 196.0, 24.0)
+## DETAIL_STATS (716,164,196,72) 16/24，最多 3 行；上间距 8。
+const DETAIL_STATS_RECT: Rect2 = Rect2(716.0, 164.0, 196.0, 72.0)
+## DETAIL_NOTE (716,244,196,60) 12/20，最多 3 行；上间距 8。
+const DETAIL_NOTE_RECT: Rect2 = Rect2(716.0, 244.0, 196.0, 60.0)
 
 
-## 详情面板的木框之内的深蓝内芯（06 §2.1 的三层结构）。
-static func detail_body() -> Rect2:
-	return Rect2(Vector2(DETAIL_ORIGIN.x + FRAME_BORDER, DETAIL_ORIGIN.y + FRAME_BORDER),
-		Vector2(DETAIL_WIDTH - FRAME_BORDER * 2.0, CANVAS_HEIGHT - FRAME_BORDER * 2.0))
+static func popover() -> Rect2:
+	return POPOVER
 
-
-static func detail_title_bar() -> Rect2:
-	return Rect2(Vector2(DETAIL_ORIGIN.x + FRAME_BORDER, DETAIL_ORIGIN.y + FRAME_BORDER),
-		Vector2(DETAIL_WIDTH - FRAME_BORDER * 2.0, DETAIL_TITLE_HEIGHT))
-
-
-static func tray() -> Rect2:
-	return Rect2(TRAY_ORIGIN, TRAY_SIZE)
-
-
-static func tray_view() -> Rect2:
-	return Rect2(TRAY_VIEW_ORIGIN, TRAY_VIEW_SIZE)
-
-
-# ------------------------------------------------------- 详情面板的四段行
 
 static func detail_name_rect() -> Rect2:
-	return _detail_row(0.0, DETAIL_NAME_HEIGHT)
+	return DETAIL_NAME_RECT
+
+
+static func detail_close_rect() -> Rect2:
+	return DETAIL_CLOSE_RECT
 
 
 static func detail_type_rect() -> Rect2:
-	return _detail_row(DETAIL_NAME_HEIGHT, DETAIL_TYPE_HEIGHT)
+	return DETAIL_TYPE_RECT
 
 
 static func detail_stats_rect() -> Rect2:
-	return _detail_row(DETAIL_NAME_HEIGHT + DETAIL_TYPE_HEIGHT, DETAIL_STATS_HEIGHT)
+	return DETAIL_STATS_RECT
 
 
-static func detail_warn_rect() -> Rect2:
-	return _detail_row(DETAIL_NAME_HEIGHT + DETAIL_TYPE_HEIGHT + DETAIL_STATS_HEIGHT, DETAIL_WARN_HEIGHT)
+static func detail_note_rect() -> Rect2:
+	return DETAIL_NOTE_RECT
 
 
-## 详情内容区的第 offset 行。四段的**唯一算法** —— editor 用它摆放，test_layout 用它断言。
-static func _detail_row(offset: float, height: float) -> Rect2:
-	return Rect2(DETAIL_CONTENT_ORIGIN + Vector2(0.0, offset),
-		Vector2(DETAIL_CONTENT_WIDTH, height))
+# ------------------------------------------------------------------ 书槽
+
+## EDITOR_TRAY (16,436,928,88) R4/S1；距书本 12；卡尺寸 72。
+const TRAY: Rect2 = Rect2(16.0, 436.0, 928.0, 88.0)
+## TRAY_LEFT (24,456,24,48) / TRAY_RIGHT (736,456,24,48)，R4/S1。
+const TRAY_ARROW_SIZE: Vector2 = Vector2(24.0, 48.0)
+const TRAY_LEFT_RECT: Rect2 = Rect2(24.0, 456.0, 24.0, 48.0)
+const TRAY_RIGHT_RECT: Rect2 = Rect2(736.0, 456.0, 24.0, 48.0)
+## TRAY_VIEW (52,444,672,72) R0/S0；卡间距 12；滚动节拍 84。
+const TRAY_VIEW_RECT: Rect2 = Rect2(52.0, 444.0, 672.0, 72.0)
+const TRAY_VIEW_SIZE: Vector2 = TRAY_VIEW_RECT.size
+const TRAY_CHIP_SIZE: float = 72.0
+const TRAY_CHIP_GAP: float = 12.0
+## 一格滚轮 = 一个卡位节拍（卡位 + 间距）。停靠点与卡位对齐，首末两张才都读得全。
+const TRAY_SCROLL_STEP: float = TRAY_CHIP_SIZE + TRAY_CHIP_GAP
+## 偏移小于这个数就算「到头了」，对应那一端的滚动入口自行隐藏（浮点不能用 == 0）。
+const TRAY_EDGE_EPSILON: float = 0.01
+## EDITOR_PRIMARY (776,456,152,48) 20/28 R4/S1 —— 全屏唯一的金底主按钮。
+const PRIMARY_RECT: Rect2 = Rect2(776.0, 456.0, 152.0, 48.0)
+## 唯一主按钮的文案 key。其余头栏键一律是图标控件。
+const PRIMARY_KEY: String = "开始战斗"
 
 
-# ------------------------------------------------------- 仓库的滚动停靠点
+static func tray() -> Rect2:
+	return TRAY
+
+
+static func tray_view() -> Rect2:
+	return TRAY_VIEW_RECT
+
+
+static func primary_rect() -> Rect2:
+	return PRIMARY_RECT
+
+
+## 滚动入口的矩形。side = -1 是左入口、+1 是右入口。两端各贴住可视区的对应一侧。
+static func tray_arrow_rect(side: float) -> Rect2:
+	return TRAY_LEFT_RECT if side < 0.0 else TRAY_RIGHT_RECT
+
+
+# ------------------------------------------------------- 书槽的滚动停靠点
 
 ## 两个卡位之间的节拍（卡位 + 间距）。
 static func tray_pitch() -> float:
-	return TRAY_CHIP_SIZE + TRAY_CHIP_GAP
+	return TRAY_SCROLL_STEP
 
 
 static func tray_content_width(count: int) -> float:
@@ -220,23 +207,23 @@ static func tray_content_width(count: int) -> float:
 	return float(count) * TRAY_CHIP_SIZE + float(count - 1) * TRAY_CHIP_GAP
 
 
-## 最大偏移：再往右滚内容就整个出去了。
+## 最大偏移：再往右滚内容就整个出去了。18 卡时 = 1500 − 672 = **828**（§2.1 表列值）。
 static func tray_max_offset(count: int) -> float:
 	return maxf(0.0, tray_content_width(count) - TRAY_VIEW_SIZE.x)
 
 
-## 仓库的全部停靠点：0、节拍的整数倍……，最后一个是**终点**。
+## 全部停靠点：0、节拍整数倍……，最后一个是**终点**。
 ##
-## 为什么要单独列一个终点：若只停在节拍整数倍上，最后一张卡永远差最后几像素看不到
-## （PET-87 §3 报的正是「最右边的加速被切掉一半」）。终点让最后一张卡恰好贴住可视区右缘。
+## 单独列一个终点的理由：只停在节拍整数倍上时，最后一张卡永远差最后几像素看不到。
+## 终点让最后一张卡恰好贴住可视区右缘。828 不是 84 的整数倍（84×9=756 < 828 < 840），
+## 所以「必须含终点」这条在 §2.1 的 18 卡配置下真的会起作用。
 static func tray_stops(count: int) -> PackedFloat32Array:
 	var limit: float = tray_max_offset(count)
 	var stops: PackedFloat32Array = PackedFloat32Array([0.0])
-	var pitch: float = tray_pitch()
-	var offset: float = pitch
+	var offset: float = tray_pitch()
 	while offset < limit:
 		stops.append(offset)
-		offset += pitch
+		offset += tray_pitch()
 	if not is_equal_approx(stops[stops.size() - 1], limit):
 		stops.append(limit)
 	return stops
@@ -254,11 +241,3 @@ static func tray_stop_offset(current: float, delta: float, count: int) -> float:
 		if stops[index] < current - 0.01:
 			return stops[index]
 	return stops[0]
-
-
-## 滚动入口的矩形。side = -1 是左入口、+1 是右入口。
-static func tray_arrow_rect(side: float) -> Rect2:
-	var view: Rect2 = tray_view()
-	var x: float = view.position.x if side < 0.0 else view.end.x - TRAY_ARROW_ZONE
-	return Rect2(x, view.position.y + (view.size.y - TRAY_ARROW_HEIGHT) * 0.5,
-		TRAY_ARROW_ZONE, TRAY_ARROW_HEIGHT)

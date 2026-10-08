@@ -13,7 +13,8 @@ extends RefCounted
 
 ## 可用图标。NONE 是「这个键不画图标」的占位（主动作按钮仍然是文字按钮）。
 ## ARROW_LEFT / ARROW_RIGHT 是仓库两端的滚动入口（PET-87 §3）—— 与顶栏图标同一支笔。
-enum Icon { NONE, MAP, DELETE, UNDO, ARROW_LEFT, ARROW_RIGHT }
+## CLOSE 是详情浮层的收起键（PET-93 §2.1 DETAIL_CLOSE）—— 契约给了 24×24 的 rect，没指定图形。
+enum Icon { NONE, MAP, DELETE, UNDO, ARROW_LEFT, ARROW_RIGHT, CLOSE }
 
 
 static func paint(target: CanvasItem, icon: Icon, center: Vector2, radius: float, color: Color) -> void:
@@ -33,6 +34,8 @@ static func paths(icon: Icon, center: Vector2, radius: float) -> Array[Dictionar
 			return _map(center, radius)
 		Icon.ARROW_LEFT, Icon.ARROW_RIGHT:
 			return _arrow(icon, center, radius)
+		Icon.CLOSE:
+			return _close(center, radius)
 	return []
 
 
@@ -91,6 +94,17 @@ static func _arrow(icon: Icon, center: Vector2, radius: float) -> Array[Dictiona
 		center + Vector2(radius * 0.55 * sign_x, 0.0),
 		center + Vector2(base, radius * 0.72),
 	]))]
+
+
+## 收起浮层的叉。两笔对角的**开放**折线，不闭合 —— 闭合会在交点附近多出一段回程。
+static func _close(center: Vector2, radius: float) -> Array[Dictionary]:
+	var arm: float = radius * 0.62
+	return [
+		_open(PackedVector2Array([
+			center + Vector2(-arm, -arm), center + Vector2(arm, arm)])),
+		_open(PackedVector2Array([
+			center + Vector2(arm, -arm), center + Vector2(-arm, arm)])),
+	]
 
 
 # ---------------------------------------------------------------- 几何工具
