@@ -59,6 +59,10 @@ func _initialize() -> void:
 		return
 	await _capture("main_menu_settings.png")
 	_toggle_language()
+	# PET-97 #7：设置说明那一格在英文下**必须折行**（单行实测 491 > 内容区 384），
+	# 所以第四张图取在「已切成英文、浮层还开着」这一刻，并把那一行的排版数字打出来。
+	await _capture("main_menu_settings_en.png")
+	_report_help()
 	if not _close_settings():
 		return
 	await _capture("main_menu_en.png")
@@ -193,6 +197,25 @@ func _report_language() -> void:
 		_settings.get_locale(), _original_locale])
 	if _settings.get_locale() != _original_locale:
 		_settings.set_locale(_original_locale, false)
+
+
+## PET-97 #7：设置说明那一格。量的是**跑起来的那条 Label** —— 单行要多少宽、实际排了几行、
+## 可见几行（截断的话可见行数会小于排出行数），以及控件有没有被字体撑出 §2.4 的 rect。
+func _report_help() -> void:
+	for node: Node in TreeProbe.find_all(current_scene, "Label"):
+		var label: Label = node
+		if not label.position.is_equal_approx(MenuLayout.SETTINGS_HELP_RECT.position):
+			continue
+		var font: Font = label.get_theme_font(&"font")
+		var font_size: int = label.get_theme_font_size(&"font_size")
+		var single: float = font.get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1,
+			font_size).x
+		_say("设置说明「%s」：rect %s（表列 %s），单行实宽 %.0f vs 内容区 %.0f → %d 行 / 可见 %d 行，行高 %.0f"
+			% [label.text, str(label.size), str(MenuLayout.SETTINGS_HELP_RECT.size), single,
+				MenuLayout.SETTINGS_HELP_RECT.size.x, label.get_line_count(),
+				label.get_visible_line_count(), label.get_line_height()])
+		return
+	_say("致命：找不到设置说明那一条 Label（按 SETTINGS_HELP_RECT 的落点找）")
 
 
 ## §4 的实测：每一层按钮装饰的两个颜色都必须能在 MenuTheme 角色表里找到。

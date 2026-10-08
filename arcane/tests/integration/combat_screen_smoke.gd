@@ -36,6 +36,7 @@ func run(ctx: RefCounted, tree: SceneTree) -> void:
 	_check_chain(ctx, screen)
 	_check_panels(ctx, screen)
 	_check_labels(ctx, screen)
+	_check_title_fits(ctx, screen)
 	_check_bars(ctx, screen)
 	_check_actions(ctx, screen)
 	screen.queue_free()
@@ -99,6 +100,26 @@ func _check_labels(ctx: RefCounted, screen: Control) -> void:
 		for label: Label in found:
 			ctx.check(_within(Rect2(label.position, label.size), wanted, TOLERANCE),
 				"%s 的框就是表列值 %s（实为 %s）" % [row[0], wanted, Rect2(label.position, label.size)])
+
+
+## PET-97 #6：屏标题那一格的**实际 shaping 宽度**落在 176 里（英文 `AUTO CASTING` 实测 179）。
+## 量的是屏上那条真 Label 解析出来的字体与字号 —— 谁把这一格改回默认档（不带字距），
+## 或者少传了 TYPE_LABEL_SCREEN_TITLE，这一条就会红。§1 不许缩字号、不许截断。
+func _check_title_fits(ctx: RefCounted, screen: Control) -> void:
+	var found: Array[Label] = _labels_at(screen, CombatLayout.TITLE_RECT.position, 1)
+	if not ctx.check(found.size() == 1, "屏标题那一格上有一行字"):
+		return
+	var label: Label = found[0]
+	var font: Font = label.get_theme_font(&"font")
+	var font_size: int = label.get_theme_font_size(&"font_size")
+	var original: String = TranslationServer.get_locale()
+	for locale: String in ["zh_CN", "en"]:
+		TranslationServer.set_locale(locale)
+		var text: String = TranslationServer.translate("自动施法")
+		var width: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		ctx.check(width <= CombatLayout.TITLE_RECT.size.x,
+			"[%s] 屏标题「%s」实宽 %.0f ≤ %s" % [locale, text, width, CombatLayout.TITLE_RECT.size.x])
+	TranslationServer.set_locale(original)
 
 
 ## 血条：一个填充块，内缩 1、内高 10，且不越出条槽。只有填充是 ColorRect ——
