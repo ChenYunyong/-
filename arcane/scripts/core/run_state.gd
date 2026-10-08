@@ -44,6 +44,10 @@ var _taken_keys: Array[String] = []
 ## 本局的常驻加成。战斗只读它们（战斗系统不得回写蓝图，03 §4.3）。
 var _damage_bonus: int = 0
 var _mana_bonus: int = 0
+## 本局的战后详情：每场战斗一份 BattleReport，按打完的先后追加。
+## 战斗数据活在 CombatSim 实例里，战斗屏一释放就没了 —— 屏在离场前把它交到这里，
+## 结算屏再从 last_battle_report() 念（PET-93 复核 ① / docs/14 §2.3 的 C02）。
+var _battle_reports: Array = []
 
 
 func _ready() -> void:
@@ -98,6 +102,7 @@ func start_run(seed_value: int = SEED_AUTO) -> void:
 	_result = Result.NONE
 	_taken.clear()
 	_taken_keys.clear()
+	_battle_reports.clear()
 	_damage_bonus = 0
 	_mana_bonus = 0
 	# 新的一局 = 新的一张图。旧的留着只会让下一局走进上一局的路线。
@@ -169,6 +174,27 @@ func take_reward(option: Dictionary, view_size: Vector2) -> bool:
 ## 本局拿过的奖励，按拿到的先后。结算屏念的就是它。返回副本，外部改不动账本。
 func taken_rewards() -> Array[Dictionary]:
 	return _taken.duplicate()
+
+
+## 战斗屏释放前把这一场的快照交进来。**这是战后详情唯一的入口**（03 §7：UI 不改内部状态，
+## 走命令）。空快照不受理 —— 收下一份空账，结算屏会念出一场没发生过的战斗。
+func record_battle(report: BattleReport) -> bool:
+	if report == null:
+		return false
+	_battle_reports.append(report)
+	return true
+
+
+## 本局打完的每一场，按先后。返回副本。
+func battle_reports() -> Array:
+	return _battle_reports.duplicate()
+
+
+## 最后一场战斗的快照；还没打过返回 null（结算屏据此决定画不画战后详情）。
+func last_battle_report() -> BattleReport:
+	if _battle_reports.is_empty():
+		return null
+	return _battle_reports[_battle_reports.size() - 1]
 
 
 ## 本局的常驻伤害加成。战斗读一次、用一局。

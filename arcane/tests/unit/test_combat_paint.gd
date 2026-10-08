@@ -93,13 +93,15 @@ func _check_contrast(ctx: RefCounted) -> void:
 	ctx.check(body < MIN_EDGE_CONTRAST, "体色本身读不出（%.3f < %.1f），故轮廓那一笔不能省" % [body, MIN_EDGE_CONTRAST])
 
 
-## 两条读数条**含义不同**，不能取同一个颜色；各自与条槽（NAVY_900）也得分得开。
+## 两条读数条**含义不同**，不能取同一个颜色；血条要真的画在槽里、看得见。
+## 法力**不画条**（仿真没有容量字段，§2.3 不许杜撰上限，PET-95 裁定整条不画），它的角色表项
+## 留着等将来有容量字段再用 —— 这里只核对它**没被改成与血条同一个颜色**，不拿它充「已画出」。
 func _check_bar_fills(ctx: RefCounted) -> void:
 	var track: Color = Palette.get_color(Palette.Key.NAVY_900)
 	var hp: Color = CombatTheme.color(CombatTheme.Role.HP_FILL)
 	var mana: Color = CombatTheme.color(CombatTheme.Role.MANA_FILL)
 	ctx.near(_contrast(hp, track), 3.713, "血条填充对条槽 = §3.2 的 3.713", CONTRAST_TOLERANCE)
-	ctx.near(_contrast(mana, track), 8.083, "法力填充对条槽 = §3.2 的 8.083", CONTRAST_TOLERANCE)
+	ctx.near(_contrast(mana, track), 8.083, "法力填充表项仍是 §3.2 的 8.083（保留，等容量字段）", CONTRAST_TOLERANCE)
 	ctx.check(_contrast(hp, track) >= MIN_EDGE_CONTRAST, "血条填充在槽里看得见（≥3:1）")
 	ctx.check(_rgb_distance(hp, mana) >= COLLAPSE_DISTANCE,
 		"血条与法力条不是一家的颜色（距离 %.1f）" % _rgb_distance(hp, mana))

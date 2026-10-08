@@ -139,11 +139,34 @@ func time_limit_ticks(base_ticks: int) -> int:
 	return base_ticks + slow_stacks * SLOW_TICKS_PER_STACK
 
 
+## 八个通道的**固定顺序**（与文件头那张表同序）。战后详情（BattleReport）与测试都按这一份来 ——
+## 各自再排一次，迟早会排成两个样子，而症状只是「某两栏对调了」，肉眼很难发现。
+const CHANNEL_FNS: PackedInt32Array = [
+	CardData.Fn.ENCHANT,
+	CardData.Fn.PROJECTILE_COUNT,
+	CardData.Fn.BURST_COUNT,
+	CardData.Fn.HASTE,
+	CardData.Fn.ATTACK_SPEED,
+	CardData.Fn.SLOW,
+	CardData.Fn.COOLDOWN,
+	CardData.Fn.LOOP,
+]
+
+
+## 每个通道当前的档数，顺序与 CHANNEL_FNS 一致。连发看**余额**、循环看**有没有**（0 / 1）——
+## 这两条通道没有「档数」可数，但它们在战后详情里必须各占一格，否则八格只剩六格。
+func channel_stacks() -> PackedInt32Array:
+	return PackedInt32Array([enchant_stacks, projectile_stacks, burst_left, haste_stacks,
+		attack_speed_stacks, slow_stacks, cooldown_stacks, 1 if looping else 0])
+
+
 ## 本波一共上了几档修正。全为 0 = 「什么都没上」。
 ##
 ## 八条通道**一条都不能漏**：漏掉的那一条会让「上了连发 / 上了循环」在汇总里读成 0，
 ## 于是界面说「无加成」而战斗里明明已经生效 —— 数字对不上的那种最难查的毛病。
-## 连发与循环没有「档数」可加，各按「有 / 没有」算一档。
+## 求和走 channel_stacks()，于是汇总与逐条明细读的是同一批字段，不会各说各的。
 func total_stacks() -> int:
-	return enchant_stacks + projectile_stacks + haste_stacks + slow_stacks \
-		+ attack_speed_stacks + cooldown_stacks + burst_left + (1 if looping else 0)
+	var total: int = 0
+	for stacks: int in channel_stacks():
+		total += stacks
+	return total

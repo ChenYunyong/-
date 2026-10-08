@@ -73,10 +73,11 @@ func _check_chain(ctx: RefCounted, screen: Control) -> void:
 		"这一帧最多画 %d 张卡（C02）" % CombatLayout.CHAIN_SLOTS)
 
 
-## 面板数：暗底 / 头栏 / 纸框 / 战场底 / 底栏 / 当前读数 / 队列加成 7 块，外加两条读数条的槽 = 9。
+## 面板数：暗底 / 头栏 / 纸框 / 战场底 / 底栏 / 当前读数 / 队列加成 7 块，外加血条的槽 = 8。
 ## 多一块就是谁又铺了一层 —— 而多铺的那层在画面上往往是「颜色差一点点」，肉眼查不出来。
+## 少了的那一块是法力条的槽：§2.3 的「无法取到上限就隐藏比例条」由 PET-95 裁定为**整条不画**。
 func _check_panels(ctx: RefCounted, screen: Control) -> void:
-	ctx.equal(TreeProbe.count_of(screen, "Panel"), 9, "九块面板：底 / 头栏 / 纸框 / 战场 / 底栏 / 读数 / 加成 + 两条槽")
+	ctx.equal(TreeProbe.count_of(screen, "Panel"), 8, "八块面板：底 / 头栏 / 纸框 / 战场 / 底栏 / 读数 / 加成 + 血条槽")
 	ctx.equal(TreeProbe.count_of(screen, "CombatView"), 1, "战场只有一个")
 	ctx.equal(TreeProbe.count_of(screen, "CombatChain"), 1, "卡链只有一条")
 
@@ -100,23 +101,37 @@ func _check_labels(ctx: RefCounted, screen: Control) -> void:
 				"%s 的框就是表列值 %s（实为 %s）" % [row[0], wanted, Rect2(label.position, label.size)])
 
 
-## 两条读数条：各一个填充块，内缩 1、内高 10，且不越出条槽。
-## 只有填充是 ColorRect —— 槽要有圆角与那条 1px 边，那一层走 Theme 变体。
+## 血条：一个填充块，内缩 1、内高 10，且不越出条槽。只有填充是 ColorRect ——
+## 槽要有圆角与那条 1px 边，那一层走 Theme 变体。
+##
+## 法力**不画条**：仿真里没有容量字段，§2.3 明令「无法取到上限就隐藏比例条且保留数字，
+## 不杜撰上限」，PET-95 视觉终验裁定为**轨道与填充都不画**。故这里除了量血条，还要量
+## 「法力槽位上一个可见控件都没有」—— 只断言「常量还在表里」不算证据（09 §4）。
 func _check_bars(ctx: RefCounted, screen: Control) -> void:
 	var fills: Array[Node] = TreeProbe.find_all(screen, "ColorRect")
-	ctx.equal(fills.size(), 2, "两条读数条各一个填充块（数到 %d）" % fills.size())
-	for pair: Array in [["血条", CombatLayout.ENEMY_HP_TRACK], ["法力条", CombatLayout.MANA_TRACK]]:
-		var track: Rect2 = pair[1]
-		var hits: int = 0
-		for node: Node in fills:
-			var block: ColorRect = node as ColorRect
-			var rect: Rect2 = Rect2(block.position, block.size)
-			if not _inside(rect, track):
-				continue
-			hits += 1
-			ctx.near(rect.size.y, CombatLayout.BAR_INNER_HEIGHT, "%s 的内高就是 10" % pair[0])
-			ctx.near(rect.position.y, track.position.y + CombatLayout.BAR_INSET, "%s 的填充内缩 1" % pair[0])
-		ctx.equal(hits, 1, "%s 上有一个填充块（数到 %d）" % [pair[0], hits])
+	ctx.equal(fills.size(), 1, "只剩血条一个填充块（数到 %d）" % fills.size())
+	var track: Rect2 = CombatLayout.ENEMY_HP_TRACK
+	var hits: int = 0
+	for node: Node in fills:
+		var block: ColorRect = node as ColorRect
+		var rect: Rect2 = Rect2(block.position, block.size)
+		if not _inside(rect, track):
+			continue
+		hits += 1
+		ctx.near(rect.size.y, CombatLayout.BAR_INNER_HEIGHT, "血条的内高就是 10")
+		ctx.near(rect.position.y, track.position.y + CombatLayout.BAR_INSET, "血条的填充内缩 1")
+	ctx.equal(hits, 1, "血条上有一个填充块（数到 %d）" % hits)
+	var mana_slot: Rect2 = CombatLayout.MANA_TRACK
+	var mana_nodes: int = 0
+	for node: Node in TreeProbe.find_all(screen, "Panel"):
+		var panel: Control = node as Control
+		if panel.visible and _inside(Rect2(panel.position, panel.size), mana_slot):
+			mana_nodes += 1
+	for node: Node in fills:
+		var block: ColorRect = node as ColorRect
+		if block.visible and _inside(Rect2(block.position, block.size), mana_slot):
+			mana_nodes += 1
+	ctx.equal(mana_nodes, 0, "法力槽位上一个可见控件都没有（数到 %d）" % mana_nodes)
 
 
 ## 进行中**没有**可点的动作按钮（C02）：那颗结算键此刻不可见，而且它是唯一的一颗。

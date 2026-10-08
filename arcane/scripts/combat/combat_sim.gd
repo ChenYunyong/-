@@ -67,6 +67,8 @@ var _mana_bonus: int = 0
 ## 本次战斗的结算流水。**逐行可比对**才算证明了可复现 ——
 ## 只比一个最终血量的话，两场顺序完全不同、总伤害恰好相同的战斗会被判成一致。
 var _log: PackedStringArray = PackedStringArray()
+## 这一场真的打出去了几次（付不起而空过的那些不算）。战后详情念的是它。
+var _casts: int = 0
 
 
 ## 开始一波。书页只读，仿真不持有它的引用做写操作。
@@ -84,6 +86,7 @@ func begin(board: BoardModel, wave: int, damage_bonus: int = 0, mana_bonus: int 
 	_cast_timer = 0
 	_cursor = 0
 	_outcome = Outcome.ONGOING
+	_casts = 0
 	_mods.reset()
 	_mana_timer = _mods.mana_period_ticks(MANA_INTERVAL_TICKS)
 	_log = PackedStringArray()
@@ -154,6 +157,11 @@ func cast_order() -> Array[CardData]:
 	return _order
 
 
+## 这一场真的打出去了几次。
+func cast_count() -> int:
+	return _casts
+
+
 ## 本场的结算流水。第一行是收官状态，之后每行一次施放 —— 固定种子重放两次必须逐行相同。
 func settlement_log() -> PackedStringArray:
 	# 加成写进表头：「这一波与上一波差在哪」必须一眼看得出来，不能只体现在逐段伤害里。
@@ -220,6 +228,7 @@ func _cast_card(card: CardData) -> bool:
 	if price > _mana:
 		return false
 	_mana -= price
+	_casts += 1
 	_mods.consume_burst(card)
 	for _index: int in hits:
 		if not is_active():

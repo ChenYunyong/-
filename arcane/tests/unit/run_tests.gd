@@ -54,6 +54,9 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 	# 战斗屏装配后的控件账（§2.3 的 rect 上真的有控件、卡链与结算键的角色也对）：
 	# 同样是从 scene_smoke 里分出来的 —— 那里只数得下「有几个」，量不了真实的 rect。
 	{"path": "res://tests/integration/combat_screen_smoke.gd", "layer": "integration"},
+	# 战后详情（§2.3 C02）：快照里有完整链 / 八通道 / 施法记录，**换屏之后**结算屏上念得出来。
+	# 它只往 RunState 里记一份快照并装一次结算屏，不按按钮、不换 GameFlow 的状态。
+	{"path": "res://tests/integration/battle_report_smoke.gd", "layer": "integration"},
 	# 主菜单屏同上：要入树才验得了四个入口与语言开关，但不换场景。
 	{"path": "res://tests/integration/main_menu_smoke.gd", "layer": "integration"},
 	# 场景冒烟要真的把场景入树，放在单元层之后。

@@ -74,7 +74,24 @@ func _open_results(ctx: RefCounted, d: RefCounted) -> bool:
 	ctx.check(d.has_label(screen, "还没出发"), "到过几层如实说「还没出发」（一层都没走到）")
 	ctx.check(d.has_label(screen, "什么都没拿"), "本局所得如实说「什么都没拿」")
 	ctx.equal(d.run_state().tiers_seen(), 0, "数据侧同样是 0 层")
+	_check_battle_report(ctx, d, screen)
 	return true
+
+
+## PET-94 复核 C02：这场战斗的账是**战斗屏自己**在离场前交进 RunState 的（不是测试塞的），
+## 结算屏必须把它念出来 —— 这一路是真实按钮走出来的，接没接上线由它证明。
+func _check_battle_report(ctx: RefCounted, d: RefCounted, screen: Node) -> void:
+	var report: BattleReport = d.run_state().last_battle_report()
+	if not ctx.check(report != null, "战斗屏离场前把战后详情交给了 RunState"):
+		return
+	ctx.check(d.has_label(screen, "战后详情"), "结算屏有「战后详情」那一块")
+	var channels: String = d.label_containing(screen, TranslationServer.translate("八通道明细"))
+	ctx.check(not channels.is_empty(), "八条通道逐条写出来了")
+	ctx.check(channels.contains("%s 0" % TranslationServer.translate("附魔")),
+		"通道的档数也写出来了（附魔 0）")
+	ctx.equal(report.channel_count(), 8, "通道恰好 8 条（数到 %d）" % report.channel_count())
+	ctx.equal(report.chain_size(), 0, "书页上一条法术都没连，链如实为空")
+	ctx.check(d.has_label(screen, "链条为空"), "链空时屏上说的是「链条为空」，不是空白")
 
 
 ## §4：结算之后回得到主菜单，而且回去之后不能还留着一个「可以继续」的局。

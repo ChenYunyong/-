@@ -2,18 +2,15 @@
 ## 职责：自动施法战斗屏 —— 把书页交给 CombatSim 按固定步长推进，并把状态画出来：
 ##       战场（CombatView）/ 头栏四条读数 / 施法链（CombatChain）/ 当前读数 / 本波加成 / 本场结果。
 ## 所属系统：ui
-## 依赖：CombatSim, CombatMods, CombatView, CombatChain, CombatLayout, CombatTheme,
+## 依赖：CombatSim, CombatMods, BattleReport, CombatView, CombatChain, CombatLayout, CombatTheme,
 ##       ContractTheme, ContractScreenTheme, CardCatalog, RunState, GameFlow, UiKit
 ## 禁止：本文件不得含战斗规则（在 CombatSim / CombatMods 里）；不得自己换场景（R3）；
 ##       不得改写书页 —— 战斗只读它（03 §4.3）；不得出现裸色值（本屏自己画的东西一律经
 ##       CombatTheme 的角色表，文字与面板底走 Theme 的类型变体）。
 ##
-## PET-93 屏③（docs/14 §2.3）：版面重排为头栏 56 / 纸框 312 / 底栏 116；战场由「书页回放」
-## 改成可观察的战场，卡链下移到尾栏（C01「卡牌连接大图占比 = 0」）。本屏没有玩家操作，
-## 只有「看」和「打不下去了按一下结算」（PET-92）—— 那颗键只在核心被摧毁后出现。
-##
-## 数值一律**问仿真**，不在本文件里复制一份：本波加成那一行若自己攒一套计数，
-## 它和 CombatSim 里真正生效的那个迟早会对不上，而症状只是「显示得不太对」。
+## PET-93 屏③（docs/14 §2.3）：头栏 56 / 纸框 312 / 底栏 116，卡链下移到尾栏（C01）。
+## PET-94 复核：法力**不画比例条**（仿真没有容量字段，§2.3 不许杜撰上限）；离屏前把 BattleReport
+## 交进 RunState，「完整链 / 八通道 / 施法记录」换屏后仍可查（C02）。数值一律**问仿真**。
 
 extends Control
 
@@ -27,7 +24,6 @@ var _chain: CombatChain = null
 var _wave_label: Label = null
 var _hp_fill: ColorRect = null
 var _hp_text: Label = null
-var _mana_fill: ColorRect = null
 var _mana_text: Label = null
 var _name_label: Label = null
 var _value_label: Label = null
@@ -38,10 +34,14 @@ var _done_button: Button = null
 ## 最近一次施法的那张卡与那一段伤害；「当前序号」也只能由它推（CombatSim 的游标不公开）。
 var _last_card: CardData = null
 var _last_damage: int = 0
+## 这一场是否已经把快照交进 RunState。一场只交一次 —— 每波都交的话，结算屏念到的
+## 会是「第 1 波还打着」的中途状态。
+var _recorded: bool = false
 
 func _ready() -> void:
 	# 每场战斗都从第 1 波打起，接着上一场停下的波次继续打是错的（见 RunState.begin_battle）。
 	RunState.begin_battle()
+	_recorded = false
 	_build()
 	_sim = CombatSim.new()
 	_sim.cast_performed.connect(_on_cast_performed)
@@ -87,7 +87,8 @@ func _build_header() -> void:
 	_label(tr("敌群"), CombatLayout.ENEMY_LABEL_RECT, ContractTheme.TYPE_LABEL_BODY_MUTED)
 	_hp_text = _label("", CombatLayout.ENEMY_LABEL_RECT, ContractTheme.TYPE_LABEL_BODY,
 		HORIZONTAL_ALIGNMENT_RIGHT)
-	_mana_fill = _add_bar(CombatLayout.MANA_TRACK, CombatTheme.Role.MANA_FILL)
+	# 法力**不画条**：仿真里 `_mana` 无界累加、没有容量字段，§2.3 不许杜撰上限（PET-95 裁定
+	# 「整条比例控件不画」）。MANA_TRACK 仍作布局空位保留，数字位置不动。
 	_hp_fill = _add_bar(CombatLayout.ENEMY_HP_TRACK, CombatTheme.Role.HP_FILL)
 
 
@@ -144,8 +145,7 @@ func _begin_wave() -> void:
 	_last_card = null
 	_last_damage = 0
 	_field.reset()
-	# 本局的常驻加成随书页一起交给仿真 —— 它是这一局的一部分，不是这一波的修正
-	# （后者在 CombatMods 里，每波开头重置）。
+	# 本局的常驻加成随书页一起交给仿真 —— 它是这一局的一部分，不是这一波的修正。
 	_sim.begin(RunState.board(), RunState.current_wave(),
 		RunState.damage_bonus(), RunState.mana_bonus())
 	_chain.setup(_sim.cast_order())
@@ -181,6 +181,7 @@ func _on_wave_cleared() -> void:
 	elif RunState.map().is_finished():
 		_finish_run(RunState.Result.VICTORY)
 	else:
+		_record_battle()
 		GameFlow.change_state(GameFlow.GameState.REWARD)
 
 
@@ -199,9 +200,24 @@ func _on_settle() -> void:
 
 ## 收官：先把结局落进 RunState（结算屏读的就是它），再走语义入口切到 RESULT（R2 + R3）。
 func _finish_run(result: int) -> void:
+	_record_battle()
 	RunState.finish_run(result)
 	if not GameFlow.request_end_run():
 		push_warning("CombatScreen: 结算请求被拒绝（当前状态 %s）。" % GameFlow.state_name(GameFlow.get_state()))
+
+
+## 离场前把这一场的快照交进 RunState（§2.3 C02）：战斗数据活在 _sim 里，屏一释放就没了，
+## 而屏上只画得下 4 张卡链与聚合的档数 —— 完整有序链 / 八通道逐条明细 / 施法记录都得先存下来。
+## 「最近一次施法」由本屏补：它本来就在记这两个数（「当前读数」显示的就是它们）。
+func _record_battle() -> void:
+	if _recorded or _sim == null:
+		return
+	_recorded = true
+	var report: BattleReport = BattleReport.capture(_sim)
+	if _last_card != null:
+		report.last_card_id = _last_card.id
+		report.last_damage = _last_damage
+	RunState.record_battle(report)
 
 
 ## 结算态的让位（§2.3）：结果行收窄到 736、右侧摘要隐掉只留标题、按钮出现。
@@ -221,7 +237,6 @@ func _refresh() -> void:
 	_fill_bar(_hp_fill, CombatLayout.ENEMY_HP_TRACK, float(_sim.enemy_hp()),
 		float(maxi(_sim.enemy_hp_max(), 1)))
 	_mana_text.text = str(_sim.mana())
-	_fill_bar(_mana_fill, CombatLayout.MANA_TRACK, float(_sim.mana()), float(_mana_scale()))
 	_chain_title.text = _chain_text()
 	_bonus_label.text = _bonus_text()
 	_active_readout()
@@ -234,17 +249,7 @@ func _fill_bar(fill: ColorRect, track: Rect2, value: float, maximum: float) -> v
 	fill.size = rect.size
 
 
-## 魔力条的满格：仿真里魔力**没有上限**，拿「当前魔力」当分母它就永远满格、等于没画。
-## 取「本波最贵的一次施法」的两倍 —— 刚好付得起最贵那张时条在半满，满格留给「还能再打一次」。
-func _mana_scale() -> int:
-	var top: int = 1
-	for card: CardData in _sim.cast_order():
-		top = maxi(top, _sim.mods().price(card, 1))
-	return top * 2
-
-
-## 施法链那一行的标题：第几张 / 共几张（§2.3「右侧明确 当前序号/总数」）。还没施法时只报
-## 总数，不写一个假的 0（C05）；链空则给一句短话，长的那句让给下面的摘要（本行只有一行高）。
+## 施法链标题：第几张 / 共几张（§2.3 的「当前序号/总数」）。还没施法时不写假 0（C05）。
 func _chain_text() -> String:
 	var total: int = _sim.cast_order().size()
 	if total <= 0:
@@ -255,8 +260,7 @@ func _chain_text() -> String:
 	return tr("施法链 %d/%d") % [index, total]
 
 
-## 当前施法那张在链条里的序号（1 起）。按 **id** 对而不按实例 —— 本屏经 CardCatalog 取回的
-## 那一份未必是书页上的同一个实例；推不出来时返回 0，不编一个假的。窗口算法在 CombatLayout。
+## 当前施法那张在链条里的序号（1 起）。按 **id** 对而不按实例；推不出来时返回 0，不编一个假的。
 func _cast_index() -> int:
 	if _last_card == null:
 		return 0
@@ -267,8 +271,7 @@ func _cast_index() -> int:
 	return 0
 
 
-## 当前读数：正在施放的那张的名字与这一段打出的伤害。还没施法时写「尚未施法」而不是空串 ——
-## 空串会让玩家分不清「没放过」和「这一行坏了」。
+## 当前读数：正在施放的那张的名字与这一段伤害。还没施法时写「尚未施法」而不是空串。
 func _active_readout() -> void:
 	if _last_card == null:
 		_name_label.text = tr("尚未施法")
@@ -278,12 +281,9 @@ func _active_readout() -> void:
 	_value_label.text = "%s %d" % [tr("伤害"), _last_damage]
 
 
-## 本波加成：本局的常驻加成（奖励里拿的）+ 八条通道一共上了几档。常驻那两条（伤害 / 魔力 +N）
-## 必须显示 —— 它们是奖励屏的选项，玩家选了之后**只有在这里**能看见它生效了；链空时先
-## 说那句要紧的（要去编辑器连线）。
-##
-## 八通道的逐条明细**不在这里**：§2.3 给摘要的只有 2 行（296 宽 / 12px），八条全上档时逐条列
-## 要三行、会顶出面板；§2.3 原话正是「完整链条/八通道加成保留在战后详情或可访问的日志中」。
+## 本波加成：本局的常驻加成（只有在这里能看见它生效了）+ 八条通道一共上了几档；链空时先说那句
+## 要紧的（要去编辑器连线）。八通道逐条**不在这里**（§2.3 只给摘要 2 行，会顶出面板），
+## 它随 BattleReport 去结算屏的战后详情（C02）。
 func _bonus_text() -> String:
 	if _sim.cast_order().is_empty():
 		return tr("未连接核心，不会被施放")

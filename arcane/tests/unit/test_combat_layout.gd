@@ -65,12 +65,12 @@ func _check_stacking(ctx: RefCounted) -> void:
 	ctx.check(CombatLayout.PAPER_FRAME.encloses(CombatLayout.FIELD), "战场嵌在纸框里")
 
 
-## 头栏 56 里四组读数：屏标题 / 魔力（标签 + 数值 + 条）/ 波次 / 敌群（标签 + 数值 + 条）。
+## 头栏 56 里四组读数：屏标题 / 魔力（标签 + 数值，**不画条**）/ 波次 / 敌群（标签 + 数值 + 条）。
 func _check_header(ctx: RefCounted) -> void:
 	var head: Rect2 = CombatLayout.HEADER
 	for pair: Array in [["标题", CombatLayout.TITLE_RECT], ["魔力标签", CombatLayout.MANA_LABEL_RECT],
 			["波次", CombatLayout.WAVE_RECT], ["敌群标签", CombatLayout.ENEMY_LABEL_RECT],
-			["魔力条", CombatLayout.MANA_TRACK], ["敌群条", CombatLayout.ENEMY_HP_TRACK]]:
+			["魔力槽位（保留空位）", CombatLayout.MANA_TRACK], ["敌群条", CombatLayout.ENEMY_HP_TRACK]]:
 		ctx.check(head.encloses(pair[1]), "%s 在头栏内" % pair[0])
 	ctx.equal(CombatLayout.TITLE_RECT.size, Vector2(176.0, 32.0), "COMBAT_TITLE 176×32")
 	ctx.near(CombatLayout.TITLE_RECT.position.x - head.position.x, 12.0, "标题左内缩 12")
@@ -78,10 +78,9 @@ func _check_header(ctx: RefCounted) -> void:
 	ctx.equal(CombatLayout.ENEMY_LABEL_RECT.size, Vector2(216.0, 24.0), "ENEMY_HP_LABEL 216×24")
 	ctx.equal(CombatLayout.ENEMY_HP_TRACK.size, Vector2(216.0, 12.0), "ENEMY_HP_TRACK 216×12")
 	ctx.equal(CombatLayout.MANA_LABEL_RECT.size, Vector2(192.0, 24.0), "MANA_LABEL 192×24")
-	ctx.equal(CombatLayout.MANA_TRACK.size, Vector2(192.0, 12.0), "MANA_TRACK 192×12")
-	# 「标签与真实数值分清」（§2.3）：标签在上、条在下，两者之间是 §1 的最小档 4。
+	ctx.equal(CombatLayout.MANA_TRACK.size, Vector2(192.0, 12.0), "MANA_TRACK 192×12（槽位保留，不画）")
 	ctx.near(CombatLayout.MANA_TRACK.position.y - CombatLayout.MANA_LABEL_RECT.end.y,
-		CombatLayout.SPACING_4, "魔力标签到条 4")
+		CombatLayout.SPACING_4, "魔力标签到槽位 4")
 	ctx.near(CombatLayout.ENEMY_HP_TRACK.position.y - CombatLayout.ENEMY_LABEL_RECT.end.y,
 		CombatLayout.SPACING_4, "敌群标签到条 4")
 	# 四组读数各占一栏，谁也不压谁。
@@ -94,8 +93,9 @@ func _check_header(ctx: RefCounted) -> void:
 	ctx.check(CombatLayout.MANA_TRACK.position.x >= CombatLayout.TITLE_RECT.end.x, "魔力那一栏排在标题右边")
 
 
-## C03：条的外高 12、内高 10、内缩 1；填充宽 = floor((外宽 − 2) × 比例)。
-## 0% = 0、30% = 64（敌群 24/80）、100% = 214；法力条同式，内宽 190。
+## C03：条的外高 12、内高 10、内缩 1；填充宽 = floor((外宽 − 2) × 比例)；0/30/100% = 0/64/214。
+## 法力**没有条**（仿真无容量字段，PET-95 裁定整条不画）：MANA_TRACK 只是保留的布局空位，
+## 「屏上真的没画」由 combat_screen_smoke 的实机断言量 —— 本文件只有数字，量不了有没有控件。
 func _check_bars(ctx: RefCounted) -> void:
 	ctx.equal(CombatLayout.BAR_INSET, 1.0, "填充内缩 1（§2.3）")
 	ctx.equal(CombatLayout.BAR_INNER_HEIGHT, 10.0, "内高 10（§2.3）")
@@ -103,7 +103,7 @@ func _check_bars(ctx: RefCounted) -> void:
 	ctx.equal(CombatLayout.bar_fill_rect(track, 0.0).size.x, 0.0, "C03：0% 时内宽 0")
 	ctx.equal(CombatLayout.bar_fill_rect(track, 24.0 / 80.0).size.x, C03_HP_INNER, "C03：敌群 HP 24/80 时内宽 64")
 	ctx.equal(CombatLayout.bar_fill_rect(track, 1.0).size.x, 214.0, "C03：100% 时内宽 214")
-	ctx.equal(CombatLayout.bar_fill_rect(CombatLayout.MANA_TRACK, 1.0).size.x, 190.0, "法力条同式、内宽 190")
+	ctx.near(CombatLayout.MANA_TRACK.position.x, CombatLayout.MANA_LABEL_RECT.position.x, "法力槽位与标签同列（不挪数字）")
 	for ratio: float in [0.0, 0.3, 1.0]:
 		var fill: Rect2 = CombatLayout.bar_fill_rect(track, ratio)
 		ctx.equal(fill.size.y, CombatLayout.BAR_INNER_HEIGHT, "填充内高就是 10")
