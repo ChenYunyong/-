@@ -75,12 +75,12 @@ func _smoke_screen(ctx: RefCounted, tree: SceneTree, path: String) -> void:
 func _check_contents(ctx: RefCounted, file: String, screen: Node) -> void:
 	match file:
 		"main_menu.tscn":
-			ctx.equal(TreeProbe.count_of(screen, "Button"), 5,
-				"主菜单：四个入口 + 设置面板里那颗语言开关")
-			ctx.check(TreeProbe.count_of(screen, "ColorRect") >= 2,
-				"主菜单有整屏底色与入口板")
-			ctx.check(TreeProbe.count_of(screen, "Label") >= 3,
-				"主菜单有 %d 行文字（标题 / 置灰说明 / 设置行）" % TreeProbe.count_of(screen, "Label"))
+			ctx.equal(TreeProbe.count_of(screen, "Button"), 6,
+				"主菜单：四个入口 + 语言开关 + 浮层关闭键")
+			ctx.equal(TreeProbe.count_of(screen, "Panel"), 3,
+				"主菜单三块面：整屏底 / 纸背 / 设置浮层（都不再是 ColorRect）")
+			ctx.equal(TreeProbe.count_of(screen, "Label"), 5,
+				"主菜单 5 行文字：Logo / 置灰原因 / 浮层标题 / 语言行 / 说明")
 		"editor.tscn":
 			ctx.equal(TreeProbe.count_of(screen, "BoardView"), 1, "编辑器有一块书页画布")
 			ctx.equal(TreeProbe.count_of(screen, "CardChip"), CardCatalog.all().size(),

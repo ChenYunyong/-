@@ -11,9 +11,9 @@
 ## 是这条链真的跑出来的产物，而不是采集脚本手搓出来的画面。
 ##
 ## 三张图各证一件事：
-##   main_menu_zh.png       中文常态：标题 + 四个入口，「继续」置灰并说明原因
-##   main_menu_settings.png 按过「设置」：设置面板出现，里面有语言开关
-##   main_menu_en.png       按过语言开关：四颗入口的字当场变英文（同一屏，没有重进）
+##   main_menu_zh.png       中文常态：Logo + 四个入口，「继续」置灰并写清原因
+##   main_menu_settings.png 按过「设置」：设置浮层出现，里面有语言开关（此时后方入口已藏起）
+##   main_menu_en.png       按过语言开关、收起浮层：四颗入口的字当场变英文（同一屏，没有重进）
 ##
 ## 语言那一下**真的按那颗按钮**（走 Settings.toggle_locale()，与玩家无异），所以它按设计会
 ## 落盘 user://settings.cfg；按回来之后文件里是中文。想完全不碰这份偏好就别跑本脚本。
@@ -30,8 +30,6 @@ const OUTPUT_DIR: String = "res://tests/output"
 ## 强制中文再截：这一屏的字全走 i18n，系统语言不是中文时截出来是英文，
 ## 而这几张图要说明的正是「新文案进了表」（四颗入口与置灰说明全经 TranslationServer）。
 const LOCALE_ZH: String = "zh_CN"
-## 语言开关自己的文案 key。
-const KEY_LANGUAGE_SWITCH: String = "中文 / English"
 
 var _run: Node = null
 var _flow: Node = null
@@ -61,9 +59,11 @@ func _initialize() -> void:
 		return
 	await _capture("main_menu_settings.png")
 	_toggle_language()
+	if not _close_settings():
+		return
 	await _capture("main_menu_en.png")
 	_report_language()
-	_report_palette()
+	_report_marks()
 	_finish()
 
 
@@ -100,33 +100,65 @@ func _boot_to_menu() -> bool:
 # ------------------------------------------------------------------ 实测数字
 
 ## 四颗入口的字与落点，外加「继续」此刻的可用性 —— 都在**跑起来的界面**上读，不读常量表。
+## 落点旁边同时打出 §2.4 表里的数：两者不等就是装配没跟上契约（G02 的误差 ≤1）。
 func _report_menu() -> void:
-	for key: String in MenuLayout.BUTTONS:
+	var rects: Array[Rect2] = MenuLayout.entry_rects()
+	for index: int in MenuLayout.BUTTONS.size():
+		var key: String = MenuLayout.BUTTONS[index]
 		var button: Button = _button(key)
 		if button == null:
 			_say("致命：入口「%s」不在屏上" % key)
 			continue
-		_say("入口「%s」→ 屏幕上写着「%s」，落点 %s，置灰 = %s" % [
-			key, button.text, str(button.get_global_rect()), str(button.disabled)])
-	_say("「继续」旁边的说明：「%s」（没有进行中的局时才出现）" % _hint_text())
-	# 触控下限 44 设备像素（06 §1）。按钮高是 UiKit 算的，这里换成设备像素读数。
-	_say("触控目标：按钮高 %.0f 逻辑像素 → %.0f 设备像素（06 §1 下限 44）" % [
-		UiKit.button_height(), UiKit.button_height() * _window_scale()])
+		_say("入口「%s」→ 屏上写着「%s」，真实 rect %s ／ 表里 %s，置灰 = %s，装饰层 %d 层" % [
+			key, button.text, str(button.get_global_rect()), str(rects[index]),
+			str(button.disabled), TreeProbe.count_of(button, "ButtonMarks")])
+	_say("「继续」下面那行原因：「%s」（没有进行中的局时才写上去，控件一直在，按钮位置因此不跳）"
+		% _hint_text())
+	var first: Button = _button(MenuLayout.KEY_NEW_RUN)
+	if first != null:
+		# 触控下限 44 设备像素（06 §1）。高度早在 §2.4 的表里给死，这里换成设备像素读数。
+		_say("触控目标：入口高 %.0f 逻辑像素 → %.0f 设备像素（06 §1 下限 44）" % [
+			first.size.y, first.size.y * _window_scale()])
 
 
-## §3：设置入口。按下去面板才出现 —— 语言开关就住在里面。
+## §3：设置入口。按下去浮层才出现 —— 语言开关就住在里面，而后方四个入口同时藏起来（N04）。
 func _open_settings() -> bool:
 	var entry: Button = _button(MenuLayout.KEY_SETTINGS)
 	if entry == null:
 		_fail("主菜单上没有「设置」入口")
 		return false
 	entry.pressed.emit()
-	var switch: Button = _button(KEY_LANGUAGE_SWITCH)
+	var switch: Button = _button(MenuLayout.KEY_LANGUAGE_SWITCH)
 	if switch == null or not switch.is_visible_in_tree():
 		_fail("按了「设置」也没看到语言开关")
 		return false
-	_say("设置：按「%s」→ 面板出现，里面有语言开关「%s」，落点 %s" % [
-		entry.text, switch.text, str(switch.get_global_rect())])
+	_say("设置：按「%s」→ 浮层出现（表里 %s），里面有语言开关「%s」，落点 %s" % [
+		entry.text, str(MenuLayout.SETTINGS_PANEL), switch.text, str(switch.get_global_rect())])
+	var visible_entries: int = 0
+	for key: String in MenuLayout.BUTTONS:
+		if _button(key) != null and _button(key).is_visible_in_tree():
+			visible_entries += 1
+	_say("      浮层打开时后方可见入口 = %d 个（N04 要求 0 —— 藏着的控件收不到点击）" % visible_entries)
+	return true
+
+
+## 收起浮层 —— 第三张图要在**收起之后**截：浮层开着时后方四个入口是藏着的，
+## 而那张图要证的恰恰是「四颗入口的字当场变英文」，不收起就什么也拍不到。
+##
+## 关不掉时必须**中止**（返回 false 让调用方收手）：放它过去的话，第三张图拍的是
+## 「英文 + 浮层还开着」，而打印里只有一行「致命」，看图的人无从分辨 —— 这张图就废了。
+func _close_settings() -> bool:
+	var close: Button = _close_button()
+	if close == null:
+		_fail("浮层上没有关闭键（tooltip 没跟上当前语言？）")
+		return false
+	close.pressed.emit()
+	var entry: Button = _button(MenuLayout.KEY_NEW_RUN)
+	var back: bool = entry != null and entry.is_visible_in_tree()
+	_say("收起浮层：按关闭键 → 四个入口回来了 = %s" % str(back))
+	if not back:
+		_fail("按了关闭键浮层也没收起来")
+		return false
 	return true
 
 
@@ -136,13 +168,13 @@ func _open_settings() -> bool:
 ## 这里**不等帧**：setting_changed 是同步发出去的，所以「按完立刻读」读到的就是新文案。
 ## 中间插一帧的话，「立刻生效」这句话就退化成「一帧之后生效」了。
 func _toggle_language() -> void:
-	var switch: Button = _button(KEY_LANGUAGE_SWITCH)
+	var switch: Button = _button(MenuLayout.KEY_LANGUAGE_SWITCH)
 	if switch == null:
 		return
 	var title_before: String = _title_text()
 	var entry_before: String = _entry_text(MenuLayout.KEY_NEW_RUN)
 	switch.pressed.emit()
-	_say("语言开关：按下去 → locale 变 %s，标题「%s」→「%s」，入口「%s」→「%s」（同一帧，没有重进这一屏）" % [
+	_say("语言开关：按下去 → locale 变 %s，Logo「%s」→「%s」，入口「%s」→「%s」（同一帧，没有重进这一屏）" % [
 		_settings.get_locale(), title_before, _title_text(),
 		entry_before, _entry_text(MenuLayout.KEY_NEW_RUN)])
 
@@ -154,7 +186,7 @@ func _entry_text(text_key: String) -> String:
 
 
 func _report_language() -> void:
-	var switch: Button = _button(KEY_LANGUAGE_SWITCH)
+	var switch: Button = _button(MenuLayout.KEY_LANGUAGE_SWITCH)
 	if switch != null:
 		switch.pressed.emit()
 	_say("语言还原：再按一次 → locale %s；采集开始前的语言是 %s" % [
@@ -163,20 +195,26 @@ func _report_language() -> void:
 		_settings.set_locale(_original_locale, false)
 
 
-## §4 的实测：屏上每一块色块的颜色都必须能在 MenuTheme 角色表里找到。
+## §4 的实测：每一层按钮装饰的两个颜色都必须能在 MenuTheme 角色表里找到。
 ## 有一条对不上，就说明这一屏某处绕开了角色表自己取了色。
-func _report_palette() -> void:
+##
+## 旧版查的是 ColorRect 的填充色 —— 屏④ 之后整屏底 / 纸背 / 浮层都改由 Theme 面板供给，
+## 这一屏自己画出来的只剩按钮上那两笔装饰（ButtonMarks），于是查的对象换成它们。
+func _report_marks() -> void:
 	var known: Array[Color] = []
 	for role: int in MenuTheme.Role.values():
 		known.append(MenuTheme.color(role))
 	var total: int = 0
 	var unknown: int = 0
-	for node: Node in TreeProbe.find_all(current_scene, "ColorRect"):
+	for node: Node in TreeProbe.find_all(current_scene, "ButtonMarks"):
+		var marks: ButtonMarks = node
 		total += 1
-		if not known.has((node as ColorRect).color):
+		if not known.has(marks.focus_color) or not known.has(marks.highlight_color):
 			unknown += 1
-	_say("配色：屏上 %d 块色块，颜色全部来自 MenuTheme 的 %d 个角色 = %s（表外的 %d 块）" % [
-		total, MenuTheme.role_count(), str(unknown == 0), unknown])
+	_say("配色：%d 层按钮装饰，两个颜色全部来自 MenuTheme 的 %d 个角色 = %s（表外的 %d 层）" % [
+		total, MenuTheme.role_count(), str(unknown == 0 and total > 0), unknown])
+	_say("      屏上 ColorRect %d 块 —— 整屏底 / 纸背 / 浮层都是 Theme 面板，这一屏不再自己填色" % [
+		TreeProbe.count_of(current_scene, "ColorRect")])
 
 
 # ------------------------------------------------------------------ 工具
@@ -193,14 +231,26 @@ func _button(text_key: String) -> Button:
 	return null
 
 
-## 标题那一行。按**落点**找（MenuLayout.TITLE_RECT 是版式契约），不按文案 —— 文案正是变量。
+## 浮层的关闭键。它是 IconButton：控件上**不显示文字**，文案只在 tooltip 与无障碍名上 —— 按 tooltip 找。
+func _close_button() -> Button:
+	if current_scene == null:
+		return null
+	var wanted: String = TranslationServer.translate(MenuLayout.KEY_CLOSE)
+	for node: Node in TreeProbe.find_all(current_scene, "Button"):
+		var button: Button = node
+		if button.tooltip_text == wanted:
+			return button
+	return null
+
+
+## Logo 那一行。按**落点**找（MenuLayout.LOGO_RECT 是版式契约），不按文案 —— 文案正是变量。
 func _title_text() -> String:
-	return _label_at(MenuLayout.TITLE_RECT.position)
+	return _label_at(MenuLayout.LOGO_RECT.position)
 
 
-## 「继续」旁边那句置灰说明。
+## 「继续」下面那行原因。
 func _hint_text() -> String:
-	return _label_at(MenuLayout.CONTINUE_HINT_RECT.position)
+	return _label_at(MenuLayout.REASON_RECT.position)
 
 
 func _label_at(at: Vector2) -> String:

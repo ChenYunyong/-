@@ -40,6 +40,8 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 	# 于是各自从 test_map_paint 里分出来（源码有 300 行上限）。
 	{"path": "res://tests/unit/test_map_symbol.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_map_route.gd", "layer": "unit"},
+	# 主菜单屏的版式：§2.4 的几何表逐条对照，外加 N01–N04 与 G03/G05/G09 的面积、字号、色距账。
+	{"path": "res://tests/unit/test_menu_layout.gd", "layer": "unit"},
 	# 奖励与本局账本：纯数据侧（选项的抽取 / 拿卡落到书页 / 加成进仿真），不碰节点。
 	{"path": "res://tests/unit/test_reward.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_game_flow.gd", "layer": "unit"},
