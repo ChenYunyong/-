@@ -8,7 +8,7 @@
 ##       不得改写书页 —— 战斗只读它（03 §4.3）；不得出现裸色值（本屏自己画的东西一律经
 ##       CombatTheme 的角色表，文字与面板底走 ArcaneTheme 的类型变体）。
 ##
-## 本屏没有玩家操作（自动施法），只有「看」和「万一输了按一下路线图」。
+## 本屏没有玩家操作（自动施法），只有「看」和「打不下去了按一下结算」（PET-92）。
 ##
 ## 数值一律**问仿真**，不在本文件里复制一份：本波加成那一行若自己攒一套计数，
 ## 它和 CombatSim 里真正生效的那个迟早会对不上，而症状只是「显示得不太对」。
@@ -29,10 +29,12 @@ var _mana_fill: ColorRect = null
 var _queue_label: Label = null
 var _bonus_label: Label = null
 var _result_label: Label = null
-var _exit_button: Button = null
+var _settle_button: Button = null
 
 
 func _ready() -> void:
+	# 每场战斗都从第 1 波打起，接着上一场停下的波次继续打是错的（见 RunState.begin_battle）。
+	RunState.begin_battle()
 	_build()
 	_sim = CombatSim.new()
 	_sim.cast_performed.connect(_on_cast_performed)
@@ -90,14 +92,14 @@ func _build_bonus() -> void:
 
 
 ## 底部动作条：左边一句本场结果，右边一颗按钮（**只有输了才出现** ——
-## 打赢了是自动进下一波 / 奖励屏，那颗键只服务「打不下去了，回路线图」这一种处境）。
+## 打赢了是自动进下一波 / 打穿最后一层，那颗键只服务「核心没了，本局到此为止」这一种处境）。
 func _build_bottom() -> void:
 	add_child(UiKit.panel(ArcaneTheme.TYPE_PANEL_SECONDARY, CombatLayout.BOTTOM_RECT))
 	_result_label = _label("", CombatLayout.RESULT_RECT, ArcaneTheme.TYPE_LABEL_ACCENT)
-	_exit_button = UiKit.button("路线图", ArcaneTheme.TYPE_BUTTON_PRIMARY, _on_exit)
-	_exit_button.visible = false
-	add_child(_exit_button)
-	UiKit.place_right(_exit_button, CombatLayout.BOTTOM_RECT, CombatLayout.BOTTOM_RECT.end.x)
+	_settle_button = UiKit.button("结算", ArcaneTheme.TYPE_BUTTON_PRIMARY, _on_settle)
+	_settle_button.visible = false
+	add_child(_settle_button)
+	UiKit.place_right(_settle_button, CombatLayout.BOTTOM_RECT, CombatLayout.BOTTOM_RECT.end.x)
 
 
 ## 建一个 Label 挂在屏上。行矩形整块就是它的矩形，文字在块里纵向居中 ——
@@ -125,10 +127,13 @@ func _add_bar(track: Rect2, track_role: CombatTheme.Role, fill_role: CombatTheme
 
 
 func _begin_wave() -> void:
-	_exit_button.visible = false
+	_settle_button.visible = false
 	_result_label.theme_type_variation = ArcaneTheme.TYPE_LABEL_ACCENT
 	_result_label.text = ""
-	_sim.begin(RunState.board(), RunState.current_wave())
+	# 本局的常驻加成随书页一起交给仿真（它是这一局的一部分，不是这一波的修正 ——
+	# 后者在 CombatMods 里，每波开头重置）。
+	_sim.begin(RunState.board(), RunState.current_wave(),
+		RunState.damage_bonus(), RunState.mana_bonus())
 	_page.setup(_sim, RunState.board())
 	_timer.start()
 	_refresh()
@@ -148,7 +153,8 @@ func _on_cast_performed(card_id: StringName, damage: int, _mana_left: int) -> vo
 	_page.note_cast(card_id)
 
 
-## 本波清空。还有下一波就接着打；打完了就进奖励屏。
+## 本波清空。还有下一波就接着打；打完这一场就分两种：站在最后一层 = **通关**，
+## 否则回路线图选下一站。
 ## 延后一帧再开下一波：本回调是在 CombatSim.tick() 内部发出来的，
 ## 就地重开会让「刚重置的状态」继续被这一 tick 的后续代码改写。
 func _on_wave_cleared() -> void:
@@ -156,20 +162,31 @@ func _on_wave_cleared() -> void:
 	_result_label.text = tr("本波已清空")
 	if RunState.advance_wave():
 		_begin_wave.call_deferred()
+	elif RunState.map().is_finished():
+		_finish_run(RunState.Result.VICTORY)
 	else:
 		GameFlow.change_state(GameFlow.GameState.REWARD)
 
 
+## 核心被摧毁 = 这一波没打完。本局到此为止，但**不当场切屏** ——
+## 屏幕上那句「核心被摧毁」得先让玩家看见，再由「结算」把这一局收尾。
 func _on_core_destroyed() -> void:
 	_timer.stop()
 	_result_label.text = tr("核心被摧毁")
 	_result_label.theme_type_variation = ArcaneTheme.TYPE_LABEL_DANGER
-	_exit_button.visible = true
+	_settle_button.visible = true
 	_refresh()
 
 
-func _on_exit() -> void:
-	GameFlow.change_state(GameFlow.GameState.MAP)
+func _on_settle() -> void:
+	_finish_run(RunState.Result.DEFEAT)
+
+
+## 收官：先把结局落进 RunState（结算屏读的就是它），再走语义入口切到 RESULT（R2 + R3）。
+func _finish_run(result: int) -> void:
+	RunState.finish_run(result)
+	if not GameFlow.request_end_run():
+		push_warning("CombatScreen: 结算请求被拒绝（当前状态 %s）。" % GameFlow.state_name(GameFlow.get_state()))
 
 
 # ------------------------------------------------------------------ 刷新
@@ -214,11 +231,18 @@ func _queue_text() -> String:
 	return " → ".join(names)
 
 
-## 本波加成：八条通道里真的上了档的那几条。
+## 本波加成：本局的常驻加成（奖励里拿的）+ 八条通道里真的上了档的那几条。
 ## 一条都没有时给一句「无加成」而不是空串 —— 空串会让玩家分不清「没加成」和「这一行坏了」。
+##
+## 常驻那两条必须显示出来：它们是奖励屏的选项，玩家选了之后**只有在这里**能看见它生效了；
+## 不显示的话，「拿了强化」在下一场里就是一次没有回音的操作。
 func _bonus_text() -> String:
 	var mods: CombatMods = _sim.mods()
 	var parts: PackedStringArray = PackedStringArray()
+	if _sim.damage_bonus() > 0:
+		parts.append(tr("伤害 +%d") % _sim.damage_bonus())
+	if _sim.mana_bonus() > 0:
+		parts.append(tr("魔力 +%d") % _sim.mana_bonus())
 	if mods.enchant_stacks > 0:
 		parts.append(tr("附魔 ×%.1f") % mods.damage_multiplier())
 	if mods.projectile_stacks > 0:

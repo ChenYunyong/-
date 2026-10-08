@@ -1,5 +1,6 @@
 ## test_map_model.gd
-## 职责：杀戮尖塔式路线图的验收 —— 分层连通、只能沿边前进、同种子同地图、终点可达。
+## 职责：杀戮尖塔式路线图的验收 —— 分层连通、只能沿边前进、同种子同地图、终点可达，
+##       以及「到过几层」（结算屏念的那个数）。
 ## 所属系统：tests
 ## 依赖：MapModel
 ## 禁止：本文件不得引用任何节点 —— 地图模型必须能脱离场景单独验证。
@@ -31,6 +32,7 @@ func _check_shape(ctx: RefCounted) -> void:
 	ctx.check(map.current() == null, "还没出发时 current() 是 null")
 	ctx.equal(map.selectable().size(), MapModel.COLUMNS, "第 0 层整层可选")
 	ctx.check(not map.is_finished(), "还没出发不算走完")
+	ctx.equal(map.deepest_tier(), -1, "还没出发时最深一层是 -1（不是 0 —— 「到过 0 层」是走过之后的说法）")
 
 
 ## 每一层都要能走到下一层 —— 否则玩家会卡在一层无路可走，这是最恶性的死局。
@@ -71,6 +73,7 @@ func _check_walk(ctx: RefCounted) -> void:
 	ctx.check(map.select(first.id), "走到第 0 层的一个节点")
 	ctx.equal(map.current_id(), first.id, "当前节点就是走到的那个")
 	ctx.check(map.is_visited(first.id), "走过的节点被记住")
+	ctx.equal(map.deepest_tier(), 0, "走过第 0 层之后，最深一层就是 0")
 	ctx.check(not map.is_finished(), "第 0 层不是终点")
 	ctx.equal(map.selectable().size(), first.next.size(), "可选集合 = 当前节点的出边")
 
@@ -91,6 +94,8 @@ func _check_walk(ctx: RefCounted) -> void:
 			return
 		ctx.check(map.select(options[0].id), "第 %d 步走得通" % steps)
 	ctx.check(map.is_finished(), "沿出边走一定能到终点（%d 步）" % steps)
+	# 只能沿边前进 ⇒ 步数 = 层数，最深一层必然是最后一层。结算屏的「到过 N 层」读的就是它。
+	ctx.equal(map.deepest_tier(), MapModel.TIERS - 1, "走到终点之后最深一层是最后一层")
 
 
 ## 同一 seed 必须得到同一张图 —— 否则「记住下一步去哪」这件事没有意义。

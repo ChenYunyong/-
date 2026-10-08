@@ -59,15 +59,23 @@ var _cast_timer: int = 0
 var _cursor: int = 0
 var _wave: int = 1
 var _outcome: Outcome = Outcome.ONGOING
+## 本局的常驻加成（PET-92：奖励里「强化」与「供能」两条杠杆）。**由调用方传进来**，
+## 仿真不自己去问 RunState —— 否则「同一书页 + 同一波次 + 同一加成 → 同一结果」这条
+## 就不再是入参决定的，测试也没法构造一个「只差加成」的对照。
+var _damage_bonus: int = 0
+var _mana_bonus: int = 0
 ## 本次战斗的结算流水。**逐行可比对**才算证明了可复现 ——
 ## 只比一个最终血量的话，两场顺序完全不同、总伤害恰好相同的战斗会被判成一致。
 var _log: PackedStringArray = PackedStringArray()
 
 
 ## 开始一波。书页只读，仿真不持有它的引用做写操作。
-func begin(board: BoardModel, wave: int) -> void:
+## damage_bonus / mana_bonus 是本局的常驻加成，缺省为 0 —— 只打一场「素」战斗的调用方不用管它们。
+func begin(board: BoardModel, wave: int, damage_bonus: int = 0, mana_bonus: int = 0) -> void:
 	_board = board
 	_wave = wave
+	_damage_bonus = maxi(damage_bonus, 0)
+	_mana_bonus = maxi(mana_bonus, 0)
 	_collect(board)
 	_mana = 0
 	_enemy_hp_max = ENEMY_HP_BASE + ENEMY_HP_PER_WAVE * maxi(wave - 1, 0)
@@ -131,6 +139,16 @@ func mods() -> CombatMods:
 	return _mods
 
 
+## 本场的常驻伤害加成（本局奖励带进来的）。
+func damage_bonus() -> int:
+	return _damage_bonus
+
+
+## 本场的常驻魔力加成。
+func mana_bonus() -> int:
+	return _mana_bonus
+
+
 ## 本波会按什么顺序施放（只有法术卡，不含核心）。空数组 = 书页上没有任何「连到核心」的卡。
 func cast_order() -> Array[CardData]:
 	return _order
@@ -138,9 +156,10 @@ func cast_order() -> Array[CardData]:
 
 ## 本场的结算流水。第一行是收官状态，之后每行一次施放 —— 固定种子重放两次必须逐行相同。
 func settlement_log() -> PackedStringArray:
+	# 加成写进表头：「这一波与上一波差在哪」必须一眼看得出来，不能只体现在逐段伤害里。
 	var head: PackedStringArray = PackedStringArray([
-		"wave=%d ticks=%d hp=%d/%d mana=%d outcome=%d"
-			% [_wave, _ticks, _enemy_hp, _enemy_hp_max, _mana, _outcome]])
+		"wave=%d ticks=%d hp=%d/%d mana=%d outcome=%d dmg_bonus=%d mana_bonus=%d"
+			% [_wave, _ticks, _enemy_hp, _enemy_hp_max, _mana, _outcome, _damage_bonus, _mana_bonus]])
 	head.append_array(_log)
 	return head
 
@@ -210,9 +229,11 @@ func _cast_card(card: CardData) -> bool:
 	return true
 
 
-## 打出一段。伤害 = 卡面伤害 ×附魔倍率，四舍五入到整数（信号带的是 int）。
+## 打出一段。伤害 = 卡面伤害 ×附魔倍率 + 本局强化，四舍五入到整数（信号带的是 int）。
+## 加成**加在倍率之后**：附魔是「这一波按比例放大」，强化是「本局每一段都多打这么多」，
+## 先加后乘的话，一个 +2 会在附魔 1.5× 下变成 +3，账就对不上了。
 func _strike(card: CardData) -> void:
-	var damage: int = roundi(float(card.damage) * _mods.damage_multiplier())
+	var damage: int = maxi(roundi(float(card.damage) * _mods.damage_multiplier()) + _damage_bonus, 0)
 	_enemy_hp = maxi(0, _enemy_hp - damage)
 	_log.append("t%04d %s dmg=%d mana=%d hp=%d" % [_ticks, card.id, damage, _mana, _enemy_hp])
 	cast_performed.emit(card.id, damage, _mana)
@@ -225,11 +246,13 @@ func _finish(outcome_value: Outcome) -> void:
 	_outcome = outcome_value
 
 
+## 核心每次产出多少魔力。加上本局的供能加成 —— 没有来源（书页上没核心）时照样给：
+## 加成是「本局的电源更足」，不是「核心产得更多」，后者在没有核心时会变成一句空话。
 func _core_output() -> int:
 	var total: int = 0
 	for card: CardData in _sources:
 		total += card.mana_output
-	return total
+	return total + _mana_bonus
 
 
 ## 分两件事：书页上的**核心卡**是电源（_sources），从它们出发广度优先能走到的

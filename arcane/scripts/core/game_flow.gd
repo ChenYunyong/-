@@ -1,5 +1,6 @@
 ## game_flow.gd
-## 职责：顶层六状态机、状态切换的唯一入口，以及场景路由的唯一落地点（docs/03 §1）。
+## 职责：顶层状态机（BOOT / MAIN_MENU / EDITOR / COMBAT / REWARD / MAP / RESULT）、
+##       状态切换的唯一入口，以及场景路由的唯一落地点（docs/03 §1）。
 ## 所属系统：core
 ## 依赖：EventBus
 ## 禁止：本文件不得持有任何玩法数值（波次 / 魔力 / 伤害）；
@@ -11,11 +12,15 @@
 ##
 ## PET-90：把 MAIN_MENU 补回来 —— 旧工程有、新工程漏了，于是启动直接落进编辑器。
 ## 枚举顺序仍按流程排（BOOT 在最前、MAIN_MENU 紧随其后），序号由 test_game_flow 钉死。
+##
+## PET-92：把 RESULT 补回来（03 §1 的状态图里一直有它，工程里一直没实现）。
+## 于是「一波失败 ⇒ 本局结束」「最后一层胜利 ⇒ 通关结算」终于有地方可去，
+## 结算屏也终于有了回到主菜单、开新一局的那一步。
 
 extends Node
 
 ## 顶层游戏状态。
-enum GameState { BOOT, MAIN_MENU, EDITOR, COMBAT, REWARD, MAP }
+enum GameState { BOOT, MAIN_MENU, EDITOR, COMBAT, REWARD, MAP, RESULT }
 
 ## 一次状态切换完成时触发。from / to 为 GameState。
 signal state_changed(from: GameState, to: GameState)
@@ -24,15 +29,20 @@ signal state_changed(from: GameState, to: GameState)
 ## 硬规则 R1 要求它只能经由 request_start_combat() 进入。
 ##
 ## MAIN_MENU 有两条去向（PET-90）：「开始新一局」→ EDITOR，「继续」→ MAP。
-## 没有任何一条边**回到** MAIN_MENU：本工程还没有存档，「回主菜单」没有可复原的进度，
-## 这条边等存档落地后再谈（与旧工程 `main_menu.gd` 的同一处判断）。
+## 只有 RESULT **回到** MAIN_MENU（PET-92）：「结算之后开新一局」必须真的回到菜单再开一局，
+## 而不是在半路上就地重开 —— 否则「新一局是新种子」这件事无处可证。
+## RESULT 也留了一条直达 EDITOR 的边（「再来一局」），两条都从结算屏出发。
+##
+## COMBAT 原先还有一条 → MAP（打输了从战斗屏直接回路线图）。那条边已被结算取代：
+## 输掉不是「回路线图继续」，而是本局结束（PET-92 §3），所以它不再合法。
 const ALLOWED_TRANSITIONS: Dictionary = {
 	GameState.BOOT: [GameState.MAIN_MENU],
 	GameState.MAIN_MENU: [GameState.EDITOR, GameState.MAP],
 	GameState.EDITOR: [GameState.MAP],
 	GameState.MAP: [GameState.EDITOR, GameState.COMBAT],
-	GameState.COMBAT: [GameState.REWARD, GameState.MAP],
-	GameState.REWARD: [GameState.EDITOR],
+	GameState.COMBAT: [GameState.REWARD, GameState.RESULT],
+	GameState.REWARD: [GameState.EDITOR, GameState.MAP],
+	GameState.RESULT: [GameState.MAIN_MENU, GameState.EDITOR],
 }
 
 ## 状态 → 正式场景路径。BOOT 不在表内：它是 project.godot 的主场景，由引擎落地，不经路由。
@@ -42,6 +52,7 @@ const SCENE_ROUTES: Dictionary = {
 	GameState.COMBAT: "res://scenes/combat.tscn",
 	GameState.REWARD: "res://scenes/reward.tscn",
 	GameState.MAP: "res://scenes/map.tscn",
+	GameState.RESULT: "res://scenes/result.tscn",
 }
 
 ## 承担场景路由的 Autoload 节点名。
@@ -89,6 +100,15 @@ func request_start_combat() -> bool:
 		push_warning("GameFlow: 当前为 %s，无法开始战斗。" % state_name(_state))
 		return false
 	return _commit_transition(GameState.COMBAT)
+
+
+## 玩家显式动作：本局到此为止（核心被摧毁 / 打穿最后一层）。这是进入 RESULT 的**唯一**入口
+## （硬规则 R2 + R3）。与 request_start_combat 对称：语义入口一个，落地仍走同一个提交点。
+func request_end_run() -> bool:
+	if _state != GameState.COMBAT:
+		push_warning("GameFlow: 当前为 %s，无法结算。" % state_name(_state))
+		return false
+	return _commit_transition(GameState.RESULT)
 
 
 ## 本实例是否就是承担场景路由的那个 Autoload 单例。

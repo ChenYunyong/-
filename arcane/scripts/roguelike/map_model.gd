@@ -142,6 +142,18 @@ func is_finished() -> bool:
 	return here != null and here.tier >= TIERS - 1
 
 
+## 走过的最深一层。还没出发是 -1。
+## **不用 current()**：那是「现在站在哪」，而结算是按「这一局到过哪」念的 ——
+## 走到头之后 current 会停在最后一层，两者恰好相同；但路线图上真正决定长度的是这个。
+func deepest_tier() -> int:
+	var deepest: int = -1
+	for id: int in _visited:
+		var node: MapNode = find(id)
+		if node != null:
+			deepest = maxi(deepest, node.tier)
+	return deepest
+
+
 func _add_edge(from: MapNode, target_column: int) -> void:
 	var target: MapNode = find(_index_of(from.tier + 1, target_column))
 	if target == null or from.next.has(target.id):

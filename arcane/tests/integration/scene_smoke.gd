@@ -1,9 +1,11 @@
 ## scene_smoke.gd
-## 职责：四个正式场景的装配冒烟 —— 真的入树、_ready() 真的跑过、关键控件真的建出来了。
+## 职责：五个正式场景的装配冒烟 —— 真的入树、_ready() 真的跑过、关键控件真的建出来了。
 ## 所属系统：tests
-## 依赖：TreeProbe, CardCatalog, EditorLayout, ArcaneTheme, IconButton
+## 依赖：TreeProbe, CardCatalog, EditorLayout, ArcaneTheme, IconButton, RunState, RewardModel
 ## 禁止：本文件不得把 boot.tscn 挂进树 —— 它的 _ready() 会自检、开局并请求切场景，
 ##       那是 loop_smoke 的职责（loop_smoke 排在最后，它换场景不会干扰别的用例）。
+##       唯一一处会动 RunState 的是奖励池拿空的那条（见 _check_reward_fallback），
+##       它按快照还原书页，拿过的记录留在本局里 —— 后面的用例都会先 start_run() 把它清掉。
 ##
 ## 为什么值得入树：`_ready()` 不跑，屏幕就只是一张空 Control —— 场景文件存在、
 ## 脚本编译通过，都不能证明界面上真的有东西。这里的断言都是「树里数得出来的」。
@@ -18,8 +20,14 @@ const SCREEN_SCENES: PackedStringArray = [
 	"res://scenes/combat.tscn",
 	"res://scenes/reward.tscn",
 	"res://scenes/map.tscn",
+	"res://scenes/result.tscn",
 ]
 const BOOT_SCENE: String = "res://scenes/boot.tscn"
+
+## 奖励屏拿空时的两句文案 key。按译文找 —— 界面上的字一律经 tr() 出来。
+const KEY_EMPTY_TITLE: String = "没有可拿的奖励"
+const KEY_EMPTY_BODY: String = "本局的卡与加成都已拿满"
+const KEY_CONTINUE: String = "继续"
 
 
 func run(ctx: RefCounted, tree: SceneTree) -> void:
@@ -28,6 +36,7 @@ func run(ctx: RefCounted, tree: SceneTree) -> void:
 	_check_boot(ctx, tree)
 	for path: String in SCREEN_SCENES:
 		await _smoke_screen(ctx, tree, path)
+	await _check_reward_fallback(ctx, tree)
 	ctx.equal(tree.root.get_child_count(), autoloads, "冒烟结束后树里只剩 Autoload，没有残留节点")
 
 
@@ -83,11 +92,76 @@ func _check_contents(ctx: RefCounted, file: String, screen: Node) -> void:
 				"战斗屏有 %d 行状态文字" % TreeProbe.count_of(screen, "Label"))
 			ctx.check(TreeProbe.count_of(screen, "ColorRect") >= 1, "战斗屏有血条色块")
 		"reward.tscn":
-			ctx.equal(TreeProbe.count_of(screen, "CardChip"), 3, "奖励屏三选一（三个卡位）")
-			ctx.equal(TreeProbe.count_of(screen, "Button"), 4, "三个「选择」+ 一个跳过")
+			_check_reward(ctx, screen)
 		"map.tscn":
 			ctx.equal(TreeProbe.count_of(screen, "MapView"), 1, "路线图屏有一张图")
 			ctx.check(TreeProbe.count_of(screen, "Button") >= 1, "路线图屏有返回按钮")
+		"result.tscn":
+			ctx.equal(TreeProbe.count_of(screen, "Button"), 2, "结算屏两条出口：回到主菜单 / 再来一局")
+			ctx.check(TreeProbe.count_of(screen, "Label") >= 4,
+				"结算屏有 %d 行文字（结局 / 到过几层 / 账目标题 / 账目）"
+					% TreeProbe.count_of(screen, "Label"))
+			ctx.check(TreeProbe.count_of(screen, "Panel") >= 1, "结算屏的账目落在一块面板上")
+
+
+## 奖励屏的选项是**掷出来的**（本局种子 + 波次），所以这里不能写死「三张卡四个按钮」——
+## 断的是「界面画出来的数量 = 本次真的抽到的数量」，掷出什么就画什么。
+func _check_reward(ctx: RefCounted, screen: Node) -> void:
+	var options: Array[Dictionary] = RunState.roll_rewards()
+	ctx.check(options.size() > 0, "这一次确实有可选的奖励（否则下面两条是空断言）")
+	var cards: int = 0
+	for option: Dictionary in options:
+		if RewardModel.is_card(option):
+			cards += 1
+	ctx.equal(TreeProbe.count_of(screen, "CardChip"), cards, "奖励屏的卡位 = 本次抽到的卡数")
+	ctx.equal(TreeProbe.count_of(screen, "Button"), options.size() + 1,
+		"每个选项一颗「选择」+ 一颗收尾键（跳过 / 继续）")
+
+
+## 池子被拿空时的兜底：给一句说明 + 一颗「继续」，**不是一张空白屏**。
+## 「拿满」是本局真实可达的处境（17 张卡 + 2 个加成），不是人为构造的边界 ——
+## 所以这里真的一条条拿过去，而不是把某个内部标志位翻一下。
+func _check_reward_fallback(ctx: RefCounted, tree: SceneTree) -> void:
+	var run: Node = tree.root.get_node_or_null(^"RunState")
+	if not ctx.check(run != null, "RunState 单例在，可构造「拿满」的局面"):
+		return
+	var before: Dictionary = run.board().snapshot()
+	run.take_reward({"kind": RewardModel.Kind.POWER}, EditorLayout.CANVAS_VIEW_SIZE)
+	run.take_reward({"kind": RewardModel.Kind.MANA}, EditorLayout.CANVAS_VIEW_SIZE)
+	var taken: int = 0
+	for id: String in RewardModel.pool_ids():
+		if run.take_reward({"kind": RewardModel.Kind.CARD, "card_id": StringName(id)},
+				EditorLayout.CANVAS_VIEW_SIZE):
+			taken += 1
+	ctx.equal(taken, RewardModel.pool_ids().size(), "池子里的卡一张张都拿得下来")
+	ctx.equal(run.roll_rewards().size(), 0, "全部拿过之后抽不出任何选项")
+
+	var packed: PackedScene = load("res://scenes/reward.tscn")
+	var screen: Node = packed.instantiate()
+	tree.root.add_child(screen)
+	await tree.process_frame
+	ctx.equal(TreeProbe.count_of(screen, "CardChip"), 0, "没有可选项时不画空卡位")
+	ctx.equal(TreeProbe.count_of(screen, "Button"), 1, "只有一颗「继续」，没有可跳过的奖励")
+	ctx.check(TreeProbe.count_of(screen, "Panel") >= 1, "兜底那句说明落在一块面板上，不是空白屏")
+	ctx.check(_has_label(screen, KEY_EMPTY_TITLE), "写明了「%s」" % KEY_EMPTY_TITLE)
+	ctx.check(_has_label(screen, KEY_EMPTY_BODY), "写明了「%s」" % KEY_EMPTY_BODY)
+	var buttons: Array[Node] = TreeProbe.find_all(screen, "Button")
+	if buttons.size() == 1:
+		ctx.equal((buttons[0] as Button).text, TranslationServer.translate(KEY_CONTINUE),
+			"那颗键是「%s」" % KEY_CONTINUE)
+
+	screen.queue_free()
+	await tree.process_frame
+	run.board().restore(before)
+	ctx.equal(run.board().cards().size(), before["cards"].size(), "书页按快照还原（那 17 张卡不进后面的用例）")
+
+
+func _has_label(root: Node, text_key: String) -> bool:
+	var wanted: String = TranslationServer.translate(text_key)
+	for node: Node in TreeProbe.find_all(root, "Label"):
+		if (node as Label).text == wanted:
+			return true
+	return false
 
 
 ## 编辑器屏的按钮分两组，各数各的。

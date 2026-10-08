@@ -33,6 +33,8 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 	{"path": "res://tests/unit/test_map_model.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_map_paint.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_map_layout.gd", "layer": "unit"},
+	# 奖励与本局账本：纯数据侧（选项的抽取 / 拿卡落到书页 / 加成进仿真），不碰节点。
+	{"path": "res://tests/unit/test_reward.gd", "layer": "unit"},
 	{"path": "res://tests/unit/test_game_flow.gd", "layer": "unit"},
 	# 路线图屏要真的入树才验得了「点得动 / 重进复原」，但它在测试收尾时会 free 掉自己，
 	# 不换 GameFlow 的状态（见文件头的禁止项），所以排在场景冒烟之前即可。
@@ -41,8 +43,12 @@ const TEST_SCRIPTS: Array[Dictionary] = [
 	{"path": "res://tests/integration/main_menu_smoke.gd", "layer": "integration"},
 	# 场景冒烟要真的把场景入树，放在单元层之后。
 	{"path": "res://tests/integration/scene_smoke.gd", "layer": "integration"},
-	# 一局完整循环（编辑器 → 战斗 → 奖励 → 编辑器）。**必须排在最后**：
-	# 它会把真实 GameFlow 一路换过去，前面每个用例的场景断言都不能在它之后跑。
+	# 一局闭环的两条端到端：输（核心被摧毁 → 结算 → 回主菜单）与赢（一路打到通关 → 再来一局）。
+	# 它们会真的启动一局并一路换屏，故各自在开头把状态机摆回 BOOT（同一个进程里只能启动一次）。
+	{"path": "res://tests/integration/defeat_smoke.gd", "layer": "integration"},
+	{"path": "res://tests/integration/full_run_smoke.gd", "layer": "integration"},
+	# 一局完整循环（编辑器 → 战斗 → 奖励 → 路线图 → 编辑器）。**必须排在最后**：
+	# 它假定自己是从「引擎刚起来」那一刻开始的，前面每个用例的场景断言也不能在它之后跑。
 	{"path": "res://tests/integration/loop_smoke.gd", "layer": "integration"},
 ]
 

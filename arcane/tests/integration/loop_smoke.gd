@@ -1,16 +1,14 @@
 ## loop_smoke.gd
 ## 职责：一局完整循环的端到端冒烟 —— 启动 → 主菜单开新局 → 编辑器摆卡连线 → 自动施法战斗 →
-##       奖励 → 回编辑器。
+##       奖励 → 路线图选下一站 → 回编辑器。
 ## 所属系统：tests
-## 依赖：TreeProbe, CardCatalog, BoardModel, CombatSim
+## 依赖：TreeProbe, CardCatalog, BoardModel, CombatSim, RewardModel, MapModel, MapLayout
 ## 禁止：本文件**必须留在 TEST_SCRIPTS 的最后一行** —— 它会一路把真实的 GameFlow 换过去。
 ##
-## 与其它用例的分工：别的用例都刻意避开单例副作用（造副本、只读、只算数）；
-## 这一条恰恰相反，它要证明的就是**真实那条路真的通**：
-##   启动真的落在主菜单 → 按「开始新一局」真的开出一局 → 点仓库的卡 → 卡真的落到书页上 →
-##   丝线真的连得上 → 战斗真的按队列施法 → 三波真的打完 → 真的进奖励屏 →
-##   选一张真的回到编辑器、而且卡真的在书页上。
-## 任何一环断开这条就红 —— 这是唯一能抓住「各模块单测都绿、拼起来是断的」的用例。
+## 与其它用例的分工：别的用例都刻意避开单例副作用（造副本、只读、只算数）；这一条恰恰相反，
+## 它要证明的就是**真实那条路真的通** —— 任何一环断开这条就红。
+## PET-92：奖励之后去路线图选下一站；这一条只走到「回到编辑器」为止（「继续」会真的开打），
+## 从开局一路打到通关那条在 full_run_smoke 里。
 
 extends RefCounted
 
@@ -18,15 +16,14 @@ const TreeProbe = preload("res://tests/tree_probe.gd")
 
 const BOOT_SCENE: String = "res://scenes/boot.tscn"
 
-## 战斗按**真实计时器**走（20Hz），headless 不锁帧跑得快，但游戏时间是真实的：
-## 三波要 600 个 tick = 30 秒真实等待。这里压 time_scale 而不是去戳战斗屏的内部方法 ——
+## 战斗按**真实计时器**走：三波 30 秒真实时间。压 time_scale 而不是去戳战斗屏的内部方法 ——
 ## 戳内部就绕开了「计时器真的在跑」这件事，而那正是本用例要证明的。用完必须还原。
 const FIGHT_TIME_SCALE: float = 50.0
 const MAX_FRAMES: int = 8000
 ## 按钮文案的 key。按钮上的字是 UiKit 用 TranslationServer 翻好的，故按译文找。
 const KEY_NEW_RUN: String = "开始新一局"
 const KEY_START_BATTLE: String = "开始战斗"
-const KEY_CHOOSE: String = "选择"
+const KEY_BACK_EDITOR: String = "返回编辑器"
 
 var _tree: SceneTree = null
 var _flow: Node = null
@@ -53,16 +50,14 @@ func run(ctx: RefCounted, tree: SceneTree) -> void:
 
 # ---------------------------------------------------------------- 第一步：启动
 
-## 引擎启动走的就是这条路：落地 boot 主场景 → 自检 → **主菜单**（PET-90 起不再直接进编辑器），
-## 再由玩家按「开始新一局」把这一局开出来。
+## 引擎启动走的就是这条路：落地 boot → 自检 → 主菜单，再由玩家按「开始新一局」把这一局开出来。
 func _boot(ctx: RefCounted) -> bool:
 	var packed: PackedScene = load(BOOT_SCENE)
 	if not ctx.check(packed != null, "boot.tscn 可加载"):
 		return false
 	var boot: Node = packed.instantiate()
 	_tree.root.add_child(boot)
-	# 引擎会把主场景记成 current_scene，这一步必须补：change_scene_to_file() 只回收
-	# current_scene，不补的话 boot 会留在树里跟主菜单并存（而且在管理器眼里它不是「当前」）。
+	# 引擎把主场景记成 current_scene，这一步必须补：change_scene_to_file() 只回收 current_scene。
 	_tree.current_scene = boot
 	var boot_id: int = boot.get_instance_id()
 
@@ -73,8 +68,7 @@ func _boot(ctx: RefCounted) -> bool:
 	ctx.check(not _run.is_active(), "启动时**没有**替玩家开局（否则「继续」会永远是亮的）")
 	ctx.check(_tree.current_scene is Control, "当前场景是主菜单")
 
-	# 玩家动作：按「开始新一局」。这一步必须走**按钮** —— 直接调 RunState.start_run()
-	# 就绕开了「主菜单真的接对了线」这件事，而那正是 §1 要证明的。
+	# 玩家动作：按「开始新一局」。必须走**按钮** —— 直接调 start_run() 就绕开了「主菜单真的接对了线」。
 	var menu: Node = _tree.current_scene
 	var start: Button = _button_for(menu, KEY_NEW_RUN)
 	if not ctx.check(start != null, "主菜单有「开始新一局」按钮"):
@@ -118,8 +112,7 @@ func _blueprint(ctx: RefCounted) -> bool:
 		return false
 	ctx.check(placed_core.position != placed_spell.position, "两张卡没有叠在同一个坐标上")
 
-	# 连线：真实路径是「从输出接口拖到输入接口」，那条手势链由 BoardView 自己的用例负责；
-	# 这里验证的是它的出口 —— 画布发出的连线请求真的落到了书页上。
+	# 真实路径是「拖接口」，那条手势链由 BoardView 自己的用例负责；这里验它的出口。
 	var canvas: Node = TreeProbe.find_all(editor, "BoardView")[0]
 	canvas.link_requested.emit(placed_core.uid, placed_spell.uid)
 	ctx.equal(board.links().size(), 1, "从核心拖出一条丝线接到法术上")
@@ -167,25 +160,52 @@ func _fight(ctx: RefCounted) -> bool:
 	return true
 
 
-# ---------------------------------------------------------------- 第四步：领奖励回编辑器
+# ------------------------------------------------- 第四步：领奖励 → 路线图 → 编辑器
 
+## 领奖励。奖励是「种子 + 波次」推出来的，这里不预设是哪张，只挑**卡**那一项 ——
+## 两个加成不改书页，验不了「奖励真的落到了书页上」。§2：选完去路线图，不再回编辑器。
 func _reward(ctx: RefCounted) -> bool:
 	var reward: Node = _tree.current_scene
 	var reward_id: int = reward.get_instance_id()
-	var chosen: Button = _button_for(reward, KEY_CHOOSE)
-	if not ctx.check(chosen != null, "奖励屏有「选择」按钮"):
+	var options: Array[Dictionary] = _run.roll_rewards()
+	var index: int = _first_card_option(options)
+	if not ctx.check(index >= 0, "这一波的奖励里有可拿的卡"):
+		return false
+	# 选项顺序 = 界面建按钮的顺序（reward_screen 按下标建），故第 index 颗「选择」就是它。
+	var buttons: Array[Node] = TreeProbe.find_all(reward, "Button")
+	if not ctx.check(buttons.size() == options.size() + 1,
+			"奖励屏：每个选项一颗「选择」+ 一颗跳过（数到 %d 颗）" % buttons.size()):
 		return false
 
 	var board: BoardModel = _run.board()
-	# 奖励卡是「本局种子 + 波次」推出来的，这里不预设是哪一张，只要求真的多出来一张。
 	var before: int = board.cards().size()
-	chosen.pressed.emit()
-	var back: bool = await _await_until(func() -> bool:
-		return _flow.get_state() == _flow.GameState.EDITOR and _scene_changed_from(reward_id), 12)
-	if not ctx.check(back, "选完奖励回到编辑器"):
+	(buttons[index] as Button).pressed.emit()
+	if not ctx.check(await _await_until(func() -> bool:
+			return _flow.get_state() == _flow.GameState.MAP and _scene_changed_from(reward_id), 12),
+			"选完奖励去路线图"):
 		return false
 	ctx.equal(board.cards().size(), before + 1, "奖励卡真的加进了书页")
-	return true
+	# 只放不连的话它一次都不会被施放 —— 这条丝线就是「选择真的改变下一波」的那根线。
+	ctx.equal(board.links().size(), 2, "新卡也从核心拉了一条丝线")
+	return await _leave_map(ctx)
+
+
+## 在路线图上点亮下一站，再回编辑器 —— 「一局」的推进到这里才算真的接上。
+## 走「返回编辑器」而不是「继续」：后者会真的开打，打通关那条在 full_run_smoke 里。
+func _leave_map(ctx: RefCounted) -> bool:
+	var screen: Node = _tree.current_scene
+	var view: Node = TreeProbe.find_all(screen, "MapView")[0]
+	var next_node: MapModel.MapNode = _run.map().selectable()[0]
+	view.press(MapLayout.node_position(next_node.tier, next_node.column))
+	ctx.equal(_run.map().current_id(), next_node.id, "在路线图上点亮了下一站")
+	var screen_id: int = screen.get_instance_id()
+	var back: Button = _button_for(screen, KEY_BACK_EDITOR)
+	if not ctx.check(back != null, "路线图屏有「返回编辑器」"):
+		return false
+	back.pressed.emit()
+	return ctx.check(await _await_until(func() -> bool:
+			return _flow.get_state() == _flow.GameState.EDITOR and _scene_changed_from(screen_id), 12),
+			"从路线图回到编辑器")
 
 
 ## 回到编辑器之后，前面那两张卡和那条丝线必须还在 —— 编辑器读的得是同一份书页。
@@ -195,10 +215,9 @@ func _check_loop_closed(ctx: RefCounted) -> void:
 	ctx.check(editor is Control, "回到的是编辑器")
 	var board: BoardModel = _run.board()
 	ctx.check(board.cards().size() >= 3, "书页上留着 %d 张卡（原有的 + 奖励的）" % board.cards().size())
-	ctx.equal(board.links().size(), 1, "丝线还在")
+	ctx.equal(board.links().size(), 2, "丝线还在：原来那条 + 奖励卡接上核心的那条")
 	ctx.check(TreeProbe.count_of(editor, "BoardView") == 1, "编辑器画布还在")
-	# 状态栏是编辑器自己算出来给玩家看的。它跟书页对得上，才说明界面真的按新书页刷新过
-	# —— 而不是「数据对了但画面还停在上一次」。
+	# 状态栏是编辑器自己算的：它跟书页对得上，才说明界面真的按新书页刷新过。
 	var expected: String = TranslationServer.translate("卡片 %d · 丝线 %d") % [board.cards().size(), board.links().size()]
 	var status: Label = _label_with_text(editor, expected)
 	ctx.check(status != null, "编辑器状态栏与书页一致：%s" % expected)
@@ -212,6 +231,14 @@ func _first_card(want_core: bool) -> CardData:
 		if card.is_core() == want_core and (want_core or card.mana_cost > 0):
 			return card
 	return null
+
+
+## 选项里第一个「拿卡」的下标。找不到返回 -1（池子只剩两个加成时会这样）。
+static func _first_card_option(options: Array[Dictionary]) -> int:
+	for index: int in options.size():
+		if RewardModel.is_card(options[index]):
+			return index
+	return -1
 
 
 ## 战斗屏自己的那个节拍计时器。
@@ -244,8 +271,7 @@ func _button_for(root: Node, text_key: String) -> Button:
 	return null
 
 
-## 编辑器顶栏那个「卡片 %d · 丝线 %d」的状态栏。按**算好的整串**精确匹配 ——
-## 详情面板里的「核心卡 · 法术」也含「·」，按下标或前缀找会挑错。
+## 编辑器顶栏的状态栏。按**算好的整串**精确匹配 —— 详情面板的「核心卡 · 法术」也含「·」。
 func _label_with_text(root: Node, text: String) -> Label:
 	for node: Node in TreeProbe.find_all(root, "Label"):
 		var label: Label = node
@@ -255,8 +281,7 @@ func _label_with_text(root: Node, text: String) -> Label:
 
 
 ## current_scene 是否已经不再是 from_id 那个实例 —— 也就是场景真的换过了。
-## 断言闭包里只带 int（实例 id），不带节点：被换下去的那个场景会被引擎立刻回收，
-## 闭包捕获了它就会在下一帧变成「Lambda capture was freed. Passed null instead」。
+## 闭包里只带 int：被换下去的场景会被引擎立刻回收，捕获了它下一帧就变成 capture was freed。
 func _scene_changed_from(from_id: int) -> bool:
 	return _tree.current_scene != null and _tree.current_scene.get_instance_id() != from_id
 
